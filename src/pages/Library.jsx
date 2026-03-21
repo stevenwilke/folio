@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import BookDetail from './BookDetail'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -15,10 +16,11 @@ const STATUS_COLORS = {
 }
 
 export default function Library({ session }) {
-  const [books, setBooks]           = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [filter, setFilter]         = useState('all')
-  const [showSearch, setShowSearch] = useState(false)
+  const [books, setBooks]             = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [filter, setFilter]           = useState('all')
+  const [showSearch, setShowSearch]   = useState(false)
+  const [selectedBook, setSelectedBook] = useState(null)
 
   useEffect(() => { fetchCollection() }, [])
 
@@ -52,6 +54,7 @@ export default function Library({ session }) {
 
   return (
     <div style={s.page}>
+      {/* Topbar */}
       <div style={s.topbar}>
         <div style={s.logo}>Folio</div>
         <div style={s.topbarRight}>
@@ -61,6 +64,7 @@ export default function Library({ session }) {
       </div>
 
       <div style={s.content}>
+        {/* Stats */}
         <div style={s.statsRow}>
           {[
             ['Total Books', stats.total,   null],
@@ -75,6 +79,7 @@ export default function Library({ session }) {
           ))}
         </div>
 
+        {/* Filter pills */}
         <div style={s.filterRow}>
           {['all', 'owned', 'read', 'reading', 'want'].map(f => (
             <button key={f} style={filter === f ? s.filterActive : s.filterInactive}
@@ -84,6 +89,7 @@ export default function Library({ session }) {
           ))}
         </div>
 
+        {/* Book grid */}
         {loading ? (
           <div style={s.empty}>Loading your library…</div>
         ) : filtered.length === 0 ? (
@@ -95,12 +101,18 @@ export default function Library({ session }) {
         ) : (
           <div style={s.grid}>
             {filtered.map(entry => (
-              <BookCard key={entry.id} entry={entry} onUpdate={fetchCollection} />
+              <BookCard
+                key={entry.id}
+                entry={entry}
+                onUpdate={fetchCollection}
+                onSelect={() => setSelectedBook(entry.books.id)}
+              />
             ))}
           </div>
         )}
       </div>
 
+      {/* Search modal */}
       {showSearch && (
         <SearchModal
           session={session}
@@ -108,12 +120,23 @@ export default function Library({ session }) {
           onAdded={() => { setShowSearch(false); fetchCollection() }}
         />
       )}
+
+      {/* Book detail overlay */}
+      {selectedBook && (
+        <div style={{ position: 'fixed', inset: 0, background: '#f5f0e8', zIndex: 40, overflowY: 'auto', isolation: 'isolate' }}>
+          <BookDetail
+            bookId={selectedBook}
+            session={session}
+            onBack={() => { setSelectedBook(null); fetchCollection() }}
+          />
+        </div>
+      )}
     </div>
   )
 }
 
 // ---- BOOK CARD ----
-function BookCard({ entry, onUpdate }) {
+function BookCard({ entry, onUpdate, onSelect }) {
   const book   = entry.books
   const status = entry.read_status
   const [menuOpen, setMenuOpen] = useState(false)
@@ -134,7 +157,7 @@ function BookCard({ entry, onUpdate }) {
   }
 
   return (
-    <div style={s.card}>
+    <div style={{ ...s.card, cursor: 'pointer' }} onClick={onSelect}>
       <div style={s.coverWrap}>
         {book.cover_image_url
           ? <img src={book.cover_image_url} alt={book.title} style={s.coverImg} />
@@ -144,10 +167,12 @@ function BookCard({ entry, onUpdate }) {
       <div style={{ marginTop: 8 }}>
         <div style={s.bookTitle}>{book.title}</div>
         <div style={s.bookAuthor}>{book.author}</div>
+
+        {/* Status badge + menu */}
         <div style={{ position: 'relative', marginTop: 6 }}>
           <span
             style={{ ...s.badge, ...STATUS_COLORS[status], cursor: 'pointer' }}
-            onClick={() => setMenuOpen(!menuOpen)}
+            onClick={e => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
           >
             {STATUS_LABELS[status]} ▾
           </span>
@@ -158,12 +183,14 @@ function BookCard({ entry, onUpdate }) {
                   ...s.menuItem,
                   fontWeight: val === status ? 600 : 400,
                   color: val === status ? '#1a1208' : '#3a3028',
-                }} onClick={() => changeStatus(val)}>
+                }} onClick={e => { e.stopPropagation(); changeStatus(val) }}>
                   {val === status ? '✓ ' : ''}{label}
                 </div>
               ))}
-              <div style={{ ...s.menuItem, borderTop: '1px solid #e8dfc8', color: '#c0521e', marginTop: 4 }}
-                onClick={removeBook}>
+              <div
+                style={{ ...s.menuItem, borderTop: '1px solid #e8dfc8', color: '#c0521e', marginTop: 4 }}
+                onClick={e => { e.stopPropagation(); removeBook() }}
+              >
                 Remove from library
               </div>
             </div>
@@ -338,7 +365,6 @@ function SearchModal({ session, onClose, onAdded }) {
                     <div style={s.addedConfirm}>✓ {STATUS_LABELS[alreadyAdded]}</div>
                   ) : (
                     <>
-                      {/* Primary button — just adds to library */}
                       <button
                         style={{
                           ...s.addBtnPrimary,
@@ -349,8 +375,6 @@ function SearchModal({ session, onClose, onAdded }) {
                       >
                         {adding === doc.key + 'owned' ? '…' : '+ Add to Library'}
                       </button>
-
-                      {/* Secondary row — optional status shortcuts */}
                       <div style={s.statusShortcuts}>
                         {['read', 'reading', 'want'].map(status => (
                           <button
@@ -393,7 +417,7 @@ const s = {
   filterActive:   { padding: '7px 16px', borderRadius: 8, border: 'none', background: '#c0521e', color: 'white', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   filterInactive: { padding: '7px 16px', borderRadius: 8, border: '1px solid #d4c9b0', background: 'transparent', color: '#1a1208', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   grid:           { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 20 },
-  card:           { cursor: 'default' },
+  card:           { cursor: 'pointer' },
   coverWrap:      { width: '100%', aspectRatio: '2/3' },
   coverImg:       { width: '100%', height: '100%', objectFit: 'cover', borderRadius: 5, boxShadow: '2px 3px 10px rgba(26,18,8,0.2)' },
   fakeCover:      { width: '100%', height: '100%', borderRadius: 5, display: 'flex', alignItems: 'flex-end', padding: '8px 8px 8px 14px', position: 'relative', overflow: 'hidden', boxShadow: '2px 3px 10px rgba(26,18,8,0.2)' },

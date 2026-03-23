@@ -4,6 +4,7 @@ import { supabase } from './lib/supabase'
 import Auth from './pages/Auth'
 import Library from './pages/Library'
 import Profile from './pages/Profile'
+import Feed from './pages/Feed'
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -34,6 +35,10 @@ export default function App() {
         <Route
           path="/profile/:username"
           element={<Profile session={session} />}
+        />
+        <Route
+          path="/feed"
+          element={session ? <Feed session={session} /> : <Navigate to="/" replace />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

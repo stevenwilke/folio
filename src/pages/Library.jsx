@@ -93,6 +93,7 @@ export default function Library({ session }) {
         <div style={s.logo}>Folio</div>
         <div style={s.topbarRight}>
           <button style={s.btnPrimary} onClick={() => setShowSearch(true)}>+ Add Book</button>
+          <button style={s.btnGhost} onClick={() => navigate('/feed')}>Feed</button>
           {myUsername && (
             <button style={s.btnGhost} onClick={() => navigate(`/profile/${myUsername}`)}>
               My Profile

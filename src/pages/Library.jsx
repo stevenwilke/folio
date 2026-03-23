@@ -24,6 +24,7 @@ export default function Library({ session }) {
   const [showSearch, setShowSearch]   = useState(false)
   const [selectedBook, setSelectedBook] = useState(null)
   const [listingTarget, setListingTarget] = useState(null)
+  const [activeListings, setActiveListings] = useState({})
   const [myUsername, setMyUsername]         = useState(null)
   const [friendRequests, setFriendRequests] = useState([])
   const [borrowNotifs, setBorrowNotifs]     = useState([])
@@ -68,8 +69,21 @@ export default function Library({ session }) {
     fetchFriendRequests()
   }
 
+  async function fetchActiveListings() {
+    const { data } = await supabase
+      .from('listings')
+      .select('id, book_id, price')
+      .eq('seller_id', session.user.id)
+      .eq('status', 'active')
+    // map book_id → listing so cards can look it up instantly
+    const map = {}
+    for (const l of data || []) map[l.book_id] = l
+    setActiveListings(map)
+  }
+
   async function fetchCollection() {
     setLoading(true)
+    fetchActiveListings()
     const { data, error } = await supabase
       .from('collection_entries')
       .select(`
@@ -178,6 +192,7 @@ export default function Library({ session }) {
               <BookCard
                 key={entry.id}
                 entry={entry}
+                listing={activeListings[entry.books.id] || null}
                 onUpdate={fetchCollection}
                 onSelect={() => setSelectedBook(entry.books.id)}
                 onListForSale={() => setListingTarget(entry)}
@@ -273,7 +288,7 @@ function NotificationsDropdown({ friendRequests, borrowNotifs, onRespondFriend, 
 }
 
 // ---- BOOK CARD ----
-function BookCard({ entry, onUpdate, onSelect, onListForSale }) {
+function BookCard({ entry, listing, onUpdate, onSelect, onListForSale }) {
   const book   = entry.books
   const status = entry.read_status
   const [menuOpen, setMenuOpen] = useState(false)
@@ -295,11 +310,14 @@ function BookCard({ entry, onUpdate, onSelect, onListForSale }) {
 
   return (
     <div style={{ ...s.card, cursor: 'pointer' }} onClick={onSelect}>
-      <div style={s.coverWrap}>
+      <div style={{ ...s.coverWrap, position: 'relative' }}>
         {book.cover_image_url
           ? <img src={book.cover_image_url} alt={book.title} style={s.coverImg} />
           : <FakeCover title={book.title} />
         }
+        {listing && (
+          <div style={s.forSaleBadge}>${Number(listing.price).toFixed(2)}</div>
+        )}
       </div>
       <div style={{ marginTop: 8 }}>
         <div style={s.bookTitle}>{book.title}</div>
@@ -717,6 +735,7 @@ const s = {
   reqAccept:      { padding: '5px 12px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   reqDecline:     { padding: '5px 12px', background: 'transparent', color: '#8a7f72', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
 
+  forSaleBadge:   { position: 'absolute', bottom: 6, right: 6, background: '#5a7a5a', color: 'white', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, letterSpacing: 0.3 },
   fieldGroup:     { marginBottom: 18 },
   fieldLabel:     { display: 'block', fontSize: 11, fontWeight: 600, color: '#3a3028', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
   priceInputWrap: { display: 'flex', alignItems: 'center', border: '1px solid #d4c9b0', borderRadius: 8, overflow: 'hidden', background: 'white', width: 140 },

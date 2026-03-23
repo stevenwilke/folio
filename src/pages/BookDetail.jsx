@@ -77,12 +77,15 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [reviewText, setReviewText]     = useState('')
   const [saving, setSaving]             = useState(false)
   const [saved, setSaved]               = useState(false)
+  const [listing, setListing]           = useState(null)
+  const [showListingModal, setShowListingModal] = useState(false)
 
   useEffect(() => {
     fetchBook()
     fetchEntry()
     fetchReviews()
     fetchCommunityRating()
+    fetchListing()
   }, [bookId])
 
   async function fetchBook() {
@@ -142,6 +145,23 @@ export default function BookDetail({ bookId, session, onBack }) {
       .eq('book_id', bookId)
       .maybeSingle()
     if (data) setCommunityRating(data)
+  }
+
+  async function fetchListing() {
+    const { data } = await supabase
+      .from('listings')
+      .select('id, price, condition')
+      .eq('seller_id', session.user.id)
+      .eq('book_id', bookId)
+      .eq('status', 'active')
+      .maybeSingle()
+    setListing(data || null)
+  }
+
+  async function removeListing() {
+    if (!listing) return
+    await supabase.from('listings').update({ status: 'removed' }).eq('id', listing.id)
+    setListing(null)
   }
 
   async function changeStatus(newStatus) {
@@ -329,8 +349,38 @@ export default function BookDetail({ bookId, session, onBack }) {
                 <button style={s.removeBtn} onClick={removeFromLibrary}>Remove</button>
               )}
             </div>
+
+            {/* For sale row */}
+            {entry?.read_status === 'owned' && (
+              <div style={s.forSaleRow}>
+                {listing ? (
+                  <>
+                    <span style={s.forSaleTag}>
+                      Listed for ${Number(listing.price).toFixed(2)}
+                    </span>
+                    <button style={s.removeListingBtn} onClick={removeListing}>
+                      Remove listing
+                    </button>
+                  </>
+                ) : (
+                  <button style={s.listForSaleBtn} onClick={() => setShowListingModal(true)}>
+                    List for Sale
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Listing modal */}
+        {showListingModal && book && (
+          <ListingModal
+            session={session}
+            book={book}
+            onClose={() => setShowListingModal(false)}
+            onSuccess={(newListing) => { setListing(newListing); setShowListingModal(false) }}
+          />
+        )}
 
         {/* Tabs */}
         <div style={s.tabs}>
@@ -459,6 +509,111 @@ export default function BookDetail({ bookId, session, onBack }) {
   )
 }
 
+// ---- LISTING MODAL ----
+const CONDITION_OPTIONS = [
+  { value: 'like_new',   label: 'Like New' },
+  { value: 'very_good',  label: 'Very Good' },
+  { value: 'good',       label: 'Good' },
+  { value: 'acceptable', label: 'Acceptable' },
+  { value: 'poor',       label: 'Poor' },
+]
+
+function ListingModal({ session, book, onClose, onSuccess }) {
+  const [price, setPrice]           = useState('')
+  const [condition, setCondition]   = useState('good')
+  const [description, setDescription] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError]           = useState(null)
+
+  async function submit() {
+    const p = parseFloat(price)
+    if (!price || isNaN(p) || p < 0) { setError('Please enter a valid price.'); return }
+    setSubmitting(true)
+    setError(null)
+    const { data, error: err } = await supabase
+      .from('listings')
+      .insert({
+        seller_id:   session.user.id,
+        book_id:     book.id,
+        price:       p,
+        condition,
+        description: description.trim() || null,
+        status:      'active',
+      })
+      .select('id, price, condition')
+      .single()
+    if (err) {
+      setError('Could not create listing. Please try again.')
+      setSubmitting(false)
+    } else {
+      onSuccess(data)
+    }
+  }
+
+  return (
+    <div style={s.modalOverlay} onClick={onClose}>
+      <div style={s.modalBox} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '22px 24px 0' }}>
+          <div>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: '#1a1208' }}>List for Sale</div>
+            <div style={{ fontSize: 13, color: '#8a7f72', marginTop: 3 }}>{book.title}</div>
+          </div>
+          <button style={s.modalCloseBtn} onClick={onClose}>✕</button>
+        </div>
+        <div style={{ padding: '20px 24px 24px' }}>
+          <div style={s.fieldGroup}>
+            <label style={s.fieldLabel}>Price (USD)</label>
+            <div style={s.priceWrap}>
+              <span style={s.priceDollar}>$</span>
+              <input
+                style={s.priceInput}
+                type="number" min="0" step="0.01" placeholder="0.00"
+                value={price} onChange={e => setPrice(e.target.value)}
+                autoFocus
+              />
+            </div>
+          </div>
+          <div style={s.fieldGroup}>
+            <label style={s.fieldLabel}>Condition</label>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {CONDITION_OPTIONS.map(opt => (
+                <button key={opt.value}
+                  style={{ padding: '6px 12px', fontSize: 12, borderRadius: 20, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+                    background: condition === opt.value ? '#c0521e' : 'transparent',
+                    color: condition === opt.value ? 'white' : '#3a3028',
+                    border: condition === opt.value ? '1px solid #c0521e' : '1px solid #d4c9b0',
+                  }}
+                  onClick={() => setCondition(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={s.fieldGroup}>
+            <label style={s.fieldLabel}>Condition Notes (optional)</label>
+            <textarea
+              style={s.modalTextarea}
+              placeholder="Describe any wear, marks, or notable details…"
+              value={description} onChange={e => setDescription(e.target.value)}
+              rows={3}
+            />
+          </div>
+          {error && <div style={{ color: '#c0521e', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={s.saveBtn} onClick={submit} disabled={submitting}>
+              {submitting ? 'Listing…' : 'List for Sale'}
+            </button>
+            <button style={{ ...s.saveBtn, background: 'transparent', border: '1px solid #d4c9b0', color: '#1a1208' }} onClick={onClose}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ---- FAKE COVER ----
 function FakeCover({ title }) {
   const colors = ['#7b4f3a','#4a6b8a','#5a7a5a','#2c3e50','#8b2500','#b8860b','#3d5a5a','#c0521e']
@@ -521,4 +676,18 @@ const s = {
   reviewText:          { fontSize: 14, lineHeight: 1.7, color: '#1a1208', margin: 0 },
   textarea:            { width: '100%', padding: '10px 14px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: 'white', color: '#1a1208', lineHeight: 1.6 },
   saveBtn:             { padding: '8px 20px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+
+  forSaleRow:      { display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 },
+  listForSaleBtn:  { padding: '7px 16px', background: 'transparent', border: '1px solid #5a7a5a', borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#5a7a5a' },
+  forSaleTag:      { fontSize: 13, fontWeight: 600, color: '#5a7a5a', background: 'rgba(90,122,90,0.1)', padding: '4px 12px', borderRadius: 20 },
+  removeListingBtn:{ padding: '4px 10px', background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#8a7f72' },
+  modalOverlay:    { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  modalBox:        { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, width: 420, maxWidth: '92vw' },
+  modalCloseBtn:   { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#8a7f72', padding: 4, flexShrink: 0 },
+  fieldGroup:      { marginBottom: 18 },
+  fieldLabel:      { display: 'block', fontSize: 11, fontWeight: 600, color: '#3a3028', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  priceWrap:       { display: 'flex', alignItems: 'center', border: '1px solid #d4c9b0', borderRadius: 8, overflow: 'hidden', background: 'white', width: 140 },
+  priceDollar:     { padding: '9px 10px 9px 14px', fontSize: 15, color: '#8a7f72', background: '#f5f0e8', borderRight: '1px solid #d4c9b0' },
+  priceInput:      { flex: 1, padding: '9px 12px', border: 'none', outline: 'none', fontSize: 15, fontFamily: "'DM Sans', sans-serif", color: '#1a1208', background: 'white' },
+  modalTextarea:   { width: '100%', padding: '10px 12px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
 }

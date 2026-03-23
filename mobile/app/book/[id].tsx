@@ -1,0 +1,520 @@
+import React, { useCallback, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  TouchableOpacity,
+  ActivityIndicator,
+  Platform,
+  Alert,
+  useWindowDimensions,
+  RefreshControl,
+} from 'react-native';
+import { useLocalSearchParams, Stack } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import { supabase } from '../../lib/supabase';
+import { Colors } from '../../constants/colors';
+import { FakeCover } from '../../components/FakeCover';
+import { ReadStatus } from '../../components/BookCard';
+
+interface Book {
+  id: string;
+  title: string;
+  author: string | null;
+  cover_image_url: string | null;
+  published_year: number | null;
+  genre: string | null;
+  description: string | null;
+  isbn_13: string | null;
+}
+
+interface CollectionEntry {
+  id: string;
+  read_status: ReadStatus;
+  user_rating: number | null;
+  review_text: string | null;
+}
+
+const STATUS_OPTIONS: { key: ReadStatus; label: string }[] = [
+  { key: 'owned', label: 'In Library' },
+  { key: 'read', label: 'Read' },
+  { key: 'reading', label: 'Reading' },
+  { key: 'want', label: 'Want to Read' },
+];
+
+export default function BookDetailScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { width } = useWindowDimensions();
+  const [book, setBook] = useState<Book | null>(null);
+  const [entry, setEntry] = useState<CollectionEntry | null>(null);
+  const [communityRating, setCommunityRating] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const coverWidth = Math.min(width * 0.4, 180);
+  const coverHeight = Math.round(coverWidth * 1.5);
+
+  async function fetchBook() {
+    if (!id) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const [{ data: bookData }, { data: entryData }, { data: ratingsData }] =
+      await Promise.all([
+        supabase.from('books').select('*').eq('id', id).single(),
+        supabase
+          .from('collection_entries')
+          .select('id, read_status, user_rating, review_text')
+          .eq('book_id', id)
+          .eq('user_id', user.id)
+          .maybeSingle(),
+        supabase
+          .from('collection_entries')
+          .select('user_rating')
+          .eq('book_id', id)
+          .not('user_rating', 'is', null),
+      ]);
+
+    if (bookData) setBook(bookData);
+    if (entryData) setEntry(entryData);
+
+    if (ratingsData && ratingsData.length > 0) {
+      const sum = ratingsData.reduce(
+        (acc: number, r: { user_rating: number }) => acc + r.user_rating,
+        0
+      );
+      setCommunityRating(Math.round((sum / ratingsData.length) * 10) / 10);
+    } else {
+      setCommunityRating(null);
+    }
+  }
+
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      fetchBook().finally(() => setLoading(false));
+    }, [id])
+  );
+
+  async function onRefresh() {
+    setRefreshing(true);
+    await fetchBook();
+    setRefreshing(false);
+  }
+
+  async function setStatus(status: ReadStatus) {
+    if (!book) return;
+    setSaving(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      if (entry) {
+        // Update existing entry
+        const { data, error } = await supabase
+          .from('collection_entries')
+          .update({ read_status: status })
+          .eq('id', entry.id)
+          .select('id, read_status, user_rating, review_text')
+          .single();
+        if (error) throw error;
+        setEntry(data);
+      } else {
+        // Insert new entry
+        const { data, error } = await supabase
+          .from('collection_entries')
+          .insert({
+            user_id: user.id,
+            book_id: book.id,
+            read_status: status,
+          })
+          .select('id, read_status, user_rating, review_text')
+          .single();
+        if (error) throw error;
+        setEntry(data);
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Could not save status.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function setRating(rating: number) {
+    if (!book) return;
+    setSaving(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      if (entry) {
+        const { data, error } = await supabase
+          .from('collection_entries')
+          .update({ user_rating: rating })
+          .eq('id', entry.id)
+          .select('id, read_status, user_rating, review_text')
+          .single();
+        if (error) throw error;
+        setEntry(data);
+      } else {
+        const { data, error } = await supabase
+          .from('collection_entries')
+          .insert({
+            user_id: user.id,
+            book_id: book.id,
+            read_status: 'owned',
+            user_rating: rating,
+          })
+          .select('id, read_status, user_rating, review_text')
+          .single();
+        if (error) throw error;
+        setEntry(data);
+      }
+
+      // Re-fetch community rating
+      const { data: ratingsData } = await supabase
+        .from('collection_entries')
+        .select('user_rating')
+        .eq('book_id', book.id)
+        .not('user_rating', 'is', null);
+
+      if (ratingsData && ratingsData.length > 0) {
+        const sum = ratingsData.reduce(
+          (acc: number, r: { user_rating: number }) => acc + r.user_rating,
+          0
+        );
+        setCommunityRating(Math.round((sum / ratingsData.length) * 10) / 10);
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Could not save rating.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" color={Colors.rust} />
+      </View>
+    );
+  }
+
+  if (!book) {
+    return (
+      <View style={styles.loader}>
+        <Text style={styles.errorText}>Book not found.</Text>
+      </View>
+    );
+  }
+
+  const currentStatus = entry?.read_status ?? null;
+  const currentRating = entry?.user_rating ?? 0;
+
+  return (
+    <>
+      <Stack.Screen
+        options={{
+          title: book.title,
+          headerStyle: { backgroundColor: Colors.background },
+          headerTitleStyle: {
+            fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+            fontWeight: '700',
+            color: Colors.ink,
+            fontSize: 16,
+          },
+          headerTintColor: Colors.rust,
+          headerShadowVisible: false,
+        }}
+      />
+
+      <ScrollView
+        style={styles.root}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.rust} />
+        }
+      >
+        {/* Cover + title section */}
+        <View style={styles.heroSection}>
+          <View style={styles.coverContainer}>
+            {book.cover_image_url ? (
+              <Image
+                source={{ uri: book.cover_image_url }}
+                style={[styles.coverImage, { width: coverWidth, height: coverHeight }]}
+                resizeMode="cover"
+              />
+            ) : (
+              <FakeCover
+                title={book.title}
+                author={book.author}
+                width={coverWidth}
+                height={coverHeight}
+              />
+            )}
+          </View>
+
+          <View style={styles.heroInfo}>
+            <Text style={styles.bookTitle}>{book.title}</Text>
+            {book.author ? (
+              <Text style={styles.bookAuthor}>{book.author}</Text>
+            ) : null}
+            {book.published_year ? (
+              <Text style={styles.bookMeta}>{book.published_year}</Text>
+            ) : null}
+            {book.genre ? (
+              <Text style={styles.bookMeta}>{book.genre}</Text>
+            ) : null}
+
+            {/* Community rating */}
+            {communityRating !== null ? (
+              <View style={styles.communityRating}>
+                <Text style={styles.communityRatingStars}>
+                  {'★'.repeat(Math.round(communityRating))}
+                  {'☆'.repeat(5 - Math.round(communityRating))}
+                </Text>
+                <Text style={styles.communityRatingValue}>
+                  {communityRating}/5 community
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        {/* Status buttons */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Your Status</Text>
+          <View style={styles.statusButtons}>
+            {STATUS_OPTIONS.map((opt) => {
+              const isActive = currentStatus === opt.key;
+              return (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[
+                    styles.statusBtn,
+                    isActive && {
+                      backgroundColor: Colors.status[opt.key],
+                      borderColor: Colors.status[opt.key],
+                    },
+                  ]}
+                  onPress={() => setStatus(opt.key)}
+                  disabled={saving}
+                >
+                  <Text
+                    style={[
+                      styles.statusBtnText,
+                      isActive && styles.statusBtnTextActive,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Star rating */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Your Rating</Text>
+          <View style={styles.starRow}>
+            {[1, 2, 3, 4, 5].map((star) => (
+              <TouchableOpacity
+                key={star}
+                onPress={() => setRating(star)}
+                disabled={saving}
+                style={styles.starBtn}
+              >
+                <Text
+                  style={[
+                    styles.star,
+                    star <= currentRating ? styles.starFilled : styles.starEmpty,
+                  ]}
+                >
+                  {star <= currentRating ? '★' : '☆'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            {currentRating > 0 && (
+              <Text style={styles.ratingLabel}>{currentRating}/5</Text>
+            )}
+          </View>
+        </View>
+
+        {/* Description */}
+        {book.description ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>About</Text>
+            <Text style={styles.description}>{book.description}</Text>
+          </View>
+        ) : null}
+
+        {/* Book metadata */}
+        {book.isbn_13 ? (
+          <View style={styles.section}>
+            <Text style={styles.metaRow}>
+              <Text style={styles.metaKey}>ISBN-13: </Text>
+              <Text style={styles.metaValue}>{book.isbn_13}</Text>
+            </Text>
+          </View>
+        ) : null}
+      </ScrollView>
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  loader: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.background,
+  },
+  errorText: {
+    fontSize: 16,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  content: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  heroSection: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 24,
+    alignItems: 'flex-start',
+  },
+  coverContainer: {
+    flexShrink: 0,
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  coverImage: {
+    borderRadius: 6,
+  },
+  heroInfo: {
+    flex: 1,
+    gap: 6,
+    paddingTop: 4,
+  },
+  bookTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+    lineHeight: 26,
+  },
+  bookAuthor: {
+    fontSize: 14,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  bookMeta: {
+    fontSize: 12,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  communityRating: {
+    marginTop: 6,
+    gap: 2,
+  },
+  communityRatingStars: {
+    fontSize: 16,
+    color: Colors.gold,
+    letterSpacing: 2,
+  },
+  communityRatingValue: {
+    fontSize: 11,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  section: {
+    marginBottom: 20,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 10,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  statusButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  statusBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.card,
+  },
+  statusBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  statusBtnTextActive: {
+    color: Colors.white,
+  },
+  starRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  starBtn: {
+    padding: 2,
+  },
+  star: {
+    fontSize: 32,
+    lineHeight: 36,
+  },
+  starFilled: {
+    color: Colors.gold,
+  },
+  starEmpty: {
+    color: Colors.border,
+  },
+  ratingLabel: {
+    fontSize: 14,
+    color: Colors.muted,
+    marginLeft: 8,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  description: {
+    fontSize: 14,
+    color: Colors.ink,
+    lineHeight: 22,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  metaRow: {
+    fontSize: 13,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  metaKey: {
+    fontWeight: '600',
+    color: Colors.muted,
+  },
+  metaValue: {
+    color: Colors.ink,
+  },
+});

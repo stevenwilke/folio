@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Folio",
+    "slug": "folio",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f5f0e8"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.folio.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#f5f0e8"
+      },
+      "package": "com.folio.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "scheme": "folio",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

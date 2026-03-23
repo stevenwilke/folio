@@ -137,11 +137,10 @@ export default function Profile({ session }) {
             {profile.bio && <div style={s.profileBio}>{profile.bio}</div>}
             {joinDate && <div style={s.profileMeta}>Member since {joinDate}</div>}
           </div>
-          {isOwnProfile && (
-            <button style={s.btnGhost} onClick={() => navigate('/')}>
-              ← My Library
-            </button>
-          )}
+          {isOwnProfile
+            ? <button style={s.btnGhost} onClick={() => navigate('/')}>← My Library</button>
+            : session && <FriendButton session={session} profile={profile} />
+          }
         </div>
 
         {isPrivate ? (
@@ -329,6 +328,103 @@ function ReviewCard({ entry, onBookClick }) {
       </div>
     </div>
   )
+}
+
+// ---- FRIEND BUTTON ----
+function FriendButton({ session, profile }) {
+  const [friendship, setFriendship] = useState(null)
+  const [loading, setLoading]       = useState(true)
+  const [acting, setActing]         = useState(false)
+
+  useEffect(() => { fetchFriendship() }, [profile.id])
+
+  async function fetchFriendship() {
+    const { data } = await supabase
+      .from('friendships')
+      .select('id, status, requester_id, addressee_id')
+      .or(`and(requester_id.eq.${session.user.id},addressee_id.eq.${profile.id}),and(requester_id.eq.${profile.id},addressee_id.eq.${session.user.id})`)
+      .maybeSingle()
+    setFriendship(data || null)
+    setLoading(false)
+  }
+
+  async function sendRequest() {
+    setActing(true)
+    const { data } = await supabase
+      .from('friendships')
+      .insert({ requester_id: session.user.id, addressee_id: profile.id })
+      .select().single()
+    setFriendship(data)
+    setActing(false)
+  }
+
+  async function cancelRequest() {
+    setActing(true)
+    await supabase.from('friendships').delete().eq('id', friendship.id)
+    setFriendship(null)
+    setActing(false)
+  }
+
+  async function respond(accept) {
+    setActing(true)
+    if (accept) {
+      const { data } = await supabase
+        .from('friendships')
+        .update({ status: 'accepted' })
+        .eq('id', friendship.id)
+        .select().single()
+      setFriendship(data)
+    } else {
+      await supabase.from('friendships').delete().eq('id', friendship.id)
+      setFriendship(null)
+    }
+    setActing(false)
+  }
+
+  async function unfriend() {
+    setActing(true)
+    await supabase.from('friendships').delete().eq('id', friendship.id)
+    setFriendship(null)
+    setActing(false)
+  }
+
+  if (loading) return null
+
+  const iAmRequester = friendship?.requester_id === session.user.id
+  const iAmAddressee = friendship?.addressee_id === session.user.id
+
+  if (!friendship) return (
+    <button style={s.btnPrimary} onClick={sendRequest} disabled={acting}>
+      {acting ? '…' : '+ Add Friend'}
+    </button>
+  )
+
+  if (friendship.status === 'pending' && iAmRequester) return (
+    <button style={{ ...s.btnGhost, color: '#5a7a5a' }} onClick={cancelRequest} disabled={acting}
+      title="Click to cancel request">
+      {acting ? '…' : 'Request Sent ✓'}
+    </button>
+  )
+
+  if (friendship.status === 'pending' && iAmAddressee) return (
+    <div style={{ display: 'flex', gap: 8 }}>
+      <button style={s.btnPrimary} onClick={() => respond(true)} disabled={acting}>
+        {acting ? '…' : 'Accept'}
+      </button>
+      <button style={s.btnGhost} onClick={() => respond(false)} disabled={acting}>
+        Decline
+      </button>
+    </div>
+  )
+
+  if (friendship.status === 'accepted') return (
+    <button style={{ ...s.btnGhost, color: '#5a7a5a', borderColor: '#5a7a5a' }}
+      onClick={unfriend} disabled={acting} title="Click to unfriend">
+      {acting ? '…' : 'Friends ✓'}
+    </button>
+  )
+
+  return null
 }
 
 // ---- FAKE COVER ----

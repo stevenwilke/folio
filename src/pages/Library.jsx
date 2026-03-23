@@ -23,7 +23,9 @@ export default function Library({ session }) {
   const [filter, setFilter]           = useState('all')
   const [showSearch, setShowSearch]   = useState(false)
   const [selectedBook, setSelectedBook] = useState(null)
-  const [myUsername, setMyUsername]   = useState(null)
+  const [myUsername, setMyUsername]         = useState(null)
+  const [friendRequests, setFriendRequests] = useState([])
+  const [showRequests, setShowRequests]     = useState(false)
 
   useEffect(() => { fetchCollection() }, [])
 
@@ -35,6 +37,26 @@ export default function Library({ session }) {
       .maybeSingle()
       .then(({ data }) => setMyUsername(data?.username || null))
   }, [session.user.id])
+
+  useEffect(() => { fetchFriendRequests() }, [])
+
+  async function fetchFriendRequests() {
+    const { data } = await supabase
+      .from('friendships')
+      .select('id, requester_id, created_at, profiles!friendships_requester_id_fkey(username)')
+      .eq('addressee_id', session.user.id)
+      .eq('status', 'pending')
+    setFriendRequests(data || [])
+  }
+
+  async function respondToRequest(id, accept) {
+    if (accept) {
+      await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id)
+    } else {
+      await supabase.from('friendships').delete().eq('id', id)
+    }
+    fetchFriendRequests()
+  }
 
   async function fetchCollection() {
     setLoading(true)
@@ -76,6 +98,26 @@ export default function Library({ session }) {
               My Profile
             </button>
           )}
+          {/* Notification bell */}
+          <div style={{ position: 'relative' }}>
+            <button style={s.bellBtn} onClick={() => setShowRequests(v => !v)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+              {friendRequests.length > 0 && (
+                <span style={s.bellBadge}>{friendRequests.length}</span>
+              )}
+            </button>
+            {showRequests && (
+              <FriendRequestsDropdown
+                requests={friendRequests}
+                onRespond={(id, accept) => { respondToRequest(id, accept) }}
+                onNavigate={(username) => { setShowRequests(false); navigate(`/profile/${username}`) }}
+                onClose={() => setShowRequests(false)}
+              />
+            )}
+          </div>
           <button style={s.btnGhost} onClick={handleSignOut}>Sign out</button>
         </div>
       </div>
@@ -147,6 +189,42 @@ export default function Library({ session }) {
             onBack={() => { setSelectedBook(null); fetchCollection() }}
           />
         </div>
+      )}
+    </div>
+  )
+}
+
+// ---- FRIEND REQUESTS DROPDOWN ----
+function FriendRequestsDropdown({ requests, onRespond, onNavigate, onClose }) {
+  return (
+    <div style={s.reqDropdown}>
+      <div style={s.reqHeader}>
+        Friend Requests
+        {requests.length > 0 && <span style={s.reqCount}>{requests.length}</span>}
+      </div>
+      {requests.length === 0 ? (
+        <div style={s.reqEmpty}>No pending requests</div>
+      ) : (
+        requests.map(req => (
+          <div key={req.id} style={s.reqRow}>
+            <div style={s.reqAvatar}>
+              {req.profiles?.username?.charAt(0).toUpperCase() || '?'}
+            </div>
+            <div style={{ flex: 1 }}>
+              <span
+                style={s.reqUsername}
+                onClick={() => onNavigate(req.profiles?.username)}
+              >
+                {req.profiles?.username}
+              </span>
+              <div style={s.reqSub}>wants to be friends</div>
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button style={s.reqAccept} onClick={() => onRespond(req.id, true)}>Accept</button>
+              <button style={s.reqDecline} onClick={() => onRespond(req.id, false)}>Decline</button>
+            </div>
+          </div>
+        ))
       )}
     </div>
   )
@@ -468,4 +546,17 @@ const s = {
   addBtn:         { padding: '4px 8px', fontSize: 11, background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#1a1208', whiteSpace: 'nowrap' },
   addBtnLoading:  { opacity: 0.5, cursor: 'not-allowed' },
   addedConfirm:   { fontSize: 12, color: '#5a7a5a', fontWeight: 500 },
+
+  bellBtn:        { position: 'relative', background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', color: '#1a1208', display: 'flex', alignItems: 'center' },
+  bellBadge:      { position: 'absolute', top: -6, right: -6, background: '#c0521e', color: 'white', borderRadius: '50%', width: 18, height: 18, fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  reqDropdown:    { position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 12, minWidth: 320, boxShadow: '0 8px 24px rgba(26,18,8,0.12)', zIndex: 100 },
+  reqHeader:      { padding: '14px 16px 10px', fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, color: '#1a1208', borderBottom: '1px solid #e8dfc8', display: 'flex', alignItems: 'center', gap: 8 },
+  reqCount:       { background: 'rgba(192,82,30,0.1)', color: '#c0521e', borderRadius: 20, padding: '1px 8px', fontSize: 12, fontWeight: 600 },
+  reqEmpty:       { padding: '20px 16px', fontSize: 13, color: '#8a7f72', textAlign: 'center' },
+  reqRow:         { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #f0e8d8' },
+  reqAvatar:      { width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 14, flexShrink: 0 },
+  reqUsername:    { fontSize: 14, fontWeight: 600, color: '#1a1208', cursor: 'pointer' },
+  reqSub:         { fontSize: 12, color: '#8a7f72', marginTop: 1 },
+  reqAccept:      { padding: '5px 12px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+  reqDecline:     { padding: '5px 12px', background: 'transparent', color: '#8a7f72', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
 }

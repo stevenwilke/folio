@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
 
@@ -16,13 +17,24 @@ const STATUS_COLORS = {
 }
 
 export default function Library({ session }) {
+  const navigate = useNavigate()
   const [books, setBooks]             = useState([])
   const [loading, setLoading]         = useState(true)
   const [filter, setFilter]           = useState('all')
   const [showSearch, setShowSearch]   = useState(false)
   const [selectedBook, setSelectedBook] = useState(null)
+  const [myUsername, setMyUsername]   = useState(null)
 
   useEffect(() => { fetchCollection() }, [])
+
+  useEffect(() => {
+    supabase
+      .from('profiles')
+      .select('username')
+      .eq('id', session.user.id)
+      .maybeSingle()
+      .then(({ data }) => setMyUsername(data?.username || null))
+  }, [session.user.id])
 
   async function fetchCollection() {
     setLoading(true)
@@ -59,6 +71,11 @@ export default function Library({ session }) {
         <div style={s.logo}>Folio</div>
         <div style={s.topbarRight}>
           <button style={s.btnPrimary} onClick={() => setShowSearch(true)}>+ Add Book</button>
+          {myUsername && (
+            <button style={s.btnGhost} onClick={() => navigate(`/profile/${myUsername}`)}>
+              My Profile
+            </button>
+          )}
           <button style={s.btnGhost} onClick={handleSignOut}>Sign out</button>
         </div>
       </div>

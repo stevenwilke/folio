@@ -25,6 +25,7 @@ export default function Library({ session }) {
   const [selectedBook, setSelectedBook] = useState(null)
   const [listingTarget, setListingTarget] = useState(null)
   const [activeListings, setActiveListings] = useState({})
+  const [collectionValue, setCollectionValue] = useState(null)
   const [myUsername, setMyUsername]         = useState(null)
   const [friendRequests, setFriendRequests] = useState([])
   const [borrowNotifs, setBorrowNotifs]     = useState([])
@@ -75,10 +76,20 @@ export default function Library({ session }) {
       .select('id, book_id, price')
       .eq('seller_id', session.user.id)
       .eq('status', 'active')
-    // map book_id → listing so cards can look it up instantly
     const map = {}
     for (const l of data || []) map[l.book_id] = l
     setActiveListings(map)
+  }
+
+  async function fetchCollectionValue(bookIds) {
+    if (!bookIds.length) { setCollectionValue(0); return }
+    const { data } = await supabase
+      .from('valuations')
+      .select('avg_price')
+      .in('book_id', bookIds)
+      .not('avg_price', 'is', null)
+    const total = (data || []).reduce((sum, v) => sum + Number(v.avg_price), 0)
+    setCollectionValue(total)
   }
 
   async function fetchCollection() {
@@ -93,7 +104,13 @@ export default function Library({ session }) {
       .eq('user_id', session.user.id)
       .order('added_at', { ascending: false })
 
-    if (!error) setBooks(data || [])
+    if (!error) {
+      setBooks(data || [])
+      const ownedIds = (data || [])
+        .filter(e => e.read_status === 'owned')
+        .map(e => e.books.id)
+      fetchCollectionValue(ownedIds)
+    }
     setLoading(false)
   }
 
@@ -159,6 +176,9 @@ export default function Library({ session }) {
             ['Read',        stats.read,    '#5a7a5a'],
             ['Reading',     stats.reading, '#c0521e'],
             ['Want to Read',stats.want,    '#b8860b'],
+            ...(collectionValue !== null
+              ? [['Est. Value', `$${collectionValue.toFixed(2)}`, '#5a7a5a']]
+              : []),
           ].map(([label, val, color]) => (
             <div key={label} style={s.statCard}>
               <div style={{ ...s.statVal, color: color || '#1a1208' }}>{val}</div>

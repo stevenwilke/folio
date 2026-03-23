@@ -79,6 +79,8 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [saved, setSaved]               = useState(false)
   const [listing, setListing]           = useState(null)
   const [showListingModal, setShowListingModal] = useState(false)
+  const [valuation, setValuation]       = useState(null)   // null = loading, false = not found, object = data
+  const [valuationLoading, setValuationLoading] = useState(true)
 
   useEffect(() => {
     fetchBook()
@@ -106,6 +108,7 @@ export default function BookDetail({ bookId, session, onBack }) {
         }
         setFetchingDesc(false)
       }
+      loadValuation(data)
     } else {
       setLoading(false)
     }
@@ -145,6 +148,61 @@ export default function BookDetail({ bookId, session, onBack }) {
       .eq('book_id', bookId)
       .maybeSingle()
     if (data) setCommunityRating(data)
+  }
+
+  async function loadValuation(bookData) {
+    setValuationLoading(true)
+    // Check cache first
+    const { data: cached } = await supabase
+      .from('valuations')
+      .select('*')
+      .eq('book_id', bookData.id)
+      .maybeSingle()
+
+    const cacheAge = cached
+      ? (Date.now() - new Date(cached.fetched_at).getTime()) / (1000 * 60 * 60)
+      : Infinity
+
+    if (cached && cacheAge < 24) {
+      setValuation(cached.avg_price ? cached : false)
+      setValuationLoading(false)
+      return
+    }
+
+    // Fetch fresh from Edge Function
+    try {
+      const { data, error } = await supabase.functions.invoke('get-book-valuation', {
+        body: {
+          isbn:   bookData.isbn_13 || bookData.isbn_10 || null,
+          title:  bookData.title,
+          author: bookData.author,
+        },
+      })
+
+      if (error || !data?.found) {
+        // Cache the miss so we don't keep retrying
+        await supabase.from('valuations').upsert(
+          { book_id: bookData.id, avg_price: null, fetched_at: new Date().toISOString() },
+          { onConflict: 'book_id' }
+        )
+        setValuation(false)
+      } else {
+        const row = {
+          book_id:      bookData.id,
+          avg_price:    data.avg_price,
+          min_price:    data.min_price,
+          max_price:    data.max_price,
+          sample_count: data.sample_count,
+          currency:     data.currency || 'USD',
+          fetched_at:   new Date().toISOString(),
+        }
+        await supabase.from('valuations').upsert(row, { onConflict: 'book_id' })
+        setValuation(row)
+      }
+    } catch {
+      setValuation(false)
+    }
+    setValuationLoading(false)
   }
 
   async function fetchListing() {
@@ -298,6 +356,23 @@ export default function BookDetail({ bookId, session, onBack }) {
               {book.published_year && <span style={s.metaPill}>{book.published_year}</span>}
               {book.genre && <span style={s.metaPill}>{book.genre}</span>}
               {book.isbn_13 && <span style={s.metaPill}>ISBN {book.isbn_13}</span>}
+            </div>
+
+            {/* Valuation */}
+            <div style={s.valuationRow}>
+              {valuationLoading ? (
+                <span style={s.valuationMuted}>Fetching market value…</span>
+              ) : valuation ? (
+                <>
+                  <span style={s.valuationPrice}>${Number(valuation.avg_price).toFixed(2)}</span>
+                  <span style={s.valuationSub}>
+                    est. value · ${Number(valuation.min_price).toFixed(2)}–${Number(valuation.max_price).toFixed(2)} range
+                    · {valuation.sample_count} eBay sales (90 days)
+                  </span>
+                </>
+              ) : (
+                <span style={s.valuationMuted}>No market data found</span>
+              )}
             </div>
 
             {/* Hero star rating — saves immediately on click */}
@@ -676,6 +751,11 @@ const s = {
   reviewText:          { fontSize: 14, lineHeight: 1.7, color: '#1a1208', margin: 0 },
   textarea:            { width: '100%', padding: '10px 14px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: 'white', color: '#1a1208', lineHeight: 1.6 },
   saveBtn:             { padding: '8px 20px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+
+  valuationRow:    { display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 14, flexWrap: 'wrap' },
+  valuationPrice:  { fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#5a7a5a' },
+  valuationSub:    { fontSize: 12, color: '#8a7f72' },
+  valuationMuted:  { fontSize: 12, color: '#b0a898', fontStyle: 'italic' },
 
   forSaleRow:      { display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 },
   listForSaleBtn:  { padding: '7px 16px', background: 'transparent', border: '1px solid #5a7a5a', borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#5a7a5a' },

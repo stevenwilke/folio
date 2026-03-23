@@ -25,6 +25,7 @@ export default function Library({ session }) {
   const [selectedBook, setSelectedBook] = useState(null)
   const [myUsername, setMyUsername]         = useState(null)
   const [friendRequests, setFriendRequests] = useState([])
+  const [borrowNotifs, setBorrowNotifs]     = useState([])
   const [showRequests, setShowRequests]     = useState(false)
 
   useEffect(() => { fetchCollection() }, [])
@@ -41,12 +42,20 @@ export default function Library({ session }) {
   useEffect(() => { fetchFriendRequests() }, [])
 
   async function fetchFriendRequests() {
-    const { data } = await supabase
-      .from('friendships')
-      .select('id, requester_id, created_at, profiles!friendships_requester_id_fkey(username)')
-      .eq('addressee_id', session.user.id)
-      .eq('status', 'pending')
-    setFriendRequests(data || [])
+    const [{ data: friends }, { data: borrows }] = await Promise.all([
+      supabase
+        .from('friendships')
+        .select('id, requester_id, created_at, profiles!friendships_requester_id_fkey(username)')
+        .eq('addressee_id', session.user.id)
+        .eq('status', 'pending'),
+      supabase
+        .from('borrow_requests')
+        .select('id, requester_id, created_at, books(title), profiles!borrow_requests_requester_id_fkey(username)')
+        .eq('owner_id', session.user.id)
+        .eq('status', 'pending'),
+    ])
+    setFriendRequests(friends || [])
+    setBorrowNotifs(borrows || [])
   }
 
   async function respondToRequest(id, accept) {
@@ -94,6 +103,7 @@ export default function Library({ session }) {
         <div style={s.topbarRight}>
           <button style={s.btnPrimary} onClick={() => setShowSearch(true)}>+ Add Book</button>
           <button style={s.btnGhost} onClick={() => navigate('/feed')}>Feed</button>
+          <button style={s.btnGhost} onClick={() => navigate('/loans')}>Loans</button>
           {myUsername && (
             <button style={s.btnGhost} onClick={() => navigate(`/profile/${myUsername}`)}>
               My Profile
@@ -106,14 +116,16 @@ export default function Library({ session }) {
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
                 <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
               </svg>
-              {friendRequests.length > 0 && (
-                <span style={s.bellBadge}>{friendRequests.length}</span>
+              {(friendRequests.length + borrowNotifs.length) > 0 && (
+                <span style={s.bellBadge}>{friendRequests.length + borrowNotifs.length}</span>
               )}
             </button>
             {showRequests && (
-              <FriendRequestsDropdown
-                requests={friendRequests}
-                onRespond={(id, accept) => { respondToRequest(id, accept) }}
+              <NotificationsDropdown
+                friendRequests={friendRequests}
+                borrowNotifs={borrowNotifs}
+                onRespondFriend={(id, accept) => { respondToRequest(id, accept) }}
+                onViewLoans={() => { setShowRequests(false); navigate('/loans') }}
                 onNavigate={(username) => { setShowRequests(false); navigate(`/profile/${username}`) }}
                 onClose={() => setShowRequests(false)}
               />
@@ -195,37 +207,53 @@ export default function Library({ session }) {
   )
 }
 
-// ---- FRIEND REQUESTS DROPDOWN ----
-function FriendRequestsDropdown({ requests, onRespond, onNavigate, onClose }) {
+// ---- NOTIFICATIONS DROPDOWN ----
+function NotificationsDropdown({ friendRequests, borrowNotifs, onRespondFriend, onViewLoans, onNavigate }) {
+  const total = friendRequests.length + borrowNotifs.length
   return (
     <div style={s.reqDropdown}>
       <div style={s.reqHeader}>
-        Friend Requests
-        {requests.length > 0 && <span style={s.reqCount}>{requests.length}</span>}
+        Notifications
+        {total > 0 && <span style={s.reqCount}>{total}</span>}
       </div>
-      {requests.length === 0 ? (
-        <div style={s.reqEmpty}>No pending requests</div>
+      {total === 0 ? (
+        <div style={s.reqEmpty}>No new notifications</div>
       ) : (
-        requests.map(req => (
-          <div key={req.id} style={s.reqRow}>
-            <div style={s.reqAvatar}>
-              {req.profiles?.username?.charAt(0).toUpperCase() || '?'}
+        <>
+          {friendRequests.map(req => (
+            <div key={`f-${req.id}`} style={s.reqRow}>
+              <div style={s.reqAvatar}>
+                {req.profiles?.username?.charAt(0).toUpperCase() || '?'}
+              </div>
+              <div style={{ flex: 1 }}>
+                <span style={s.reqUsername} onClick={() => onNavigate(req.profiles?.username)}>
+                  {req.profiles?.username}
+                </span>
+                <div style={s.reqSub}>wants to be friends</div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button style={s.reqAccept} onClick={() => onRespondFriend(req.id, true)}>Accept</button>
+                <button style={s.reqDecline} onClick={() => onRespondFriend(req.id, false)}>Decline</button>
+              </div>
             </div>
-            <div style={{ flex: 1 }}>
-              <span
-                style={s.reqUsername}
-                onClick={() => onNavigate(req.profiles?.username)}
-              >
-                {req.profiles?.username}
-              </span>
-              <div style={s.reqSub}>wants to be friends</div>
+          ))}
+          {borrowNotifs.map(req => (
+            <div key={`b-${req.id}`} style={s.reqRow}>
+              <div style={{ ...s.reqAvatar, background: 'linear-gradient(135deg, #5a7a5a, #b8860b)' }}>
+                {req.profiles?.username?.charAt(0).toUpperCase() || '?'}
+              </div>
+              <div style={{ flex: 1 }}>
+                <span style={s.reqUsername} onClick={() => onNavigate(req.profiles?.username)}>
+                  {req.profiles?.username}
+                </span>
+                <div style={s.reqSub}>wants to borrow "{req.books?.title}"</div>
+              </div>
+              <button style={{ ...s.reqAccept, background: '#5a7a5a' }} onClick={onViewLoans}>
+                View
+              </button>
             </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button style={s.reqAccept} onClick={() => onRespond(req.id, true)}>Accept</button>
-              <button style={s.reqDecline} onClick={() => onRespond(req.id, false)}>Decline</button>
-            </div>
-          </div>
-        ))
+          ))}
+        </>
       )}
     </div>
   )

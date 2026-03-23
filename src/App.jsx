@@ -5,6 +5,7 @@ import Auth from './pages/Auth'
 import Library from './pages/Library'
 import Profile from './pages/Profile'
 import Feed from './pages/Feed'
+import Loans from './pages/Loans'
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -39,6 +40,10 @@ export default function App() {
         <Route
           path="/feed"
           element={session ? <Feed session={session} /> : <Navigate to="/" replace />}
+        />
+        <Route
+          path="/loans"
+          element={session ? <Loans session={session} /> : <Navigate to="/" replace />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -23,8 +23,10 @@ export default function Profile({ session }) {
   const [books, setBooks]           = useState([])
   const [loading, setLoading]       = useState(true)
   const [notFound, setNotFound]     = useState(false)
-  const [filter, setFilter]         = useState('all')
+  const [filter, setFilter]           = useState('all')
   const [selectedBook, setSelectedBook] = useState(null)
+  const [isFriend, setIsFriend]       = useState(false)
+  const [borrowTarget, setBorrowTarget] = useState(null)
 
   const isOwnProfile = session?.user?.id === profile?.id
 
@@ -53,6 +55,16 @@ export default function Profile({ session }) {
     setProfile(prof)
 
     const isOwn = session?.user?.id === prof.id
+    if (!isOwn && session?.user?.id) {
+      supabase
+        .from('friendships')
+        .select('status')
+        .or(`and(requester_id.eq.${session.user.id},addressee_id.eq.${prof.id}),and(requester_id.eq.${prof.id},addressee_id.eq.${session.user.id})`)
+        .eq('status', 'accepted')
+        .maybeSingle()
+        .then(({ data }) => setIsFriend(!!data))
+    }
+
     if (!prof.is_public && !isOwn) {
       setLoading(false)
       return
@@ -200,6 +212,8 @@ export default function Profile({ session }) {
                     key={entry.id}
                     entry={entry}
                     onSelect={session ? () => setSelectedBook(entry.books.id) : undefined}
+                    canBorrow={isFriend && !isOwnProfile && entry.read_status === 'owned'}
+                    onBorrow={() => setBorrowTarget(entry)}
                   />
                 ))}
               </div>
@@ -226,6 +240,16 @@ export default function Profile({ session }) {
           </>
         )}
       </div>
+
+      {/* Borrow modal */}
+      {borrowTarget && session && profile && (
+        <BorrowModal
+          session={session}
+          entry={borrowTarget}
+          ownerId={profile.id}
+          onClose={() => setBorrowTarget(null)}
+        />
+      )}
 
       {/* Book detail overlay */}
       {selectedBook && session && (
@@ -260,7 +284,7 @@ function Topbar({ navigate, session }) {
 }
 
 // ---- PROFILE BOOK CARD ----
-function ProfileBookCard({ entry, onSelect }) {
+function ProfileBookCard({ entry, onSelect, canBorrow, onBorrow }) {
   const book   = entry.books
   const status = entry.read_status
 
@@ -287,6 +311,14 @@ function ProfileBookCard({ entry, onSelect }) {
           <div style={s.cardRating}>
             {'★'.repeat(entry.user_rating)}{'☆'.repeat(5 - entry.user_rating)}
           </div>
+        )}
+        {canBorrow && (
+          <button
+            style={s.borrowBtn}
+            onClick={e => { e.stopPropagation(); onBorrow() }}
+          >
+            Borrow
+          </button>
         )}
       </div>
     </div>
@@ -427,6 +459,96 @@ function FriendButton({ session, profile }) {
   return null
 }
 
+// ---- BORROW MODAL ----
+function BorrowModal({ session, entry, ownerId, onClose }) {
+  const book = entry.books
+  const [message, setMessage]     = useState('')
+  const [dueDate, setDueDate]     = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError]         = useState(null)
+  const [success, setSuccess]     = useState(false)
+
+  async function submit() {
+    setSubmitting(true)
+    setError(null)
+    const { error: err } = await supabase
+      .from('borrow_requests')
+      .insert({
+        requester_id: session.user.id,
+        owner_id:     ownerId,
+        book_id:      book.id,
+        message:      message.trim() || null,
+        due_date:     dueDate || null,
+      })
+    if (err) {
+      setError('Could not send request. You may already have a pending request for this book.')
+      setSubmitting(false)
+    } else {
+      setSuccess(true)
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.borrowModal} onClick={e => e.stopPropagation()}>
+        {success ? (
+          <div style={{ padding: '36px', textAlign: 'center' }}>
+            <div style={{ fontSize: 40, marginBottom: 12, color: '#5a7a5a' }}>✓</div>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: '#1a1208', marginBottom: 8 }}>
+              Request sent!
+            </div>
+            <div style={{ fontSize: 14, color: '#8a7f72', marginBottom: 24 }}>
+              You'll be notified when they respond.
+            </div>
+            <button style={s.btnPrimary} onClick={onClose}>Done</button>
+          </div>
+        ) : (
+          <div style={{ padding: '28px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+              <div>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: '#1a1208' }}>
+                  Request to Borrow
+                </div>
+                <div style={{ fontSize: 14, color: '#8a7f72', marginTop: 4 }}>{book.title}</div>
+              </div>
+              <button style={s.closeBtn} onClick={onClose}>✕</button>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={s.fieldLabel}>Message (optional)</label>
+              <textarea
+                style={s.textarea}
+                placeholder="Say something to the owner…"
+                value={message}
+                onChange={e => setMessage(e.target.value)}
+                rows={3}
+                autoFocus
+              />
+            </div>
+            <div style={{ marginBottom: 24 }}>
+              <label style={s.fieldLabel}>Return by (optional)</label>
+              <input
+                type="date"
+                style={s.dateInput}
+                value={dueDate}
+                onChange={e => setDueDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+            {error && <div style={{ color: '#c0521e', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button style={s.btnPrimary} onClick={submit} disabled={submitting}>
+                {submitting ? 'Sending…' : 'Send Request'}
+              </button>
+              <button style={s.btnGhost} onClick={onClose}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ---- FAKE COVER ----
 function FakeCover({ title }) {
   const colors = ['#7b4f3a','#4a6b8a','#5a7a5a','#2c3e50','#8b2500','#b8860b','#3d5a5a','#c0521e']
@@ -503,4 +625,12 @@ const s = {
   reviewStars:    { fontSize: 13, color: '#b8860b', letterSpacing: 1, marginBottom: 8 },
   reviewText:     { fontSize: 14, color: '#3a3028', lineHeight: 1.6 },
   reviewDate:     { fontSize: 12, color: '#8a7f72', marginTop: 8 },
+
+  borrowBtn:   { display: 'block', marginTop: 8, padding: '4px 10px', fontSize: 11, background: 'transparent', border: '1px solid #5a7a5a', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#5a7a5a', fontWeight: 500 },
+  overlay:     { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  borrowModal: { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, width: 420, maxWidth: '92vw' },
+  closeBtn:    { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#8a7f72', padding: 4, flexShrink: 0 },
+  fieldLabel:  { display: 'block', fontSize: 11, fontWeight: 600, color: '#3a3028', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  textarea:    { width: '100%', padding: '10px 12px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
+  dateInput:   { width: '100%', padding: '9px 12px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
 }

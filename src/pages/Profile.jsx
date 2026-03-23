@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
@@ -25,14 +25,35 @@ export default function Profile({ session }) {
   const [notFound, setNotFound]     = useState(false)
   const [filter, setFilter]           = useState('all')
   const [selectedBook, setSelectedBook] = useState(null)
-  const [isFriend, setIsFriend]       = useState(false)
+  const [isFriend, setIsFriend]         = useState(false)
   const [borrowTarget, setBorrowTarget] = useState(null)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const fileInputRef = useRef(null)
 
   const isOwnProfile = session?.user?.id === profile?.id
 
   useEffect(() => {
     fetchProfile()
   }, [username])
+
+  async function handleAvatarUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file || !session) return
+    setUploadingAvatar(true)
+    const ext  = file.name.split('.').pop()
+    const path = `${session.user.id}/avatar.${ext}`
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(path, file, { upsert: true, contentType: file.type })
+    if (!uploadError) {
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+      await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', session.user.id)
+      setProfile(prev => ({ ...prev, avatar_url: publicUrl }))
+    }
+    setUploadingAvatar(false)
+    // Clear input so same file can be re-uploaded
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
 
   async function fetchProfile() {
     setLoading(true)
@@ -42,7 +63,7 @@ export default function Profile({ session }) {
 
     const { data: prof } = await supabase
       .from('profiles')
-      .select('id, username, bio, is_public, created_at')
+      .select('id, username, bio, is_public, created_at, avatar_url')
       .eq('username', username)
       .maybeSingle()
 
@@ -141,8 +162,35 @@ export default function Profile({ session }) {
 
         {/* Profile header */}
         <div style={s.profileHeader}>
-          <div style={s.avatar}>
-            {profile.username.charAt(0).toUpperCase()}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            {profile.avatar_url
+              ? <img src={profile.avatar_url} alt={profile.username} style={s.avatarImg} />
+              : <div style={s.avatar}>{profile.username.charAt(0).toUpperCase()}</div>
+            }
+            {isOwnProfile && (
+              <>
+                <button
+                  style={s.avatarEditBtn}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingAvatar}
+                  title="Change photo"
+                >
+                  {uploadingAvatar ? '…' : (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                      <circle cx="12" cy="13" r="4"/>
+                    </svg>
+                  )}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={handleAvatarUpload}
+                />
+              </>
+            )}
           </div>
           <div style={s.profileInfo}>
             <div style={s.profileName}>{profile.username}</div>
@@ -583,6 +631,8 @@ const s = {
 
   profileHeader:  { display: 'flex', alignItems: 'flex-start', gap: 20, marginBottom: 32, background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, padding: '28px 28px' },
   avatar:         { width: 64, height: 64, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontSize: 26, color: 'white', fontWeight: 700, flexShrink: 0 },
+  avatarImg:      { width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', display: 'block', boxShadow: '0 2px 8px rgba(26,18,8,0.15)' },
+  avatarEditBtn:  { position: 'absolute', bottom: 0, right: 0, width: 24, height: 24, borderRadius: '50%', background: '#c0521e', border: '2px solid #fdfaf4', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', padding: 0 },
   profileInfo:    { flex: 1 },
   profileName:    { fontFamily: 'Georgia, serif', fontSize: 26, fontWeight: 700, color: '#1a1208', marginBottom: 6 },
   profileBio:     { fontSize: 14, color: '#3a3028', lineHeight: 1.5, marginBottom: 6 },

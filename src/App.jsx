@@ -6,6 +6,7 @@ import Library from './pages/Library'
 import Profile from './pages/Profile'
 import Feed from './pages/Feed'
 import Loans from './pages/Loans'
+import Marketplace from './pages/Marketplace'
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -44,6 +45,10 @@ export default function App() {
         <Route
           path="/loans"
           element={session ? <Loans session={session} /> : <Navigate to="/" replace />}
+        />
+        <Route
+          path="/marketplace"
+          element={session ? <Marketplace session={session} /> : <Navigate to="/" replace />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

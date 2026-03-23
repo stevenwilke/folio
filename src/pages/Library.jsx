@@ -23,6 +23,7 @@ export default function Library({ session }) {
   const [filter, setFilter]           = useState('all')
   const [showSearch, setShowSearch]   = useState(false)
   const [selectedBook, setSelectedBook] = useState(null)
+  const [listingTarget, setListingTarget] = useState(null)
   const [myUsername, setMyUsername]         = useState(null)
   const [friendRequests, setFriendRequests] = useState([])
   const [borrowNotifs, setBorrowNotifs]     = useState([])
@@ -104,6 +105,7 @@ export default function Library({ session }) {
           <button style={s.btnPrimary} onClick={() => setShowSearch(true)}>+ Add Book</button>
           <button style={s.btnGhost} onClick={() => navigate('/feed')}>Feed</button>
           <button style={s.btnGhost} onClick={() => navigate('/loans')}>Loans</button>
+          <button style={s.btnGhost} onClick={() => navigate('/marketplace')}>Marketplace</button>
           {myUsername && (
             <button style={s.btnGhost} onClick={() => navigate(`/profile/${myUsername}`)}>
               My Profile
@@ -178,6 +180,7 @@ export default function Library({ session }) {
                 entry={entry}
                 onUpdate={fetchCollection}
                 onSelect={() => setSelectedBook(entry.books.id)}
+                onListForSale={() => setListingTarget(entry)}
               />
             ))}
           </div>
@@ -190,6 +193,16 @@ export default function Library({ session }) {
           session={session}
           onClose={() => setShowSearch(false)}
           onAdded={() => { setShowSearch(false); fetchCollection() }}
+        />
+      )}
+
+      {/* List for sale modal */}
+      {listingTarget && (
+        <ListingModal
+          session={session}
+          entry={listingTarget}
+          onClose={() => setListingTarget(null)}
+          onSuccess={() => { setListingTarget(null); navigate('/marketplace') }}
         />
       )}
 
@@ -260,7 +273,7 @@ function NotificationsDropdown({ friendRequests, borrowNotifs, onRespondFriend, 
 }
 
 // ---- BOOK CARD ----
-function BookCard({ entry, onUpdate, onSelect }) {
+function BookCard({ entry, onUpdate, onSelect, onListForSale }) {
   const book   = entry.books
   const status = entry.read_status
   const [menuOpen, setMenuOpen] = useState(false)
@@ -311,6 +324,14 @@ function BookCard({ entry, onUpdate, onSelect }) {
                   {val === status ? '✓ ' : ''}{label}
                 </div>
               ))}
+              {entry.read_status === 'owned' && (
+                <div
+                  style={{ ...s.menuItem, color: '#5a7a5a', borderTop: '1px solid #e8dfc8', marginTop: 4 }}
+                  onClick={e => { e.stopPropagation(); setMenuOpen(false); onListForSale() }}
+                >
+                  List for sale
+                </div>
+              )}
               <div
                 style={{ ...s.menuItem, borderTop: '1px solid #e8dfc8', color: '#c0521e', marginTop: 4 }}
                 onClick={e => { e.stopPropagation(); removeBook() }}
@@ -334,6 +355,113 @@ function FakeCover({ title }) {
     <div style={{ ...s.fakeCover, background: `linear-gradient(135deg, ${color}, ${color2})` }}>
       <div style={s.fakeSpine} />
       <span style={s.fakeCoverText}>{title}</span>
+    </div>
+  )
+}
+
+// ---- LISTING MODAL ----
+const CONDITION_OPTIONS = [
+  { value: 'like_new',   label: 'Like New' },
+  { value: 'very_good',  label: 'Very Good' },
+  { value: 'good',       label: 'Good' },
+  { value: 'acceptable', label: 'Acceptable' },
+  { value: 'poor',       label: 'Poor' },
+]
+
+function ListingModal({ session, entry, onClose, onSuccess }) {
+  const book = entry.books
+  const [price, setPrice]         = useState('')
+  const [condition, setCondition] = useState('good')
+  const [description, setDescription] = useState('')
+  const [submitting, setSubmitting]   = useState(false)
+  const [error, setError]             = useState(null)
+
+  async function submit() {
+    const p = parseFloat(price)
+    if (!price || isNaN(p) || p < 0) { setError('Please enter a valid price.'); return }
+    setSubmitting(true)
+    setError(null)
+    const { error: err } = await supabase
+      .from('listings')
+      .insert({
+        seller_id:   session.user.id,
+        book_id:     book.id,
+        price:       p,
+        condition,
+        description: description.trim() || null,
+        status:      'active',
+      })
+    if (err) {
+      setError('Could not create listing. Please try again.')
+      setSubmitting(false)
+    } else {
+      onSuccess()
+    }
+  }
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.modal} onClick={e => e.stopPropagation()}>
+        <div style={s.modalHeader}>
+          <div>
+            <div style={s.modalTitle}>List for Sale</div>
+            <div style={{ fontSize: 13, color: '#8a7f72', marginTop: 3 }}>{book.title}</div>
+          </div>
+          <button style={s.closeBtn} onClick={onClose}>✕</button>
+        </div>
+        <div style={{ padding: '0 24px 24px' }}>
+          <div style={s.fieldGroup}>
+            <label style={s.fieldLabel}>Price (USD)</label>
+            <div style={s.priceInputWrap}>
+              <span style={s.priceDollar}>$</span>
+              <input
+                style={s.priceInput}
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={price}
+                onChange={e => setPrice(e.target.value)}
+                autoFocus
+              />
+            </div>
+          </div>
+          <div style={s.fieldGroup}>
+            <label style={s.fieldLabel}>Condition</label>
+            <div style={s.condRow}>
+              {CONDITION_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  style={{
+                    ...s.condBtn,
+                    ...(condition === opt.value ? s.condBtnActive : {}),
+                  }}
+                  onClick={() => setCondition(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={s.fieldGroup}>
+            <label style={s.fieldLabel}>Condition Notes (optional)</label>
+            <textarea
+              style={s.textarea}
+              placeholder="Describe any wear, marks, or notable details…"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={3}
+            />
+          </div>
+          {error && <div style={{ color: '#c0521e', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={s.btnPrimary} onClick={submit} disabled={submitting}>
+              {submitting ? 'Listing…' : 'List for Sale'}
+            </button>
+            <button style={s.btnGhost} onClick={onClose}>Cancel</button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -588,4 +716,14 @@ const s = {
   reqSub:         { fontSize: 12, color: '#8a7f72', marginTop: 1 },
   reqAccept:      { padding: '5px 12px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   reqDecline:     { padding: '5px 12px', background: 'transparent', color: '#8a7f72', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+
+  fieldGroup:     { marginBottom: 18 },
+  fieldLabel:     { display: 'block', fontSize: 11, fontWeight: 600, color: '#3a3028', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  priceInputWrap: { display: 'flex', alignItems: 'center', border: '1px solid #d4c9b0', borderRadius: 8, overflow: 'hidden', background: 'white', width: 140 },
+  priceDollar:    { padding: '9px 10px 9px 14px', fontSize: 15, color: '#8a7f72', background: '#f5f0e8', borderRight: '1px solid #d4c9b0' },
+  priceInput:     { flex: 1, padding: '9px 12px', border: 'none', outline: 'none', fontSize: 15, fontFamily: "'DM Sans', sans-serif", color: '#1a1208', background: 'white' },
+  condRow:        { display: 'flex', gap: 6, flexWrap: 'wrap' },
+  condBtn:        { padding: '6px 12px', fontSize: 12, background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 20, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
+  condBtnActive:  { background: '#c0521e', color: 'white', border: '1px solid #c0521e' },
+  textarea:       { width: '100%', padding: '10px 12px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
 }

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import Auth from './pages/Auth'
 import Library from './pages/Library'
+import Profile from './pages/Profile'
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -21,5 +23,20 @@ export default function App() {
   }, [])
 
   if (loading) return null
-  return session ? <Library session={session} /> : <Auth />
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/"
+          element={session ? <Library session={session} /> : <Auth />}
+        />
+        <Route
+          path="/profile/:username"
+          element={<Profile session={session} />}
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  )
 }

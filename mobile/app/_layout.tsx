@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { Slot, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
@@ -56,7 +56,24 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   return (
     <AuthGate>
-      <Slot />
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: Colors.background },
+          headerTitleStyle: {
+            fontFamily: 'Georgia',
+            fontWeight: '700',
+            color: Colors.ink,
+          },
+          headerTintColor: Colors.rust,
+          headerShadowVisible: false,
+          headerBackTitle: 'Back',
+        }}
+      >
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="auth" options={{ headerShown: false }} />
+        <Stack.Screen name="scan" options={{ headerShown: false }} />
+        <Stack.Screen name="book/[id]" options={{ title: '' }} />
+      </Stack>
     </AuthGate>
   );
 }

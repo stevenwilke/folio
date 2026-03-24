@@ -141,11 +141,10 @@ export default function ScanScreen() {
     setAddedAs(null);
 
     try {
-      // Take picture as base64
-      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.6 });
+      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.7 });
       if (!photo?.base64) throw new Error('Failed to capture photo.');
 
-      // Send to Google Vision
+      // Send to Google Vision — request both text annotations (individual blocks with sizes)
       const visionRes = await fetch(
         `https://vision.googleapis.com/v1/images:annotate?key=${VISION_KEY}`,
         {
@@ -154,41 +153,84 @@ export default function ScanScreen() {
           body: JSON.stringify({
             requests: [{
               image: { content: photo.base64 },
-              features: [{ type: 'TEXT_DETECTION', maxResults: 1 }],
+              features: [
+                { type: 'TEXT_DETECTION' },
+              ],
             }],
           }),
         }
       );
       const visionJson = await visionRes.json();
-      const rawText: string = visionJson.responses?.[0]?.fullTextAnnotation?.text ?? '';
 
-      if (!rawText.trim()) {
+      // textAnnotations[0] = full text; [1..] = individual words with bounding boxes
+      const annotations: any[] = visionJson.responses?.[0]?.textAnnotations ?? [];
+      const fullText: string   = annotations[0]?.description ?? '';
+
+      if (!fullText.trim()) {
         setError('No text detected on the cover.\nTry better lighting or hold the camera steady.');
         setTakingPhoto(false);
         return;
       }
 
-      // Extract most useful search terms (first 2 lines typically = title / author)
-      const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
-      const query = lines.slice(0, 3).join(' ');
-      setCoverQuery(query);
+      // ── Smart title extraction ──
+      // Calculate bounding box area for each word/phrase — larger = more prominent = likely title
+      const sized = annotations.slice(1).map((ann: any) => {
+        const v = ann.boundingPoly?.vertices ?? [];
+        const w = Math.abs((v[1]?.x ?? 0) - (v[0]?.x ?? 0));
+        const h = Math.abs((v[2]?.y ?? 0) - (v[0]?.y ?? 0));
+        return { text: ann.description as string, area: w * h };
+      });
+      // Sort by size descending — the biggest text is almost always the title
+      sized.sort((a, b) => b.area - a.area);
 
-      // Search Open Library
-      const searchRes = await fetch(
-        `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&fields=key,title,author_name,isbn,cover_i,first_publish_year&limit=5`
+      // Build candidate queries from largest text blocks
+      const bigWords    = sized.slice(0, 8).map(s => s.text).join(' ').trim();
+      const lines       = fullText.split('\n').map((l: string) => l.trim()).filter(Boolean);
+      const firstLine   = lines[0] ?? '';
+      const twoLines    = lines.slice(0, 2).join(' ');
+      const threeLines  = lines.slice(0, 3).join(' ');
+
+      // Show the most likely query to the user
+      setCoverQuery(bigWords || firstLine);
+
+      // Helper: search Open Library with a query
+      async function searchOL(q: string): Promise<BookResult[]> {
+        if (!q.trim()) return [];
+        const r = await fetch(
+          `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&fields=key,title,author_name,isbn,cover_i,first_publish_year&limit=8`
+        );
+        const j = await r.json();
+        return (j.docs ?? []).map((d: any) => ({
+          title:    d.title,
+          author:   d.author_name?.[0] ?? null,
+          isbn13:   d.isbn?.find((i: string) => i.length === 13) ?? null,
+          isbn10:   d.isbn?.find((i: string) => i.length === 10) ?? null,
+          coverUrl: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg` : null,
+          year:     d.first_publish_year ?? null,
+        }));
+      }
+
+      // Try queries in order from most-specific to less-specific
+      // Deduplicate by title
+      const seen = new Set<string>();
+      let docs: BookResult[] = [];
+
+      const queries = [bigWords, firstLine, twoLines, threeLines].filter(
+        (q, i, arr) => q && arr.indexOf(q) === i  // unique, non-empty
       );
-      const searchJson = await searchRes.json();
-      const docs: BookResult[] = (searchJson.docs ?? []).map((d: any) => ({
-        title:    d.title,
-        author:   d.author_name?.[0] ?? null,
-        isbn13:   d.isbn?.find((i: string) => i.length === 13) ?? null,
-        isbn10:   d.isbn?.find((i: string) => i.length === 10) ?? null,
-        coverUrl: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg` : null,
-        year:     d.first_publish_year ?? null,
-      }));
+
+      for (const q of queries) {
+        if (docs.length >= 5) break;
+        const results = await searchOL(q);
+        for (const r of results) {
+          const key = r.title.toLowerCase();
+          if (!seen.has(key)) { seen.add(key); docs.push(r); }
+          if (docs.length >= 8) break;
+        }
+      }
 
       if (!docs.length) {
-        setError(`Detected text:\n"${lines[0]}"\n\nNo matching books found. Try again with the title clearly visible.`);
+        setError(`Detected: "${firstLine}"\n\nNo books found. Try holding steady with the title fully visible.`);
       } else {
         setCoverResults(docs);
       }

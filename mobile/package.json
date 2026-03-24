@@ -14,7 +14,7 @@
     "@react-navigation/native": "^7.0.0",
     "@supabase/supabase-js": "^2.43.4",
     "expo": "~54.0.0",
-    "expo-constants": "~17.0.0",
+    "expo-constants": "~18.0.0",
     "expo-font": "~13.0.0",
     "expo-linear-gradient": "~14.0.0",
     "expo-linking": "~7.0.0",
@@ -34,7 +34,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
-    "@types/react": "~19.0.0",
+    "@types/react": "~19.1.0",
     "typescript": "~5.3.3"
   }
 }

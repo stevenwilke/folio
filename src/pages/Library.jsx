@@ -133,7 +133,8 @@ export default function Library({ session }) {
       <div style={s.topbar}>
         <div style={s.logo}>Folio</div>
         <div style={s.topbarRight}>
-          <button style={s.btnPrimary} onClick={() => setShowSearch(true)}>+ Add Book</button>
+          <button style={s.navLinkActive}>Library</button>
+          <button style={s.btnGhost} onClick={() => navigate('/discover')}>Discover</button>
           <button style={s.btnGhost} onClick={() => navigate('/feed')}>Feed</button>
           <button style={s.btnGhost} onClick={() => navigate('/loans')}>Loans</button>
           <button style={s.btnGhost} onClick={() => navigate('/marketplace')}>Marketplace</button>
@@ -142,6 +143,7 @@ export default function Library({ session }) {
               My Profile
             </button>
           )}
+          <button style={s.btnPrimary} onClick={() => setShowSearch(true)}>+ Add Book</button>
           {/* Notification bell */}
           <div style={{ position: 'relative' }}>
             <button style={s.bellBtn} onClick={() => setShowRequests(v => !v)}>
@@ -720,7 +722,8 @@ const s = {
   menuItem:       { padding: '8px 14px', fontSize: 13, cursor: 'pointer', color: '#3a3028' },
   empty:          { color: '#8a7f72', fontSize: 14, padding: '40px 0', textAlign: 'center' },
   btnPrimary:     { padding: '8px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnGhost:       { padding: '8px 16px', background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#1a1208' },
+  btnGhost:       { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
+  navLinkActive:  { padding: '6px 12px', background: 'rgba(192,82,30,0.1)', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0521e', fontWeight: 600 },
   overlay:        { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' },
   modal:          { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, width: 600, maxWidth: '94vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' },
   modalHeader:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px 0' },

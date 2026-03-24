@@ -131,8 +131,8 @@ export default function Feed({ session }) {
             </button>
           </div>
         ) : activity.length === 0 ? (
-          <div style={s.emptyBox}>
-            <div style={s.emptyIcon}>📖</div>
+          <div style={{ ...s.emptyBox, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={s.emptyIcon}>📰</div>
             <div style={s.emptyTitle}>No activity yet</div>
             <div style={s.emptyText}>
               Your friends haven't added any books recently.
@@ -173,7 +173,7 @@ function ActivityCard({ item, onBookClick, onProfileClick }) {
   const color   = ACTION_COLOR[item.read_status] || '#8a7f72'
 
   return (
-    <div style={s.card}>
+    <div style={{ ...s.card, borderLeft: `3px solid ${color}` }}>
       {/* Avatar */}
       <div style={s.avatar} onClick={onProfileClick} role="button" tabIndex={0}
         onKeyDown={e => e.key === 'Enter' && onProfileClick()}>
@@ -240,7 +240,7 @@ const s = {
   topbarRight: { display: 'flex', gap: 10, alignItems: 'center' },
   btnActive:   { padding: '6px 12px', background: 'rgba(192,82,30,0.1)', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0521e', fontWeight: 600 },
   btnGhost:    { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
-  btnPrimary:  { padding: '10px 20px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+  btnPrimary:  { padding: '8px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
 
   content:     { padding: '32px 32px', maxWidth: 680, margin: '0 auto' },
   pageHeader:  { marginBottom: 28 },
@@ -248,7 +248,7 @@ const s = {
   pageSubtitle:{ fontSize: 14, color: '#8a7f72' },
 
   feed:        { display: 'flex', flexDirection: 'column', gap: 2 },
-  card:        { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, padding: '18px 20px', display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 12 },
+  card:        { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, padding: '18px 20px', display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 12, borderLeft: '3px solid #e8dfc8' },
 
   avatar:      { width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 16, flexShrink: 0, cursor: 'pointer' },
   cardBody:    { flex: 1, minWidth: 0 },

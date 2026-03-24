@@ -131,7 +131,7 @@ export default function Library({ session }) {
     <div style={s.page}>
       {/* Topbar */}
       <div style={s.topbar}>
-        <div style={s.logo}>Folio</div>
+        <div style={s.logo} onClick={() => navigate('/')} role="button" tabIndex={0}>Folio</div>
         <div style={s.topbarRight}>
           <button style={s.navLinkActive}>Library</button>
           <button style={s.btnGhost} onClick={() => navigate('/discover')}>Discover</button>
@@ -174,16 +174,16 @@ export default function Library({ session }) {
         {/* Stats */}
         <div style={s.statsRow}>
           {[
-            ['Total Books', stats.total,   null],
-            ['Read',        stats.read,    '#5a7a5a'],
-            ['Reading',     stats.reading, '#c0521e'],
-            ['Want to Read',stats.want,    '#b8860b'],
+            ['Total Books', stats.total,   null,      '📚'],
+            ['Read',        stats.read,    '#5a7a5a', '✓'],
+            ['Reading',     stats.reading, '#c0521e', '📖'],
+            ['Want to Read',stats.want,    '#b8860b', '🔖'],
             ...(collectionValue !== null
-              ? [['Est. Value', `$${collectionValue.toFixed(2)}`, '#5a7a5a']]
+              ? [['Est. Value', `$${collectionValue.toFixed(2)}`, '#5a7a5a', '💰']]
               : []),
-          ].map(([label, val, color]) => (
+          ].map(([label, val, color, icon]) => (
             <div key={label} style={s.statCard}>
-              <div style={{ ...s.statVal, color: color || '#1a1208' }}>{val}</div>
+              <div style={{ ...s.statVal, color: color || '#1a1208' }}>{icon} {val}</div>
               <div style={s.statLabel}>{label}</div>
             </div>
           ))}
@@ -201,12 +201,27 @@ export default function Library({ session }) {
 
         {/* Book grid */}
         {loading ? (
-          <div style={s.empty}>Loading your library…</div>
+          <>
+            <style>{`@keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}.skeleton-shimmer{background:linear-gradient(90deg,#e8e0d4 25%,#f0e8dc 50%,#e8e0d4 75%);background-size:800px 100%;animation:shimmer 1.4s infinite linear;}`}</style>
+            <div style={s.grid}>
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} style={s.skeleton} className="skeleton-shimmer" />
+              ))}
+            </div>
+          </>
         ) : filtered.length === 0 ? (
           <div style={s.empty}>
-            {books.length === 0
-              ? 'Your library is empty — add your first book!'
-              : 'No books with this status yet.'}
+            <span style={{ fontSize: 48 }}>📚</span>
+            <div>
+              {books.length === 0
+                ? 'Your library is empty'
+                : 'No books with this status yet.'}
+            </div>
+            {books.length === 0 && (
+              <button style={s.btnPrimary} onClick={() => setShowSearch(true)}>
+                + Add your first book
+              </button>
+            )}
           </div>
         ) : (
           <div style={s.grid}>
@@ -314,6 +329,7 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale }) {
   const book   = entry.books
   const status = entry.read_status
   const [menuOpen, setMenuOpen] = useState(false)
+  const [hover, setHover] = useState(false)
 
   async function changeStatus(newStatus) {
     await supabase
@@ -331,7 +347,12 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale }) {
   }
 
   return (
-    <div style={{ ...s.card, cursor: 'pointer' }} onClick={onSelect}>
+    <div
+      style={{ ...s.card, ...(hover ? s.cardHover : {}) }}
+      onClick={onSelect}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
       <div style={{ ...s.coverWrap, position: 'relative' }}>
         {book.cover_image_url
           ? <img src={book.cover_image_url} alt={book.title} style={s.coverImg} />
@@ -340,17 +361,9 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale }) {
         {listing && (
           <div style={s.forSaleBadge}>${Number(listing.price).toFixed(2)}</div>
         )}
-      </div>
-      <div style={{ marginTop: 8 }}>
-        <div style={s.bookTitle}>{book.title}</div>
-        <div style={s.bookAuthor}>{book.author}</div>
-
-        {/* Status badge + menu */}
-        <div style={{ position: 'relative', marginTop: 6 }}>
-          <span
-            style={{ ...s.badge, ...STATUS_COLORS[status], cursor: 'pointer' }}
-            onClick={e => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
-          >
+        {/* Status badge overlaid at bottom of cover */}
+        <div style={{ position: 'absolute', bottom: 6, left: 6, zIndex: 2 }} onClick={e => { e.stopPropagation(); setMenuOpen(!menuOpen) }}>
+          <span style={{ ...s.badge, ...STATUS_COLORS[status], cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
             {STATUS_LABELS[status]} ▾
           </span>
           {menuOpen && (
@@ -381,6 +394,10 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale }) {
             </div>
           )}
         </div>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <div style={s.bookTitle}>{book.title}</div>
+        <div style={s.bookAuthor}>{book.author}</div>
       </div>
     </div>
   )
@@ -698,18 +715,19 @@ function SearchModal({ session, onClose, onAdded }) {
 const s = {
   page:           { minHeight: '100vh', background: '#f5f0e8', fontFamily: "'DM Sans', sans-serif" },
   topbar:         { position: 'sticky', top: 0, zIndex: 10, background: 'rgba(245,240,232,0.92)', backdropFilter: 'blur(8px)', borderBottom: '1px solid #d4c9b0', padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  logo:           { fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, color: '#1a1208' },
+  logo:           { fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, color: '#1a1208', cursor: 'pointer' },
   topbarRight:    { display: 'flex', gap: 10, alignItems: 'center' },
   content:        { padding: '28px 32px' },
   statsRow:       { display: 'flex', gap: 14, marginBottom: 28 },
-  statCard:       { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 12, padding: '18px 22px', flex: 1 },
-  statVal:        { fontFamily: 'Georgia, serif', fontSize: 30, fontWeight: 700 },
+  statCard:       { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, padding: '18px 22px', flex: 1, transition: 'box-shadow 0.15s' },
+  statVal:        { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700 },
   statLabel:      { fontSize: 11, color: '#8a7f72', marginTop: 4, textTransform: 'uppercase', letterSpacing: 1 },
   filterRow:      { display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' },
   filterActive:   { padding: '7px 16px', borderRadius: 8, border: 'none', background: '#c0521e', color: 'white', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   filterInactive: { padding: '7px 16px', borderRadius: 8, border: '1px solid #d4c9b0', background: 'transparent', color: '#1a1208', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  grid:           { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 20 },
-  card:           { cursor: 'pointer' },
+  grid:           { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: 24 },
+  card:           { cursor: 'pointer', transition: 'transform 0.18s, box-shadow 0.18s' },
+  cardHover:      { transform: 'translateY(-4px)' },
   coverWrap:      { width: '100%', aspectRatio: '2/3' },
   coverImg:       { width: '100%', height: '100%', objectFit: 'cover', borderRadius: 5, boxShadow: '2px 3px 10px rgba(26,18,8,0.2)' },
   fakeCover:      { width: '100%', height: '100%', borderRadius: 5, display: 'flex', alignItems: 'flex-end', padding: '8px 8px 8px 14px', position: 'relative', overflow: 'hidden', boxShadow: '2px 3px 10px rgba(26,18,8,0.2)' },
@@ -720,7 +738,8 @@ const s = {
   badge:          { display: 'inline-block', fontSize: 10, padding: '2px 8px', borderRadius: 20, fontWeight: 500 },
   menu:           { position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 8, zIndex: 20, minWidth: 160, boxShadow: '0 4px 16px rgba(26,18,8,0.12)' },
   menuItem:       { padding: '8px 14px', fontSize: 13, cursor: 'pointer', color: '#3a3028' },
-  empty:          { color: '#8a7f72', fontSize: 14, padding: '40px 0', textAlign: 'center' },
+  empty:          { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 0', gap: 12, color: '#8a7f72' },
+  skeleton:       { background: '#e8e0d4', borderRadius: 5, aspectRatio: '2/3', width: '100%' },
   btnPrimary:     { padding: '8px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   btnGhost:       { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
   navLinkActive:  { padding: '6px 12px', background: 'rgba(192,82,30,0.1)', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0521e', fontWeight: 600 },

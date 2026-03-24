@@ -315,6 +315,13 @@ export default function Profile({ session }) {
 
 // ---- TOPBAR ----
 function Topbar({ navigate, session }) {
+  const [myUsername, setMyUsername] = useState(null)
+  useEffect(() => {
+    if (!session) return
+    supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
+      .then(({ data }) => setMyUsername(data?.username || null))
+  }, [session])
+
   return (
     <div style={s.topbar}>
       <div style={s.logo} onClick={() => navigate('/')} role="button" tabIndex={0}
@@ -322,10 +329,20 @@ function Topbar({ navigate, session }) {
         Folio
       </div>
       <div style={s.topbarRight}>
-        {session
-          ? <button style={s.btnGhost} onClick={() => navigate('/')}>My Library</button>
-          : <button style={s.btnPrimary} onClick={() => navigate('/')}>Sign In</button>
-        }
+        {session ? (
+          <>
+            <button style={s.btnGhost} onClick={() => navigate('/')}>Library</button>
+            <button style={s.btnGhost} onClick={() => navigate('/discover')}>Discover</button>
+            <button style={s.btnGhost} onClick={() => navigate('/feed')}>Feed</button>
+            <button style={s.btnGhost} onClick={() => navigate('/loans')}>Loans</button>
+            <button style={s.btnGhost} onClick={() => navigate('/marketplace')}>Marketplace</button>
+            {myUsername && (
+              <button style={s.btnActive} onClick={() => navigate(`/profile/${myUsername}`)}>My Profile</button>
+            )}
+          </>
+        ) : (
+          <button style={s.btnPrimary} onClick={() => navigate('/')}>Sign In</button>
+        )}
       </div>
     </div>
   )
@@ -627,7 +644,8 @@ const s = {
   topbarRight:    { display: 'flex', gap: 10, alignItems: 'center' },
   content:        { padding: '32px 32px', maxWidth: 960, margin: '0 auto' },
   btnPrimary:     { padding: '8px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnGhost:       { padding: '8px 16px', background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#1a1208' },
+  btnGhost:       { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
+  btnActive:      { padding: '6px 12px', background: 'rgba(192,82,30,0.1)', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0521e', fontWeight: 600 },
 
   profileHeader:  { display: 'flex', alignItems: 'flex-start', gap: 20, marginBottom: 32, background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, padding: '28px 28px' },
   avatar:         { width: 64, height: 64, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontSize: 26, color: 'white', fontWeight: 700, flexShrink: 0 },

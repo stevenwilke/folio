@@ -98,8 +98,11 @@ export default function Feed({ session }) {
           Folio
         </div>
         <div style={s.topbarRight}>
+          <button style={s.btnGhost} onClick={() => navigate('/')}>Library</button>
+          <button style={s.btnGhost} onClick={() => navigate('/discover')}>Discover</button>
           <button style={s.btnActive}>Feed</button>
-          <button style={s.btnGhost} onClick={() => navigate('/')}>My Library</button>
+          <button style={s.btnGhost} onClick={() => navigate('/loans')}>Loans</button>
+          <button style={s.btnGhost} onClick={() => navigate('/marketplace')}>Marketplace</button>
           {myUsername && (
             <button style={s.btnGhost} onClick={() => navigate(`/profile/${myUsername}`)}>
               My Profile
@@ -235,8 +238,8 @@ const s = {
   topbar:      { position: 'sticky', top: 0, zIndex: 10, background: 'rgba(245,240,232,0.92)', backdropFilter: 'blur(8px)', borderBottom: '1px solid #d4c9b0', padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
   logo:        { fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, color: '#1a1208', cursor: 'pointer' },
   topbarRight: { display: 'flex', gap: 10, alignItems: 'center' },
-  btnActive:   { padding: '8px 16px', background: '#1a1208', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnGhost:    { padding: '8px 16px', background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#1a1208' },
+  btnActive:   { padding: '6px 12px', background: 'rgba(192,82,30,0.1)', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0521e', fontWeight: 600 },
+  btnGhost:    { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
   btnPrimary:  { padding: '10px 20px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
 
   content:     { padding: '32px 32px', maxWidth: 680, margin: '0 auto' },

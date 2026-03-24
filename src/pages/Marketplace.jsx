@@ -18,8 +18,13 @@ export default function Marketplace({ session }) {
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
   const [condFilter, setCondFilter] = useState('all')
+  const [myUsername, setMyUsername] = useState(null)
 
-  useEffect(() => { fetchListings() }, [])
+  useEffect(() => {
+    fetchListings()
+    supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
+      .then(({ data }) => setMyUsername(data?.username || null))
+  }, [])
 
   async function fetchListings() {
     setLoading(true)
@@ -76,9 +81,14 @@ export default function Marketplace({ session }) {
           Folio
         </div>
         <div style={s.topbarRight}>
-          <button style={s.btnGhost} onClick={() => navigate('/')}>My Library</button>
+          <button style={s.btnGhost} onClick={() => navigate('/')}>Library</button>
+          <button style={s.btnGhost} onClick={() => navigate('/discover')}>Discover</button>
           <button style={s.btnGhost} onClick={() => navigate('/feed')}>Feed</button>
           <button style={s.btnGhost} onClick={() => navigate('/loans')}>Loans</button>
+          <button style={s.btnActive}>Marketplace</button>
+          {myUsername && (
+            <button style={s.btnGhost} onClick={() => navigate(`/profile/${myUsername}`)}>My Profile</button>
+          )}
         </div>
       </div>
 
@@ -354,7 +364,8 @@ const s = {
   logo:          { fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, color: '#1a1208', cursor: 'pointer' },
   topbarRight:   { display: 'flex', gap: 10, alignItems: 'center' },
   btnPrimary:    { padding: '8px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnGhost:      { padding: '8px 16px', background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#1a1208' },
+  btnGhost:      { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
+  btnActive:     { padding: '6px 12px', background: 'rgba(192,82,30,0.1)', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0521e', fontWeight: 600 },
   btnSold:       { padding: '5px 12px', background: '#5a7a5a', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   btnRemove:     { padding: '5px 12px', background: 'transparent', color: '#8a7f72', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   content:       { padding: '32px 32px', maxWidth: 1100, margin: '0 auto' },

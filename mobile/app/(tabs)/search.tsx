@@ -12,6 +12,7 @@ import {
   Platform,
   Keyboard,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { FakeCover } from '../../components/FakeCover';
@@ -39,6 +40,7 @@ const STATUS_OPTIONS: { key: ReadStatus; label: string }[] = [
 ];
 
 export default function SearchScreen() {
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -228,21 +230,30 @@ export default function SearchScreen() {
 
   return (
     <View style={styles.root}>
-      {/* Search bar */}
-      <View style={styles.searchBar}>
-        <Text style={styles.searchIcon}>🔍</Text>
-        <TextInput
-          style={styles.searchInput}
-          value={query}
-          onChangeText={handleQueryChange}
-          placeholder="Search by title, author, or ISBN…"
-          placeholderTextColor={Colors.muted}
-          returnKeyType="search"
-          onSubmitEditing={() => doSearch(query)}
-          autoCapitalize="none"
-          autoCorrect={false}
-          clearButtonMode="while-editing"
-        />
+      {/* Search bar + scan button */}
+      <View style={styles.searchRow}>
+        <View style={styles.searchBar}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            value={query}
+            onChangeText={handleQueryChange}
+            placeholder="Search by title, author, or ISBN…"
+            placeholderTextColor={Colors.muted}
+            returnKeyType="search"
+            onSubmitEditing={() => doSearch(query)}
+            autoCapitalize="none"
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+          />
+        </View>
+        <TouchableOpacity
+          style={styles.scanBtn}
+          onPress={() => router.push('/scan')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.scanBtnIcon}>📷</Text>
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -286,15 +297,32 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  searchBar: {
+  searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     margin: 16,
+    gap: 10,
+  },
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.card,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: Colors.border,
     paddingHorizontal: 12,
+  },
+  scanBtn: {
+    width: 48,
+    height: 48,
+    backgroundColor: Colors.rust,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanBtnIcon: {
+    fontSize: 22,
   },
   searchIcon: {
     fontSize: 16,

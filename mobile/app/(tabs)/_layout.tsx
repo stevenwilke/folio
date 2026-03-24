@@ -26,6 +26,12 @@ const TABS: TabConfig[] = [
     activeIcon: 'search',
   },
   {
+    name: 'discover',
+    title: 'Discover',
+    icon: 'compass-outline',
+    activeIcon: 'compass',
+  },
+  {
     name: 'feed',
     title: 'Feed',
     icon: 'radio-outline',

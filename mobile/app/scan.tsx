@@ -153,14 +153,24 @@ export default function ScanScreen() {
           body: JSON.stringify({
             requests: [{
               image: { content: photo.base64 },
-              features: [
-                { type: 'TEXT_DETECTION' },
-              ],
+              features: [{ type: 'TEXT_DETECTION' }],
             }],
           }),
         }
       );
-      const visionJson = await visionRes.json();
+
+      // Parse safely — API may return a plain-text error if key is invalid
+      const rawBody = await visionRes.text();
+      let visionJson: any;
+      try {
+        visionJson = JSON.parse(rawBody);
+      } catch {
+        throw new Error(`Vision API error: ${rawBody.slice(0, 120)}`);
+      }
+
+      // Check for API-level errors
+      const apiError = visionJson.error ?? visionJson.responses?.[0]?.error;
+      if (apiError) throw new Error(`Vision API: ${apiError.message ?? JSON.stringify(apiError)}`);
 
       // textAnnotations[0] = full text; [1..] = individual words with bounding boxes
       const annotations: any[] = visionJson.responses?.[0]?.textAnnotations ?? [];

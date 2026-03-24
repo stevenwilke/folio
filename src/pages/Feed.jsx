@@ -171,11 +171,17 @@ function ActivityCard({ item, onBookClick, onProfileClick }) {
   const profile = item.profile
   const action  = ACTION_TEXT[item.read_status] || 'added'
   const color   = ACTION_COLOR[item.read_status] || '#8a7f72'
+  const [hover, setHover] = useState(false)
 
   return (
-    <div style={{ ...s.card, borderLeft: `3px solid ${color}` }}>
+    <div
+      style={{ ...s.card, borderLeft: `3px solid ${color}`, ...(hover ? s.cardHover : {}), cursor: 'pointer' }}
+      onClick={onBookClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
       {/* Avatar */}
-      <div style={s.avatar} onClick={onProfileClick} role="button" tabIndex={0}
+      <div style={s.avatar} onClick={e => { e.stopPropagation(); onProfileClick() }} role="button" tabIndex={0}
         onKeyDown={e => e.key === 'Enter' && onProfileClick()}>
         {profile?.username?.charAt(0).toUpperCase() || '?'}
       </div>
@@ -183,23 +189,20 @@ function ActivityCard({ item, onBookClick, onProfileClick }) {
       {/* Body */}
       <div style={s.cardBody}>
         <div style={s.cardTop}>
-          <span style={s.username} onClick={onProfileClick} role="button" tabIndex={0}
-            onKeyDown={e => e.key === 'Enter' && onProfileClick()}>
+          <span style={s.username} onClick={e => { e.stopPropagation(); onProfileClick() }} role="button" tabIndex={0}>
             {profile?.username}
           </span>
           {' '}
           <span style={{ ...s.action, color }}>{action}</span>
           {' '}
-          <span style={s.bookLink} onClick={onBookClick} role="button" tabIndex={0}
-            onKeyDown={e => e.key === 'Enter' && onBookClick()}>
-            {book.title}
-          </span>
+          <span style={s.bookLink}>{book.title}</span>
           <span style={s.byAuthor}> by {book.author}</span>
         </div>
 
         {item.user_rating && (
           <div style={s.stars}>
             {'★'.repeat(item.user_rating)}{'☆'.repeat(5 - item.user_rating)}
+            <span style={s.ratingNum}> {item.user_rating}/5</span>
           </div>
         )}
 
@@ -207,12 +210,14 @@ function ActivityCard({ item, onBookClick, onProfileClick }) {
           <div style={s.review}>"{item.review_text}"</div>
         )}
 
-        <div style={s.meta}>{timeAgo(item.added_at)}</div>
+        <div style={s.meta}>
+          {timeAgo(item.added_at)}
+          <span style={s.tapHint}> · Tap to view &amp; borrow</span>
+        </div>
       </div>
 
       {/* Book cover */}
-      <div style={s.coverWrap} onClick={onBookClick} role="button" tabIndex={0}
-        onKeyDown={e => e.key === 'Enter' && onBookClick()}>
+      <div style={s.coverWrap}>
         {book.cover_image_url
           ? <img src={book.cover_image_url} alt={book.title} style={s.coverImg} />
           : <FakeCover title={book.title} />
@@ -261,7 +266,10 @@ const s = {
   review:      { fontSize: 13, color: '#3a3028', lineHeight: 1.6, marginTop: 8, fontStyle: 'italic', borderLeft: '3px solid #d4c9b0', paddingLeft: 10 },
   meta:        { fontSize: 12, color: '#8a7f72', marginTop: 8 },
 
-  coverWrap:   { width: 52, height: 78, flexShrink: 0, borderRadius: 4, overflow: 'hidden', cursor: 'pointer' },
+  cardHover:   { boxShadow: '0 4px 16px rgba(26,18,8,0.10)', transform: 'translateY(-1px)', transition: 'all 0.15s' },
+  ratingNum:   { fontSize: 11, color: '#8a7f72', fontWeight: 400 },
+  tapHint:     { color: '#c0521e', fontWeight: 500 },
+  coverWrap:   { width: 52, height: 78, flexShrink: 0, borderRadius: 4, overflow: 'hidden' },
   coverImg:    { width: '100%', height: '100%', objectFit: 'cover' },
 
   empty:       { color: '#8a7f72', fontSize: 14, padding: '60px 0', textAlign: 'center' },

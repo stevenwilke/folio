@@ -8,8 +8,10 @@ import {
   Platform,
   RefreshControl,
   Image,
+  TouchableOpacity,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { ReadStatus } from '../../components/BookCard';
@@ -19,8 +21,12 @@ interface ActivityItem {
   userId: string;
   username: string;
   status: ReadStatus;
+  bookId: string | null;
   bookTitle: string;
   bookCover: string | null;
+  bookAuthor: string | null;
+  rating: number | null;
+  review: string | null;
   addedAt: string;
 }
 
@@ -75,6 +81,7 @@ function avatarColor(username: string): string {
 }
 
 export default function FeedScreen() {
+  const router = useRouter();
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -111,9 +118,13 @@ export default function FeedScreen() {
         id,
         user_id,
         read_status,
+        user_rating,
+        review_text,
         added_at,
         books (
+          id,
           title,
+          author,
           cover_image_url
         ),
         profiles (
@@ -130,8 +141,12 @@ export default function FeedScreen() {
         userId: e.user_id,
         username: e.profiles?.username ?? 'Unknown user',
         status: e.read_status as ReadStatus,
+        bookId: e.books?.id ?? null,
         bookTitle: e.books?.title ?? 'Unknown book',
         bookCover: e.books?.cover_image_url ?? null,
+        bookAuthor: e.books?.author ?? null,
+        rating: e.user_rating ?? null,
+        review: e.review_text ?? null,
         addedAt: e.added_at,
       }));
       setActivities(items);
@@ -156,7 +171,11 @@ export default function FeedScreen() {
     const initial = avatarInitial(item.username);
 
     return (
-      <View style={styles.activityCard}>
+      <TouchableOpacity
+        style={styles.activityCard}
+        activeOpacity={0.75}
+        onPress={() => item.bookId && router.push(`/book/${item.bookId}`)}
+      >
         {/* Avatar */}
         <View style={[styles.avatar, { backgroundColor: bgColor }]}>
           <Text style={styles.avatarText}>{initial}</Text>
@@ -171,18 +190,27 @@ export default function FeedScreen() {
             {' '}
             <Text style={styles.activityBook}>{item.bookTitle}</Text>
           </Text>
-          <Text style={styles.activityTime}>{timeAgo(item.addedAt)}</Text>
+          {item.bookAuthor ? (
+            <Text style={styles.activityAuthor}>by {item.bookAuthor}</Text>
+          ) : null}
+          {item.rating ? (
+            <Text style={styles.activityRating}>
+              {'★'.repeat(item.rating)}{'☆'.repeat(5 - item.rating)} {item.rating}/5
+            </Text>
+          ) : null}
+          {item.review ? (
+            <Text style={styles.activityReview} numberOfLines={3}>"{item.review}"</Text>
+          ) : null}
+          <Text style={styles.activityTime}>
+            {timeAgo(item.addedAt)}{item.bookId ? '  ·  Tap to view & borrow' : ''}
+          </Text>
         </View>
 
         {/* Book cover thumbnail */}
         {item.bookCover ? (
-          <Image
-            source={{ uri: item.bookCover }}
-            style={styles.coverThumb}
-            resizeMode="cover"
-          />
+          <Image source={{ uri: item.bookCover }} style={styles.coverThumb} resizeMode="cover" />
         ) : null}
-      </View>
+      </TouchableOpacity>
     );
   }
 
@@ -301,9 +329,33 @@ const styles = StyleSheet.create({
     color: Colors.rust,
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
   },
-  activityTime: {
+  activityAuthor: {
     fontSize: 12,
     color: Colors.muted,
+    fontStyle: 'italic',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  activityRating: {
+    fontSize: 13,
+    color: Colors.gold,
+    marginTop: 2,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  activityReview: {
+    fontSize: 12,
+    color: Colors.ink,
+    fontStyle: 'italic',
+    lineHeight: 17,
+    marginTop: 4,
+    paddingLeft: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: Colors.border,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  activityTime: {
+    fontSize: 11,
+    color: Colors.muted,
+    marginTop: 4,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
   coverThumb: {

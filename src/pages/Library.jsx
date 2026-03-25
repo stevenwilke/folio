@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
+import SearchModal from '../components/SearchModal'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -22,7 +23,6 @@ export default function Library({ session }) {
   const [books, setBooks]             = useState([])
   const [loading, setLoading]         = useState(true)
   const [filter, setFilter]           = useState('all')
-  const [showSearch, setShowSearch]   = useState(false)
   const [selectedBook, setSelectedBook] = useState(null)
   const [listingTarget, setListingTarget] = useState(null)
   const [activeListings, setActiveListings] = useState({})
@@ -31,7 +31,11 @@ export default function Library({ session }) {
   const [borrowNotifs, setBorrowNotifs]     = useState([])
   const [showRequests, setShowRequests]     = useState(false)
 
-  useEffect(() => { fetchCollection() }, [])
+  useEffect(() => {
+    fetchCollection()
+    window.addEventListener('folio:bookAdded', fetchCollection)
+    return () => window.removeEventListener('folio:bookAdded', fetchCollection)
+  }, [])
 
   useEffect(() => { fetchFriendRequests() }, [])
 
@@ -122,7 +126,6 @@ export default function Library({ session }) {
     <div style={s.page}>
       <NavBar session={session} extra={
         <>
-          <button style={s.btnPrimary} onClick={() => setShowSearch(true)}>+ Add Book</button>
           <div style={{ position: 'relative' }}>
             <button style={s.bellBtn} onClick={() => setShowRequests(v => !v)}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -216,15 +219,6 @@ export default function Library({ session }) {
           </div>
         )}
       </div>
-
-      {/* Search modal */}
-      {showSearch && (
-        <SearchModal
-          session={session}
-          onClose={() => setShowSearch(false)}
-          onAdded={() => { setShowSearch(false); fetchCollection() }}
-        />
-      )}
 
       {/* List for sale modal */}
       {listingTarget && (
@@ -495,194 +489,6 @@ function ListingModal({ session, entry, onClose, onSuccess }) {
             </button>
             <button style={s.btnGhost} onClick={onClose}>Cancel</button>
           </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ---- SEARCH MODAL ----
-function SearchModal({ session, onClose, onAdded }) {
-  const [query, setQuery]           = useState('')
-  const [results, setResults]       = useState([])
-  const [searching, setSearching]   = useState(false)
-  const [adding, setAdding]         = useState(null)
-  const [addedBooks, setAddedBooks] = useState({})
-
-  async function search() {
-    if (!query.trim()) return
-    setSearching(true)
-    setResults([])
-    try {
-      const res  = await fetch(
-        `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&fields=key,title,author_name,isbn,cover_i,first_publish_year,subject&limit=12`
-      )
-      const data = await res.json()
-      setResults(data.docs || [])
-    } catch {
-      setResults([])
-    }
-    setSearching(false)
-  }
-
-  async function addBook(doc, status) {
-    setAdding(doc.key + status)
-
-    const isbn13   = doc.isbn?.find(i => i.length === 13) || null
-    const isbn10   = doc.isbn?.find(i => i.length === 10) || null
-    const coverUrl = doc.cover_i
-      ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg`
-      : null
-
-    let bookId = null
-
-    if (isbn13) {
-      const { data: existing } = await supabase
-        .from('books').select('id').eq('isbn_13', isbn13).maybeSingle()
-      if (existing) bookId = existing.id
-    }
-
-    if (!bookId) {
-      const { data: existing } = await supabase
-        .from('books').select('id')
-        .eq('title', doc.title)
-        .eq('author', doc.author_name?.[0] || 'Unknown')
-        .maybeSingle()
-      if (existing) bookId = existing.id
-    }
-
-    if (!bookId) {
-      const { data: newBook, error: insertError } = await supabase
-        .from('books')
-        .insert({
-          title:           doc.title,
-          author:          doc.author_name?.[0] || 'Unknown',
-          isbn_13:         isbn13,
-          isbn_10:         isbn10,
-          cover_image_url: coverUrl,
-          published_year:  doc.first_publish_year || null,
-          genre:           doc.subject?.[0] || null,
-        })
-        .select()
-        .single()
-
-      if (insertError || !newBook) {
-        console.error('Book insert failed:', insertError)
-        setAdding(null)
-        return
-      }
-      bookId = newBook.id
-    }
-
-    const { error: collectionError } = await supabase
-      .from('collection_entries')
-      .upsert({
-        user_id:     session.user.id,
-        book_id:     bookId,
-        read_status: status,
-      }, { onConflict: 'user_id,book_id' })
-
-    if (collectionError) {
-      console.error('Collection insert failed:', collectionError)
-      setAdding(null)
-      return
-    }
-
-    setAddedBooks(prev => ({ ...prev, [doc.key]: status }))
-    setAdding(null)
-    onAdded()
-  }
-
-  return (
-    <div style={s.overlay} onClick={onClose}>
-      <div style={s.modal} onClick={e => e.stopPropagation()}>
-        <div style={s.modalHeader}>
-          <div style={s.modalTitle}>Add a Book</div>
-          <button style={s.closeBtn} onClick={onClose}>✕</button>
-        </div>
-
-        <div style={s.searchRow}>
-          <input
-            style={s.searchInput}
-            placeholder="Search by title, author, or ISBN…"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && search()}
-            autoFocus
-          />
-          <button style={s.btnPrimary} onClick={search} disabled={searching}>
-            {searching ? '…' : 'Search'}
-          </button>
-        </div>
-
-        <div style={s.results}>
-          {searching && <div style={s.empty}>Searching Open Library…</div>}
-          {!searching && results.length === 0 && query && (
-            <div style={s.empty}>No results — try a different search.</div>
-          )}
-          {!searching && results.length === 0 && !query && (
-            <div style={s.empty}>Search for a title, author, or ISBN above.</div>
-          )}
-
-          {results.map(doc => {
-            const coverUrl     = doc.cover_i
-              ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-S.jpg`
-              : null
-            const alreadyAdded = addedBooks[doc.key]
-
-            return (
-              <div key={doc.key} style={s.resultRow}>
-                <div style={s.resultCover}>
-                  {coverUrl
-                    ? <img src={coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 3 }} />
-                    : <div style={{ width: '100%', height: '100%', background: '#d4c9b0', borderRadius: 3 }} />
-                  }
-                </div>
-
-                <div style={s.resultInfo}>
-                  <div style={s.resultTitle}>{doc.title}</div>
-                  <div style={s.resultAuthor}>{doc.author_name?.[0] || 'Unknown author'}</div>
-                  {doc.first_publish_year && (
-                    <div style={s.resultYear}>{doc.first_publish_year}</div>
-                  )}
-                </div>
-
-                <div style={s.resultActions}>
-                  {alreadyAdded ? (
-                    <div style={s.addedConfirm}>✓ {STATUS_LABELS[alreadyAdded]}</div>
-                  ) : (
-                    <>
-                      <button
-                        style={{
-                          ...s.addBtnPrimary,
-                          ...(adding === doc.key + 'owned' ? s.addBtnLoading : {}),
-                        }}
-                        disabled={!!adding}
-                        onClick={() => addBook(doc, 'owned')}
-                      >
-                        {adding === doc.key + 'owned' ? '…' : '+ Add to Library'}
-                      </button>
-                      <div style={s.statusShortcuts}>
-                        {['read', 'reading', 'want'].map(status => (
-                          <button
-                            key={status}
-                            style={{
-                              ...s.addBtn,
-                              ...(adding === doc.key + status ? s.addBtnLoading : {}),
-                            }}
-                            disabled={!!adding}
-                            onClick={() => addBook(doc, status)}
-                          >
-                            {adding === doc.key + status ? '…' : STATUS_LABELS[status]}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )
-          })}
         </div>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import SearchModal from './SearchModal'
 
 const NAV_ITEMS = [
   { label: 'Library',     path: '/' },
@@ -22,6 +23,7 @@ export default function NavBar({ session, extra }) {
   const [username, setUsername] = useState(
     session?.user?.id === _cachedId ? _cachedUsername : null
   )
+  const [showSearch, setShowSearch] = useState(false)
 
   useEffect(() => {
     if (!session) return
@@ -67,9 +69,19 @@ export default function NavBar({ session, extra }) {
           </button>
         )}
 
+        <button style={s.addBtn} onClick={() => setShowSearch(true)}>+ Add Book</button>
+
         {/* Slot for page-specific extras (e.g. notification bell) */}
         {extra}
       </div>
+
+      {showSearch && (
+        <SearchModal
+          session={session}
+          onClose={() => setShowSearch(false)}
+          onAdded={() => setShowSearch(false)}
+        />
+      )}
     </div>
   )
 }
@@ -95,5 +107,10 @@ const s = {
     padding: '6px 11px', background: 'rgba(192,82,30,0.1)', border: 'none',
     borderRadius: 6, fontSize: 14, cursor: 'pointer',
     fontFamily: "'DM Sans', sans-serif", color: '#c0521e', fontWeight: 600,
+  },
+  addBtn: {
+    padding: '6px 14px', background: '#c0521e', color: 'white', border: 'none',
+    borderRadius: 7, fontSize: 13, fontWeight: 500, cursor: 'pointer',
+    fontFamily: "'DM Sans', sans-serif", marginLeft: 6,
   },
 }

@@ -109,9 +109,10 @@ function FakeCover({ title, author }) {
 }
 
 function DiscoverCard({ book, onSelect, myBookIds, onAdd }) {
-  const [adding, setAdding] = useState(false)
-  const [added,  setAdded]  = useState(null)
-  const [hover,  setHover]  = useState(false)
+  const [adding,   setAdding]   = useState(false)
+  const [added,    setAdded]    = useState(null)
+  const [hover,    setHover]    = useState(false)
+  const [clicking, setClicking] = useState(false)
   const have = myBookIds.has(titleKey(book.title, book.author))
 
   async function handleAdd(status, e) {
@@ -122,10 +123,17 @@ function DiscoverCard({ book, onSelect, myBookIds, onAdd }) {
     finally { setAdding(false) }
   }
 
+  async function handleClick() {
+    if (clicking) return
+    setClicking(true)
+    try { await onSelect(book) }
+    finally { setClicking(false) }
+  }
+
   return (
     <div
-      style={{ ...s.card, ...(hover ? s.cardHover : {}) }}
-      onClick={() => onSelect(book)}
+      style={{ ...s.card, ...(hover ? s.cardHover : {}), opacity: clicking ? 0.7 : 1, cursor: clicking ? 'wait' : 'pointer' }}
+      onClick={handleClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
@@ -142,7 +150,7 @@ function DiscoverCard({ book, onSelect, myBookIds, onAdd }) {
         {book.author && <div style={s.cardAuthor}>{book.author}</div>}
         {book.year   && <div style={s.cardYear}>{book.year}</div>}
         {!have && !added && (
-          <div style={s.cardActions} onClick={e => e.stopPropagation()}>
+          <div style={s.cardActions}>
             {adding
               ? <span style={s.addingDots}>···</span>
               : Object.entries(STATUS_LABELS).map(([key, label]) => (
@@ -291,12 +299,17 @@ export default function Discover({ session }) {
   }
 
   async function handleBookClick(book) {
-    // Look up or create the book in Supabase to get a real UUID for BookDetail
     const payload = { title: book.title, author: book.author, cover_image_url: book.coverUrl, published_year: book.year ?? null }
+    // Try to find existing book first
     const { data: existing } = await supabase.from('books').select('id').eq('title', book.title).limit(1)
     if (existing?.length) { setSelectedBook(existing[0].id); return }
-    const { data: nb } = await supabase.from('books').insert(payload).select('id').single()
-    if (nb?.id) setSelectedBook(nb.id)
+    // Insert and get ID — if insert fails due to race condition, try finding again
+    const { data: nb, error } = await supabase.from('books').insert(payload).select('id').single()
+    if (nb?.id) { setSelectedBook(nb.id); return }
+    if (error) {
+      const { data: retry } = await supabase.from('books').select('id').eq('title', book.title).limit(1)
+      if (retry?.length) setSelectedBook(retry[0].id)
+    }
   }
 
   async function handleAdd(book, status) {

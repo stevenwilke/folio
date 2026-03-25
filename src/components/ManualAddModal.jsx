@@ -297,7 +297,7 @@ function Field({ label, required, error, children }) {
 }
 
 const s = {
-  overlay:  { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.55)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' },
+  overlay:  { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.55)', zIndex: 1010, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' },
   modal:    { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 18, width: '100%', maxWidth: 820, maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(26,18,8,0.2)' },
 
   header:      { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #e8dfc8', flexShrink: 0 },

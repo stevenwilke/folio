@@ -9,94 +9,160 @@ const STATUS_LABELS = {
   want:    'Want to Read',
 }
 
+// Normalize an Open Library doc into a unified result shape
+function fromOL(doc) {
+  return {
+    key:      `ol-${doc.key}`,
+    title:    doc.title,
+    author:   doc.author_name?.[0] || 'Unknown author',
+    coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-S.jpg` : null,
+    saveCoverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : null,
+    year:     doc.first_publish_year || null,
+    isbn13:   doc.isbn?.find(i => i.length === 13) || null,
+    isbn10:   doc.isbn?.find(i => i.length === 10) || null,
+    genre:    doc.subject?.[0] || null,
+    source:   'openlibrary',
+    bookId:   null,
+  }
+}
+
+// Normalize a Supabase book row into the same shape
+function fromFolio(b) {
+  return {
+    key:          `folio-${b.id}`,
+    title:        b.title,
+    author:       b.author || 'Unknown author',
+    coverUrl:     b.cover_image_url || null,
+    saveCoverUrl: b.cover_image_url || null,
+    year:         b.published_year || null,
+    isbn13:       b.isbn_13 || null,
+    isbn10:       b.isbn_10 || null,
+    genre:        b.genre || null,
+    source:       'folio',
+    bookId:       b.id,
+  }
+}
+
 export default function SearchModal({ session, onClose, onAdded = () => {} }) {
   const [showManual, setShowManual] = useState(false)
-  const [query, setQuery]           = useState('')
-  const [results, setResults]       = useState([])
-  const [searching, setSearching]   = useState(false)
-  const [adding, setAdding]         = useState(null)
+  const [query,      setQuery]      = useState('')
+  const [results,    setResults]    = useState([])
+  const [searching,  setSearching]  = useState(false)
+  const [adding,     setAdding]     = useState(null)
   const [addedBooks, setAddedBooks] = useState({})
 
   async function search() {
     if (!query.trim()) return
     setSearching(true)
     setResults([])
+
+    // Detect ISBN queries (digits only, 10 or 13 chars)
+    const stripped = query.replace(/[-\s]/g, '')
+    const isIsbn   = /^\d{10,13}$/.test(stripped)
+
+    // Build Supabase query
+    let folioQ = supabase
+      .from('books')
+      .select('id, title, author, isbn_13, isbn_10, cover_image_url, published_year, genre')
+      .limit(8)
+
+    if (isIsbn) {
+      folioQ = folioQ.or(`isbn_13.eq.${stripped},isbn_10.eq.${stripped}`)
+    } else {
+      folioQ = folioQ.or(`title.ilike.%${query.trim()}%,author.ilike.%${query.trim()}%`)
+    }
+
     try {
-      const res  = await fetch(
-        `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&fields=key,title,author_name,isbn,cover_i,first_publish_year,subject&limit=12`
-      )
-      const data = await res.json()
-      setResults(data.docs || [])
+      const [olJson, { data: folioBooks }] = await Promise.all([
+        fetch(
+          `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&fields=key,title,author_name,isbn,cover_i,first_publish_year,subject&limit=12`
+        ).then(r => r.json()).catch(() => ({ docs: [] })),
+        folioQ,
+      ])
+
+      // Normalize Folio results
+      const folioResults = (folioBooks || []).map(fromFolio)
+
+      // Build a set of ISBNs already covered by Folio results (for dedup)
+      const folioIsbn13s = new Set(folioResults.map(r => r.isbn13).filter(Boolean))
+      const folioIsbn10s = new Set(folioResults.map(r => r.isbn10).filter(Boolean))
+
+      // Normalize OL results, skipping any whose ISBN already appears in Folio
+      const olResults = (olJson.docs || [])
+        .filter(doc => {
+          const i13 = doc.isbn?.find(i => i.length === 13)
+          const i10 = doc.isbn?.find(i => i.length === 10)
+          if (i13 && folioIsbn13s.has(i13)) return false
+          if (i10 && folioIsbn10s.has(i10)) return false
+          return true
+        })
+        .map(fromOL)
+
+      // Folio community results first, then Open Library
+      setResults([...folioResults, ...olResults])
     } catch {
       setResults([])
     }
+
     setSearching(false)
   }
 
-  async function addBook(doc, status) {
-    setAdding(doc.key + status)
+  async function addBook(result, status) {
+    setAdding(result.key + status)
 
-    const isbn13   = doc.isbn?.find(i => i.length === 13) || null
-    const isbn10   = doc.isbn?.find(i => i.length === 10) || null
-    const coverUrl = doc.cover_i
-      ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg`
-      : null
-
-    let bookId = null
-
-    if (isbn13) {
-      const { data: existing } = await supabase
-        .from('books').select('id').eq('isbn_13', isbn13).maybeSingle()
-      if (existing) bookId = existing.id
-    }
+    let bookId = result.bookId  // already set for Folio results
 
     if (!bookId) {
-      const { data: existing } = await supabase
-        .from('books').select('id')
-        .eq('title', doc.title)
-        .eq('author', doc.author_name?.[0] || 'Unknown')
-        .maybeSingle()
-      if (existing) bookId = existing.id
-    }
-
-    if (!bookId) {
-      const { data: newBook, error: insertError } = await supabase
-        .from('books')
-        .insert({
-          title:           doc.title,
-          author:          doc.author_name?.[0] || 'Unknown',
-          isbn_13:         isbn13,
-          isbn_10:         isbn10,
-          cover_image_url: coverUrl,
-          published_year:  doc.first_publish_year || null,
-          genre:           doc.subject?.[0] || null,
-        })
-        .select()
-        .single()
-
-      if (insertError || !newBook) {
-        console.error('Book insert failed:', insertError)
-        setAdding(null)
-        return
+      // Try to find existing book by ISBN or title+author
+      if (result.isbn13) {
+        const { data } = await supabase.from('books').select('id').eq('isbn_13', result.isbn13).maybeSingle()
+        if (data) bookId = data.id
       }
-      bookId = newBook.id
+      if (!bookId && result.isbn10) {
+        const { data } = await supabase.from('books').select('id').eq('isbn_10', result.isbn10).maybeSingle()
+        if (data) bookId = data.id
+      }
+      if (!bookId) {
+        const { data } = await supabase.from('books').select('id')
+          .eq('title', result.title).eq('author', result.author).maybeSingle()
+        if (data) bookId = data.id
+      }
+
+      // Still not found — insert a new book record
+      if (!bookId) {
+        const { data: newBook, error } = await supabase.from('books').insert({
+          title:           result.title,
+          author:          result.author,
+          isbn_13:         result.isbn13,
+          isbn_10:         result.isbn10,
+          cover_image_url: result.saveCoverUrl,
+          published_year:  result.year,
+          genre:           result.genre,
+        }).select().single()
+
+        if (error || !newBook) {
+          console.error('Book insert failed:', error)
+          setAdding(null)
+          return
+        }
+        bookId = newBook.id
+      }
     }
 
     const { error: collectionError } = await supabase
       .from('collection_entries')
-      .upsert({
-        user_id:     session.user.id,
-        book_id:     bookId,
-        read_status: status,
-      }, { onConflict: 'user_id,book_id' })
+      .upsert(
+        { user_id: session.user.id, book_id: bookId, read_status: status },
+        { onConflict: 'user_id,book_id' }
+      )
 
     if (collectionError) {
-      console.error('Collection insert failed:', collectionError)
+      console.error('Collection upsert failed:', collectionError)
       setAdding(null)
       return
     }
 
-    setAddedBooks(prev => ({ ...prev, [doc.key]: status }))
+    setAddedBooks(prev => ({ ...prev, [result.key]: status }))
     setAdding(null)
     window.dispatchEvent(new CustomEvent('folio:bookAdded'))
     onAdded()
@@ -125,7 +191,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
         </div>
 
         <div style={s.results}>
-          {searching && <div style={s.empty}>Searching Open Library…</div>}
+          {searching && <div style={s.empty}>Searching…</div>}
           {!searching && results.length === 0 && query && (
             <div style={s.empty}>No results — try a different search.</div>
           )}
@@ -142,27 +208,26 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
             </div>
           )}
 
-          {results.map(doc => {
-            const coverUrl     = doc.cover_i
-              ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-S.jpg`
-              : null
-            const alreadyAdded = addedBooks[doc.key]
-
+          {results.map(result => {
+            const alreadyAdded = addedBooks[result.key]
             return (
-              <div key={doc.key} style={s.resultRow}>
+              <div key={result.key} style={s.resultRow}>
                 <div style={s.resultCover}>
-                  {coverUrl
-                    ? <img src={coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 3 }} />
+                  {result.coverUrl
+                    ? <img src={result.coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 3 }} />
                     : <div style={{ width: '100%', height: '100%', background: '#d4c9b0', borderRadius: 3 }} />
                   }
                 </div>
 
                 <div style={s.resultInfo}>
-                  <div style={s.resultTitle}>{doc.title}</div>
-                  <div style={s.resultAuthor}>{doc.author_name?.[0] || 'Unknown author'}</div>
-                  {doc.first_publish_year && (
-                    <div style={s.resultYear}>{doc.first_publish_year}</div>
-                  )}
+                  <div style={s.resultTitleRow}>
+                    <div style={s.resultTitle}>{result.title}</div>
+                    {result.source === 'folio' && (
+                      <span style={s.folioBadge}>📚 In Folio</span>
+                    )}
+                  </div>
+                  <div style={s.resultAuthor}>{result.author}</div>
+                  {result.year && <div style={s.resultYear}>{result.year}</div>}
                 </div>
 
                 <div style={s.resultActions}>
@@ -171,21 +236,21 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
                   ) : (
                     <>
                       <button
-                        style={{ ...s.addBtnPrimary, ...(adding === doc.key + 'owned' ? s.addBtnLoading : {}) }}
+                        style={{ ...s.addBtnPrimary, ...(adding === result.key + 'owned' ? s.addBtnLoading : {}) }}
                         disabled={!!adding}
-                        onClick={() => addBook(doc, 'owned')}
+                        onClick={() => addBook(result, 'owned')}
                       >
-                        {adding === doc.key + 'owned' ? '…' : '+ Add to Library'}
+                        {adding === result.key + 'owned' ? '…' : '+ Add to Library'}
                       </button>
                       <div style={s.statusShortcuts}>
                         {['read', 'reading', 'want'].map(status => (
                           <button
                             key={status}
-                            style={{ ...s.addBtn, ...(adding === doc.key + status ? s.addBtnLoading : {}) }}
+                            style={{ ...s.addBtn, ...(adding === result.key + status ? s.addBtnLoading : {}) }}
                             disabled={!!adding}
-                            onClick={() => addBook(doc, status)}
+                            onClick={() => addBook(result, status)}
                           >
-                            {adding === doc.key + status ? '…' : STATUS_LABELS[status]}
+                            {adding === result.key + status ? '…' : STATUS_LABELS[status]}
                           </button>
                         ))}
                       </div>
@@ -220,8 +285,10 @@ const s = {
   results:        { overflowY: 'auto', padding: '0 24px 20px', flex: 1 },
   resultRow:      { display: 'flex', gap: 14, alignItems: 'center', padding: '14px 0', borderBottom: '1px solid #e8dfc8' },
   resultCover:    { width: 36, height: 54, flexShrink: 0, borderRadius: 3, overflow: 'hidden', background: '#d4c9b0' },
-  resultInfo:     { flex: 1 },
+  resultInfo:     { flex: 1, minWidth: 0 },
+  resultTitleRow: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   resultTitle:    { fontSize: 14, fontWeight: 500, color: '#1a1208', lineHeight: 1.3 },
+  folioBadge:     { fontSize: 10, fontWeight: 600, color: '#5a7a5a', background: 'rgba(90,122,90,0.12)', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 },
   resultAuthor:   { fontSize: 12, color: '#8a7f72', marginTop: 2 },
   resultYear:     { fontSize: 11, color: '#8a7f72', marginTop: 2 },
   resultActions:  { display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0, alignItems: 'flex-end' },

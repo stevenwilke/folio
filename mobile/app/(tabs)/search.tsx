@@ -18,16 +18,19 @@ import { Colors } from '../../constants/colors';
 import { FakeCover } from '../../components/FakeCover';
 import { ReadStatus } from '../../components/BookCard';
 
-interface OpenLibraryDoc {
+// Unified result shape for both sources
+interface SearchResult {
   key: string;
   title: string;
-  author_name?: string[];
-  isbn?: string[];
-  cover_i?: number;
-  first_publish_year?: number;
-}
-
-interface SearchResult extends OpenLibraryDoc {
+  author: string;
+  coverUrl: string | null;
+  saveCoverUrl: string | null;
+  year: number | null;
+  isbn13: string | null;
+  isbn10: string | null;
+  genre: string | null;
+  source: 'folio' | 'openlibrary';
+  bookId: string | null;
   addedStatus?: ReadStatus | null;
   adding?: boolean;
 }
@@ -56,15 +59,74 @@ export default function SearchScreen() {
     setLoading(true);
     setSearched(true);
     try {
-      const url = `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&fields=key,title,author_name,isbn,cover_i,first_publish_year&limit=12`;
-      const res = await fetch(url);
-      const json = await res.json();
-      const docs: SearchResult[] = (json.docs ?? []).map((d: OpenLibraryDoc) => ({
-        ...d,
-        addedStatus: null,
-        adding: false,
+      const stripped = q.replace(/[-\s]/g, '');
+      const isIsbn   = /^\d{10,13}$/.test(stripped);
+
+      // Build Supabase query
+      let folioQ = supabase
+        .from('books')
+        .select('id, title, author, isbn_13, isbn_10, cover_image_url, published_year, genre')
+        .limit(8);
+      if (isIsbn) {
+        folioQ = folioQ.or(`isbn_13.eq.${stripped},isbn_10.eq.${stripped}`);
+      } else {
+        folioQ = folioQ.or(`title.ilike.%${q.trim()}%,author.ilike.%${q.trim()}%`);
+      }
+
+      const [olJson, { data: folioBooks }] = await Promise.all([
+        fetch(
+          `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&fields=key,title,author_name,isbn,cover_i,first_publish_year&limit=12`
+        ).then(r => r.json()).catch(() => ({ docs: [] })),
+        folioQ,
+      ]);
+
+      // Normalize Folio results
+      const folioResults: SearchResult[] = (folioBooks ?? []).map((b: any) => ({
+        key:          `folio-${b.id}`,
+        title:        b.title,
+        author:       b.author || 'Unknown author',
+        coverUrl:     b.cover_image_url || null,
+        saveCoverUrl: b.cover_image_url || null,
+        year:         b.published_year || null,
+        isbn13:       b.isbn_13 || null,
+        isbn10:       b.isbn_10 || null,
+        genre:        b.genre || null,
+        source:       'folio',
+        bookId:       b.id,
+        addedStatus:  null,
+        adding:       false,
       }));
-      setResults(docs);
+
+      // ISBNs already in Folio — used to dedup OL results
+      const folioIsbn13s = new Set(folioResults.map(r => r.isbn13).filter(Boolean));
+      const folioIsbn10s = new Set(folioResults.map(r => r.isbn10).filter(Boolean));
+
+      // Normalize OL results, skipping duplicates
+      const olResults: SearchResult[] = (olJson.docs ?? [])
+        .filter((d: any) => {
+          const i13 = d.isbn?.find((i: string) => i.length === 13);
+          const i10 = d.isbn?.find((i: string) => i.length === 10);
+          if (i13 && folioIsbn13s.has(i13)) return false;
+          if (i10 && folioIsbn10s.has(i10)) return false;
+          return true;
+        })
+        .map((d: any) => ({
+          key:          `ol-${d.key}`,
+          title:        d.title,
+          author:       d.author_name?.[0] || 'Unknown author',
+          coverUrl:     d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-S.jpg` : null,
+          saveCoverUrl: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg` : null,
+          year:         d.first_publish_year || null,
+          isbn13:       d.isbn?.find((i: string) => i.length === 13) || null,
+          isbn10:       d.isbn?.find((i: string) => i.length === 10) || null,
+          genre:        null,
+          source:       'openlibrary',
+          bookId:       null,
+          addedStatus:  null,
+          adding:       false,
+        }));
+
+      setResults([...folioResults, ...olResults]);
     } catch {
       Alert.alert('Error', 'Failed to search. Check your connection.');
     } finally {
@@ -82,7 +144,6 @@ export default function SearchScreen() {
     const item = results[index];
     if (!item) return;
 
-    // Optimistically mark as adding
     setResults((prev) =>
       prev.map((r, i) => (i === index ? { ...r, adding: true } : r))
     );
@@ -91,61 +152,48 @@ export default function SearchScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Upsert book record
-      const isbn13 = item.isbn?.find((i) => i.length === 13) ?? null;
-      const isbn10 = item.isbn?.find((i) => i.length === 10) ?? null;
-      const coverUrl = item.cover_i
-        ? `https://covers.openlibrary.org/b/id/${item.cover_i}-M.jpg`
-        : null;
+      let bookId: string = item.bookId ?? '';
 
-      const bookPayload = {
-        title: item.title,
-        author: item.author_name?.[0] ?? null,
-        isbn_13: isbn13,
-        isbn_10: isbn10,
-        cover_image_url: coverUrl,
-        published_year: item.first_publish_year ?? null,
-      };
+      if (!bookId) {
+        // Try to find existing book by ISBN then title+author
+        if (item.isbn13) {
+          const { data } = await supabase.from('books').select('id').eq('isbn_13', item.isbn13).maybeSingle();
+          if (data) bookId = data.id;
+        }
+        if (!bookId && item.isbn10) {
+          const { data } = await supabase.from('books').select('id').eq('isbn_10', item.isbn10).maybeSingle();
+          if (data) bookId = data.id;
+        }
+        if (!bookId) {
+          const { data } = await supabase.from('books').select('id')
+            .eq('title', item.title).eq('author', item.author).maybeSingle();
+          if (data) bookId = data.id;
+        }
 
-      // Try to find existing book by ISBN or title+author
-      let bookId: string;
-
-      const { data: existingBooks } = await supabase
-        .from('books')
-        .select('id')
-        .or(
-          isbn13
-            ? `isbn_13.eq.${isbn13}`
-            : `title.eq.${item.title},author.eq.${item.author_name?.[0] ?? ''}`
-        )
-        .limit(1);
-
-      if (existingBooks && existingBooks.length > 0) {
-        bookId = existingBooks[0].id;
-        // Update cover if missing
-        await supabase
-          .from('books')
-          .update(bookPayload)
-          .eq('id', bookId);
-      } else {
-        const { data: newBook, error: bookError } = await supabase
-          .from('books')
-          .insert(bookPayload)
-          .select('id')
-          .single();
-        if (bookError) throw bookError;
-        bookId = newBook.id;
+        // Still not found — insert new book
+        if (!bookId) {
+          const { data: newBook, error: bookError } = await supabase
+            .from('books')
+            .insert({
+              title:           item.title,
+              author:          item.author,
+              isbn_13:         item.isbn13,
+              isbn_10:         item.isbn10,
+              cover_image_url: item.saveCoverUrl,
+              published_year:  item.year,
+              genre:           item.genre,
+            })
+            .select('id')
+            .single();
+          if (bookError) throw bookError;
+          bookId = newBook.id;
+        }
       }
 
-      // Upsert collection entry
       const { error: entryError } = await supabase
         .from('collection_entries')
         .upsert(
-          {
-            user_id: user.id,
-            book_id: bookId,
-            read_status: status,
-          },
+          { user_id: user.id, book_id: bookId, read_status: status },
           { onConflict: 'user_id,book_id' }
         );
 
@@ -165,34 +213,36 @@ export default function SearchScreen() {
   }
 
   function renderItem({ item, index }: { item: SearchResult; index: number }) {
-    const coverUrl = item.cover_i
-      ? `https://covers.openlibrary.org/b/id/${item.cover_i}-S.jpg`
-      : null;
-    const author = item.author_name?.[0] ?? 'Unknown author';
-
     return (
       <View style={styles.resultCard}>
         <View style={styles.resultCover}>
-          {coverUrl ? (
+          {item.coverUrl ? (
             <Image
-              source={{ uri: coverUrl }}
+              source={{ uri: item.coverUrl }}
               style={styles.coverImage}
               resizeMode="cover"
             />
           ) : (
-            <FakeCover title={item.title} author={author} width={56} height={80} />
+            <FakeCover title={item.title} author={item.author} width={56} height={80} />
           )}
         </View>
 
         <View style={styles.resultInfo}>
-          <Text style={styles.resultTitle} numberOfLines={2}>
-            {item.title}
-          </Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.resultTitle} numberOfLines={2}>
+              {item.title}
+            </Text>
+            {item.source === 'folio' && (
+              <View style={styles.folioBadge}>
+                <Text style={styles.folioBadgeText}>📚 In Folio</Text>
+              </View>
+            )}
+          </View>
           <Text style={styles.resultAuthor} numberOfLines={1}>
-            {author}
+            {item.author}
           </Text>
-          {item.first_publish_year ? (
-            <Text style={styles.resultYear}>{item.first_publish_year}</Text>
+          {item.year ? (
+            <Text style={styles.resultYear}>{item.year}</Text>
           ) : null}
 
           {item.addedStatus ? (
@@ -389,12 +439,34 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 3,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
   resultTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: Colors.ink,
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
     lineHeight: 18,
+    flexShrink: 1,
+  },
+  folioBadge: {
+    backgroundColor: 'rgba(90,122,90,0.12)',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    flexShrink: 0,
+    alignSelf: 'flex-start',
+    marginTop: 1,
+  },
+  folioBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.sage,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
   resultAuthor: {
     fontSize: 12,

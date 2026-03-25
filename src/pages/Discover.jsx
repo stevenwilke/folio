@@ -290,6 +290,15 @@ export default function Discover({ session }) {
     setTimeout(() => document.getElementById('genre-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
   }
 
+  async function handleBookClick(book) {
+    // Look up or create the book in Supabase to get a real UUID for BookDetail
+    const payload = { title: book.title, author: book.author, cover_image_url: book.coverUrl, published_year: book.year ?? null }
+    const { data: existing } = await supabase.from('books').select('id').eq('title', book.title).limit(1)
+    if (existing?.length) { setSelectedBook(existing[0].id); return }
+    const { data: nb } = await supabase.from('books').insert(payload).select('id').single()
+    if (nb?.id) setSelectedBook(nb.id)
+  }
+
   async function handleAdd(book, status) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -334,7 +343,7 @@ export default function Discover({ session }) {
             <h2 style={s.secTitle}>{forYouLabel}</h2>
             <p  style={s.secSub}>Tailored to your reading history</p>
           </div>
-          <BookRow books={forYou} myBookIds={myBookIds} onSelect={setSelectedBook} onAdd={handleAdd} loading={forYouLoad} />
+          <BookRow books={forYou} myBookIds={myBookIds} onSelect={handleBookClick} onAdd={handleAdd} loading={forYouLoad} />
         </section>
 
         {/* New Releases */}
@@ -343,7 +352,7 @@ export default function Discover({ session }) {
             <h2 style={s.secTitle}>✨ New Releases</h2>
             <p  style={s.secSub}>Fresh titles published this year</p>
           </div>
-          <BookRow books={newReleases} myBookIds={myBookIds} onSelect={setSelectedBook} onAdd={handleAdd} loading={newRelLoad} />
+          <BookRow books={newReleases} myBookIds={myBookIds} onSelect={handleBookClick} onAdd={handleAdd} loading={newRelLoad} />
         </section>
 
         {/* Friends Are Reading */}
@@ -358,7 +367,7 @@ export default function Discover({ session }) {
                 <span>Add friends to see what they're reading</span>
                 <button style={s.emptyBtn} onClick={() => navigate('/feed')}>Find Friends →</button>
               </div>
-            : <BookRow books={friends} myBookIds={myBookIds} onSelect={setSelectedBook} onAdd={handleAdd} loading={friendsLoad} />
+            : <BookRow books={friends} myBookIds={myBookIds} onSelect={handleBookClick} onAdd={handleAdd} loading={friendsLoad} />
           }
         </section>
 
@@ -384,7 +393,7 @@ export default function Discover({ session }) {
                 <span style={s.genrePanelTitle}>{activeGenre.emoji} {activeGenre.label}</span>
                 <button style={s.closeBtn} onClick={() => { setActiveGenre(null); setGenreBooks([]) }}>✕ Close</button>
               </div>
-              <BookRow books={genreBooks} myBookIds={myBookIds} onSelect={setSelectedBook} onAdd={handleAdd} loading={genreLoad} />
+              <BookRow books={genreBooks} myBookIds={myBookIds} onSelect={handleBookClick} onAdd={handleAdd} loading={genreLoad} />
             </div>
           )}
         </section>

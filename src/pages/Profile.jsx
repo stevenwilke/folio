@@ -199,7 +199,12 @@ export default function Profile({ session }) {
             {joinDate && <div style={s.profileMeta}>Member since {joinDate}</div>}
           </div>
           {isOwnProfile
-            ? <button style={s.btnGhost} onClick={() => navigate('/')}>← My Library</button>
+            ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+                <button style={s.btnGhost} onClick={() => navigate('/')}>← My Library</button>
+                <button style={s.signOutBtn} onClick={() => supabase.auth.signOut()}>Sign out</button>
+              </div>
+            )
             : session && <FriendButton session={session} profile={profile} />
           }
         </div>
@@ -611,6 +616,7 @@ const s = {
   content:        { padding: '32px 32px', maxWidth: 960, margin: '0 auto' },
   btnPrimary:     { padding: '8px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   btnGhost:       { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
+  signOutBtn:     { padding: '5px 12px', background: 'none', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#8a7f72' },
   btnActive:      { padding: '6px 12px', background: 'rgba(192,82,30,0.1)', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0521e', fontWeight: 600 },
 
   profileHeader:  { display: 'flex', alignItems: 'flex-start', gap: 20, marginBottom: 32, background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, padding: '28px 28px' },

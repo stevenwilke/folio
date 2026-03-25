@@ -27,43 +27,11 @@ export default function Library({ session }) {
   const [listingTarget, setListingTarget] = useState(null)
   const [activeListings, setActiveListings] = useState({})
   const [collectionValue, setCollectionValue] = useState(null)
-  const [friendRequests, setFriendRequests] = useState([])
-  const [borrowNotifs, setBorrowNotifs]     = useState([])
-  const [showRequests, setShowRequests]     = useState(false)
-
   useEffect(() => {
     fetchCollection()
     window.addEventListener('folio:bookAdded', fetchCollection)
     return () => window.removeEventListener('folio:bookAdded', fetchCollection)
   }, [])
-
-  useEffect(() => { fetchFriendRequests() }, [])
-
-  async function fetchFriendRequests() {
-    const [{ data: friends }, { data: borrows }] = await Promise.all([
-      supabase
-        .from('friendships')
-        .select('id, requester_id, created_at, profiles!friendships_requester_id_fkey(username)')
-        .eq('addressee_id', session.user.id)
-        .eq('status', 'pending'),
-      supabase
-        .from('borrow_requests')
-        .select('id, requester_id, created_at, books(title), profiles!borrow_requests_requester_id_fkey(username)')
-        .eq('owner_id', session.user.id)
-        .eq('status', 'pending'),
-    ])
-    setFriendRequests(friends || [])
-    setBorrowNotifs(borrows || [])
-  }
-
-  async function respondToRequest(id, accept) {
-    if (accept) {
-      await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id)
-    } else {
-      await supabase.from('friendships').delete().eq('id', id)
-    }
-    fetchFriendRequests()
-  }
 
   async function fetchActiveListings() {
     const { data } = await supabase
@@ -118,38 +86,9 @@ export default function Library({ session }) {
     want:    books.filter(b => b.read_status === 'want').length,
   }
 
-  async function handleSignOut() {
-    await supabase.auth.signOut()
-  }
-
   return (
     <div style={s.page}>
-      <NavBar session={session} extra={
-        <>
-          <div style={{ position: 'relative' }}>
-            <button style={s.bellBtn} onClick={() => setShowRequests(v => !v)}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-              </svg>
-              {(friendRequests.length + borrowNotifs.length) > 0 && (
-                <span style={s.bellBadge}>{friendRequests.length + borrowNotifs.length}</span>
-              )}
-            </button>
-            {showRequests && (
-              <NotificationsDropdown
-                friendRequests={friendRequests}
-                borrowNotifs={borrowNotifs}
-                onRespondFriend={(id, accept) => { respondToRequest(id, accept) }}
-                onViewLoans={() => { setShowRequests(false); navigate('/loans') }}
-                onNavigate={(username) => { setShowRequests(false); navigate(`/profile/${username}`) }}
-                onClose={() => setShowRequests(false)}
-              />
-            )}
-          </div>
-          <button style={s.btnGhost} onClick={handleSignOut}>Sign out</button>
-        </>
-      } />
+      <NavBar session={session} />
 
       <div style={s.content}>
         {/* Stats */}
@@ -239,58 +178,6 @@ export default function Library({ session }) {
             onBack={() => { setSelectedBook(null); fetchCollection() }}
           />
         </div>
-      )}
-    </div>
-  )
-}
-
-// ---- NOTIFICATIONS DROPDOWN ----
-function NotificationsDropdown({ friendRequests, borrowNotifs, onRespondFriend, onViewLoans, onNavigate }) {
-  const total = friendRequests.length + borrowNotifs.length
-  return (
-    <div style={s.reqDropdown}>
-      <div style={s.reqHeader}>
-        Notifications
-        {total > 0 && <span style={s.reqCount}>{total}</span>}
-      </div>
-      {total === 0 ? (
-        <div style={s.reqEmpty}>No new notifications</div>
-      ) : (
-        <>
-          {friendRequests.map(req => (
-            <div key={`f-${req.id}`} style={s.reqRow}>
-              <div style={s.reqAvatar}>
-                {req.profiles?.username?.charAt(0).toUpperCase() || '?'}
-              </div>
-              <div style={{ flex: 1 }}>
-                <span style={s.reqUsername} onClick={() => onNavigate(req.profiles?.username)}>
-                  {req.profiles?.username}
-                </span>
-                <div style={s.reqSub}>wants to be friends</div>
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button style={s.reqAccept} onClick={() => onRespondFriend(req.id, true)}>Accept</button>
-                <button style={s.reqDecline} onClick={() => onRespondFriend(req.id, false)}>Decline</button>
-              </div>
-            </div>
-          ))}
-          {borrowNotifs.map(req => (
-            <div key={`b-${req.id}`} style={s.reqRow}>
-              <div style={{ ...s.reqAvatar, background: 'linear-gradient(135deg, #5a7a5a, #b8860b)' }}>
-                {req.profiles?.username?.charAt(0).toUpperCase() || '?'}
-              </div>
-              <div style={{ flex: 1 }}>
-                <span style={s.reqUsername} onClick={() => onNavigate(req.profiles?.username)}>
-                  {req.profiles?.username}
-                </span>
-                <div style={s.reqSub}>wants to borrow "{req.books?.title}"</div>
-              </div>
-              <button style={{ ...s.reqAccept, background: '#5a7a5a' }} onClick={onViewLoans}>
-                View
-              </button>
-            </div>
-          ))}
-        </>
       )}
     </div>
   )

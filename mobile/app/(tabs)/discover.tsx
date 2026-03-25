@@ -59,35 +59,40 @@ async function fetchSubject(slug: string, limit = 15): Promise<DiscoverBook[]> {
   } catch { return []; }
 }
 
-async function fetchNewReleases(limit = 20): Promise<DiscoverBook[]> {
+async function fetchNewReleases(limit = 24): Promise<DiscoverBook[]> {
   const year = new Date().getFullYear();
-  for (const y of [year, year - 1, year - 2]) {
-    try {
-      const r = await fetch(
-        `https://openlibrary.org/search.json?q=publish_year:${y}&sort=rating&limit=${limit}&fields=key,title,author_name,cover_i,first_publish_year`
-      );
-      const j = await r.json();
-      const results = (j.docs ?? []).filter((d: any) => d.cover_i).map((d: any) => ({
+  const cutoff = year - 3;
+  try {
+    const r = await fetch(
+      `https://openlibrary.org/search.json?q=first_publish_year:[${cutoff}+TO+${year}]&sort=rating&limit=${limit * 2}&fields=key,title,author_name,cover_i,first_publish_year`
+    );
+    const j = await r.json();
+    const results = (j.docs ?? [])
+      .filter((d: any) => d.cover_i && d.first_publish_year >= cutoff)
+      .slice(0, limit)
+      .map((d: any) => ({
         olKey:    d.key,
         title:    d.title,
         author:   d.author_name?.[0] ?? null,
         coverUrl: `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg`,
         year:     d.first_publish_year ?? null,
       }));
-      if (results.length >= 4) return results;
-    } catch { /* fall through */ }
-  }
-  // Final fallback: weekly trending
+    if (results.length >= 4) return results;
+  } catch { /* fall through */ }
+  // Fallback: weekly trending, still filtered to recent books
   try {
-    const r = await fetch(`https://openlibrary.org/trending/weekly.json?limit=${limit}`);
+    const r = await fetch(`https://openlibrary.org/trending/weekly.json?limit=40`);
     const j = await r.json();
-    return (j.works ?? []).filter((w: any) => w.cover_id).map((w: any) => ({
-      olKey:    w.key,
-      title:    w.title,
-      author:   w.authors?.[0]?.name ?? null,
-      coverUrl: `https://covers.openlibrary.org/b/id/${w.cover_id}-M.jpg`,
-      year:     w.first_publish_year ?? null,
-    }));
+    return (j.works ?? [])
+      .filter((w: any) => w.cover_id && w.first_publish_year >= cutoff)
+      .slice(0, limit)
+      .map((w: any) => ({
+        olKey:    w.key,
+        title:    w.title,
+        author:   w.authors?.[0]?.name ?? null,
+        coverUrl: `https://covers.openlibrary.org/b/id/${w.cover_id}-M.jpg`,
+        year:     w.first_publish_year ?? null,
+      }));
   } catch { return []; }
 }
 

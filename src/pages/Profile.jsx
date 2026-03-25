@@ -180,7 +180,16 @@ export default function Profile({ session }) {
               </div>
             )}
 
-            {joinDate && <div style={s.heroMeta}>Member since {joinDate}</div>}
+            {joinDate && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+                <div style={s.heroMeta}>Member since {joinDate}</div>
+                {isOwnProfile && (
+                  <button style={s.heroFriendsLink} onClick={() => navigate('/friends')}>
+                    👥 My Friends
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Action */}
@@ -554,7 +563,8 @@ const s = {
   heroStatRow: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 8 },
   heroStat:    { fontSize: 13, color: 'rgba(253,248,240,0.75)' },
   heroDot:     { fontSize: 13, color: 'rgba(253,248,240,0.3)' },
-  heroMeta:    { fontSize: 12, color: 'rgba(253,248,240,0.35)', marginTop: 4 },
+  heroMeta:        { fontSize: 12, color: 'rgba(253,248,240,0.35)' },
+  heroFriendsLink: { fontSize: 12, color: 'rgba(253,248,240,0.5)', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   heroPrimaryBtn:  { padding: '8px 18px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   heroGhostBtn:    { padding: '7px 14px', background: 'transparent', border: '1px solid rgba(253,248,240,0.25)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: 'rgba(253,248,240,0.7)' },
   heroSignOutBtn:  { padding: '5px 12px', background: 'transparent', border: '1px solid rgba(253,248,240,0.15)', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: 'rgba(253,248,240,0.35)' },

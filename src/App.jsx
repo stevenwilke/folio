@@ -8,6 +8,7 @@ import Feed from './pages/Feed'
 import Loans from './pages/Loans'
 import Marketplace from './pages/Marketplace'
 import Discover from './pages/Discover'
+import Friends from './pages/Friends'
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -54,6 +55,10 @@ export default function App() {
         <Route
           path="/discover"
           element={session ? <Discover session={session} /> : <Navigate to="/" replace />}
+        />
+        <Route
+          path="/friends"
+          element={session ? <Friends session={session} /> : <Navigate to="/" replace />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

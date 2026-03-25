@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Image, ActivityIndicator, ScrollView, Platform, Alert,
+  Image, ActivityIndicator, ScrollView, Platform, Alert, Modal, Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
@@ -110,14 +110,60 @@ async function searchOL(query: string, limit = 8): Promise<DiscoverBook[]> {
   } catch { return []; }
 }
 
-function BookCard({ book, myKeys, onAdd }: {
+function BookCard({ book, myKeys, onPreview }: {
+  book: DiscoverBook;
+  myKeys: Set<string>;
+  onPreview: (book: DiscoverBook) => void;
+}) {
+  const have = myKeys.has(titleKey(book.title, book.author));
+  return (
+    <TouchableOpacity style={styles.card} activeOpacity={0.75} onPress={() => onPreview(book)}>
+      <View style={styles.cardCover}>
+        {book.coverUrl
+          ? <Image source={{ uri: book.coverUrl }} style={styles.coverImg} resizeMode="cover" />
+          : <FakeCover title={book.title} author={book.author ?? ''} width={120} height={170} />
+        }
+        {have && (
+          <View style={styles.haveBadge}>
+            <Text style={styles.haveBadgeText}>In Library</Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.cardMeta}>
+        <Text style={styles.cardTitle} numberOfLines={2}>{book.title}</Text>
+        {book.author && <Text style={styles.cardAuthor} numberOfLines={1}>{book.author}</Text>}
+        {book.friendName && <Text style={styles.cardFriend}>📚 {book.friendName}</Text>}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ---- BOOK PREVIEW MODAL ----
+function BookPreviewModal({ book, myKeys, onAdd, onViewDetail, onClose }: {
   book: DiscoverBook;
   myKeys: Set<string>;
   onAdd: (book: DiscoverBook, status: ReadStatus) => Promise<void>;
+  onViewDetail: () => void;
+  onClose: () => void;
 }) {
+  const [desc,   setDesc]   = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [added,  setAdded]  = useState<ReadStatus | null>(null);
   const have = myKeys.has(titleKey(book.title, book.author));
+
+  useEffect(() => {
+    setDesc(null);
+    if (!book.olKey) return;
+    const key = book.olKey.replace('/works/', '');
+    fetch(`https://openlibrary.org/works/${key}.json`)
+      .then(r => r.json())
+      .then(j => {
+        const raw = j.description;
+        const text = typeof raw === 'string' ? raw : raw?.value ?? null;
+        setDesc(text ? text.split('\n')[0].slice(0, 280) + (text.length > 280 ? '…' : '') : null);
+      })
+      .catch(() => {});
+  }, [book.olKey]);
 
   async function handleAdd(status: ReadStatus) {
     if (adding || added || have) return;
@@ -128,43 +174,62 @@ function BookCard({ book, myKeys, onAdd }: {
   }
 
   return (
-    <View style={styles.card}>
-      <View style={styles.cardCover}>
-        {book.coverUrl
-          ? <Image source={{ uri: book.coverUrl }} style={styles.coverImg} resizeMode="cover" />
-          : <FakeCover title={book.title} author={book.author ?? ''} width={100} height={148} />
-        }
-        {(have || added) && (
-          <View style={styles.haveBadge}>
-            <Text style={styles.haveBadgeText}>{have ? 'In Library' : STATUS_OPTIONS.find(s => s.key === added)?.label}</Text>
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={styles.modalBox} onPress={() => {}}>
+          {/* Header row */}
+          <View style={styles.modalTop}>
+            <View style={styles.modalCover}>
+              {book.coverUrl
+                ? <Image source={{ uri: book.coverUrl }} style={{ width: '100%', height: '100%', borderRadius: 8 }} resizeMode="cover" />
+                : <FakeCover title={book.title} author={book.author ?? ''} width={90} height={135} />}
+            </View>
+            <View style={styles.modalInfo}>
+              <Text style={styles.modalTitle}>{book.title}</Text>
+              {book.author && <Text style={styles.modalAuthor}>by {book.author}</Text>}
+              {book.year   && <Text style={styles.modalYear}>{book.year}</Text>}
+              {desc && <Text style={styles.modalDesc} numberOfLines={5}>{desc}</Text>}
+            </View>
           </View>
-        )}
-      </View>
-      <View style={styles.cardMeta}>
-        <Text style={styles.cardTitle} numberOfLines={2}>{book.title}</Text>
-        {book.author && <Text style={styles.cardAuthor} numberOfLines={1}>{book.author}</Text>}
-        {book.friendName && <Text style={styles.cardFriend}>📚 {book.friendName}</Text>}
-      </View>
-      {!have && !added && (
-        <View style={styles.cardActions}>
-          {adding
-            ? <ActivityIndicator size="small" color={Colors.rust} />
-            : STATUS_OPTIONS.map(opt => (
-                <TouchableOpacity key={opt.key} style={[styles.addBtn, { borderColor: opt.color }]} onPress={() => handleAdd(opt.key)}>
-                  <Text style={[styles.addBtnText, { color: opt.color }]}>{opt.label}</Text>
-                </TouchableOpacity>
-              ))
-          }
-        </View>
-      )}
-    </View>
+
+          {/* Add buttons */}
+          {!have && !added ? (
+            <View style={styles.modalAddSection}>
+              <Text style={styles.modalAddLabel}>Add to library:</Text>
+              <View style={styles.modalAddRow}>
+                {adding
+                  ? <ActivityIndicator color={Colors.rust} />
+                  : STATUS_OPTIONS.map(opt => (
+                      <TouchableOpacity key={opt.key} style={[styles.addBtn, { borderColor: opt.color }]} onPress={() => handleAdd(opt.key)}>
+                        <Text style={[styles.addBtnText, { color: opt.color }]}>{opt.label}</Text>
+                      </TouchableOpacity>
+                    ))
+                }
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.modalInLib}>✓ {have ? 'In your library' : `Added as "${STATUS_OPTIONS.find(s => s.key === added)?.label}"`}</Text>
+          )}
+
+          {/* View full details */}
+          <TouchableOpacity style={styles.modalDetailBtn} onPress={onViewDetail}>
+            <Text style={styles.modalDetailBtnText}>View Full Details →</Text>
+          </TouchableOpacity>
+
+          {/* Close */}
+          <TouchableOpacity style={styles.modalClose} onPress={onClose}>
+            <Text style={styles.modalCloseText}>✕</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
-function HorizontalSection({ title, subtitle, books, myKeys, onAdd, loading }: {
+function HorizontalSection({ title, subtitle, books, myKeys, onPreview, loading }: {
   title: string; subtitle?: string;
   books: DiscoverBook[]; myKeys: Set<string>;
-  onAdd: (b: DiscoverBook, s: ReadStatus) => Promise<void>;
+  onPreview: (b: DiscoverBook) => void;
   loading: boolean;
 }) {
   return (
@@ -182,7 +247,7 @@ function HorizontalSection({ title, subtitle, books, myKeys, onAdd, loading }: {
           horizontal
           data={books}
           keyExtractor={(b, i) => b.olKey ?? String(i)}
-          renderItem={({ item }) => <BookCard book={item} myKeys={myKeys} onAdd={onAdd} />}
+          renderItem={({ item }) => <BookCard book={item} myKeys={myKeys} onPreview={onPreview} />}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.row}
         />
@@ -192,7 +257,8 @@ function HorizontalSection({ title, subtitle, books, myKeys, onAdd, loading }: {
 }
 
 export default function DiscoverScreen() {
-  const [myKeys,      setMyKeys]      = useState(new Set<string>());
+  const router = useRouter();
+  const [myKeys,        setMyKeys]        = useState(new Set<string>());
   const [forYou,        setForYou]        = useState<DiscoverBook[]>([]);
   const [forYouTitle,   setForYouTitle]   = useState('Recommended for You');
   const [forYouLoad,    setForYouLoad]    = useState(true);
@@ -201,9 +267,10 @@ export default function DiscoverScreen() {
   const [friends,       setFriends]       = useState<DiscoverBook[]>([]);
   const [friendsLoad,   setFriendsLoad]   = useState(true);
   const [hasFriends,    setHasFriends]    = useState(true);
-  const [activeGenre, setActiveGenre] = useState<typeof GENRES[0] | null>(null);
-  const [genreBooks,  setGenreBooks]  = useState<DiscoverBook[]>([]);
-  const [genreLoad,   setGenreLoad]   = useState(false);
+  const [activeGenre,   setActiveGenre]   = useState<typeof GENRES[0] | null>(null);
+  const [genreBooks,    setGenreBooks]    = useState<DiscoverBook[]>([]);
+  const [genreLoad,     setGenreLoad]     = useState(false);
+  const [previewBook,   setPreviewBook]   = useState<DiscoverBook | null>(null);
 
   useEffect(() => { init(); }, []);
 
@@ -298,6 +365,18 @@ export default function DiscoverScreen() {
     setGenreBooks(books); setGenreLoad(false);
   }
 
+  async function handleViewDetail(book: DiscoverBook) {
+    const payload = { title: book.title, author: book.author, cover_image_url: book.coverUrl, published_year: book.year ?? null };
+    const { data: existing } = await supabase.from('books').select('id').eq('title', book.title).limit(1);
+    if (existing?.length) { setPreviewBook(null); router.push(`/book/${existing[0].id}`); return; }
+    const { data: nb, error } = await supabase.from('books').insert(payload).select('id').single();
+    if (nb?.id) { setPreviewBook(null); router.push(`/book/${nb.id}`); return; }
+    if (error) {
+      const { data: retry } = await supabase.from('books').select('id').eq('title', book.title).limit(1);
+      if (retry?.length) { setPreviewBook(null); router.push(`/book/${retry[0].id}`); }
+    }
+  }
+
   async function handleAdd(book: DiscoverBook, status: ReadStatus) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -323,14 +402,14 @@ export default function DiscoverScreen() {
       <HorizontalSection
         title={forYouTitle}
         subtitle="Tailored to your reading history"
-        books={forYou} myKeys={myKeys} onAdd={handleAdd} loading={forYouLoad}
+        books={forYou} myKeys={myKeys} onPreview={setPreviewBook} loading={forYouLoad}
       />
 
       {/* New Releases */}
       <HorizontalSection
         title="✨ New Releases"
         subtitle="Fresh titles published this year"
-        books={newReleases} myKeys={myKeys} onAdd={handleAdd} loading={newRelLoad}
+        books={newReleases} myKeys={myKeys} onPreview={setPreviewBook} loading={newRelLoad}
       />
 
       {/* Friends Reading */}
@@ -346,7 +425,7 @@ export default function DiscoverScreen() {
             : friends.length === 0
               ? <Text style={styles.emptyText}>Your friends haven't added any books yet.</Text>
               : <FlatList horizontal data={friends} keyExtractor={(b, i) => b.olKey ?? String(i)}
-                  renderItem={({ item }) => <BookCard book={item} myKeys={myKeys} onAdd={handleAdd} />}
+                  renderItem={({ item }) => <BookCard book={item} myKeys={myKeys} onPreview={setPreviewBook} />}
                   showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row} />
         }
       </View>
@@ -374,12 +453,23 @@ export default function DiscoverScreen() {
             {genreLoad
               ? <ActivityIndicator color={Colors.rust} style={{ marginVertical: 16 }} />
               : <FlatList horizontal data={genreBooks} keyExtractor={(b, i) => b.olKey ?? String(i)}
-                  renderItem={({ item }) => <BookCard book={item} myKeys={myKeys} onAdd={handleAdd} />}
+                  renderItem={({ item }) => <BookCard book={item} myKeys={myKeys} onPreview={setPreviewBook} />}
                   showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row} />
             }
           </View>
         )}
       </View>
+
+      {/* Book Preview Modal */}
+      {previewBook && (
+        <BookPreviewModal
+          book={previewBook}
+          myKeys={myKeys}
+          onAdd={handleAdd}
+          onViewDetail={() => handleViewDetail(previewBook)}
+          onClose={() => setPreviewBook(null)}
+        />
+      )}
 
     </ScrollView>
   );
@@ -418,4 +508,23 @@ const styles = StyleSheet.create({
   genreLabelActive:{ color: '#fff' },
   genrePanel:    { marginHorizontal: 16, backgroundColor: Colors.card, borderRadius: 10, borderWidth: 1, borderColor: Colors.border, paddingTop: 14, paddingBottom: 4, overflow: 'hidden' },
   genrePanelTitle:{ fontSize: 15, fontWeight: '700', color: Colors.ink, paddingHorizontal: 14, marginBottom: 10, fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }) },
+
+  // Modal
+  modalBackdrop:   { flex: 1, backgroundColor: 'rgba(26,18,8,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalBox:        { backgroundColor: Colors.card, borderRadius: 18, padding: 20, width: '100%', maxHeight: '85%', position: 'relative' },
+  modalTop:        { flexDirection: 'row', gap: 14, marginBottom: 16 },
+  modalCover:      { width: 90, height: 135, borderRadius: 8, overflow: 'hidden', flexShrink: 0 },
+  modalInfo:       { flex: 1, minWidth: 0 },
+  modalTitle:      { fontSize: 17, fontWeight: '700', color: Colors.ink, marginBottom: 4, lineHeight: 22, fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }) },
+  modalAuthor:     { fontSize: 13, color: Colors.sage, fontWeight: '500', marginBottom: 2, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  modalYear:       { fontSize: 12, color: Colors.muted, marginBottom: 8, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  modalDesc:       { fontSize: 12, color: Colors.ink, lineHeight: 17, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  modalAddSection: { marginBottom: 12 },
+  modalAddLabel:   { fontSize: 12, color: Colors.muted, marginBottom: 6, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  modalAddRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  modalInLib:      { fontSize: 13, color: Colors.sage, fontWeight: '600', marginBottom: 12, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  modalDetailBtn:  { backgroundColor: Colors.rust, borderRadius: 10, padding: 12, alignItems: 'center' },
+  modalDetailBtnText: { color: '#fff', fontSize: 15, fontWeight: '700', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  modalClose:      { position: 'absolute', top: 12, right: 14, padding: 6 },
+  modalCloseText:  { fontSize: 16, color: Colors.muted },
 });

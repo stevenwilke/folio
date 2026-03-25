@@ -108,12 +108,51 @@ function FakeCover({ title, author }) {
   )
 }
 
-function DiscoverCard({ book, onSelect, myBookIds, onAdd }) {
-  const [adding,   setAdding]   = useState(false)
-  const [added,    setAdded]    = useState(null)
-  const [hover,    setHover]    = useState(false)
-  const [clicking, setClicking] = useState(false)
+function DiscoverCard({ book, onPreview, myBookIds }) {
+  const [hover, setHover] = useState(false)
   const have = myBookIds.has(titleKey(book.title, book.author))
+  return (
+    <div
+      style={{ ...s.card, ...(hover ? s.cardHover : {}), cursor: 'pointer' }}
+      onClick={() => onPreview(book)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div style={s.cardCover}>
+        {book.coverUrl
+          ? <img src={book.coverUrl} alt={book.title} style={s.coverImg} loading="lazy" />
+          : <FakeCover title={book.title} author={book.author} />}
+        {have && <div style={s.haveBadge}>In Library</div>}
+      </div>
+      <div style={s.cardBody}>
+        <div style={s.cardTitle}>{book.title}</div>
+        {book.author && <div style={s.cardAuthor}>{book.author}</div>}
+        {book.year   && <div style={s.cardYear}>{book.year}</div>}
+      </div>
+    </div>
+  )
+}
+
+// ---- QUICK PREVIEW MODAL ----
+function QuickPreview({ book, myBookIds, onAdd, onViewDetail, onClose }) {
+  const [desc,   setDesc]   = useState(null)
+  const [adding, setAdding] = useState(false)
+  const [added,  setAdded]  = useState(null)
+  const have = myBookIds.has(titleKey(book.title, book.author))
+
+  useEffect(() => {
+    setDesc(null)
+    if (!book.olKey) return
+    const key = book.olKey.replace('/works/', '')
+    fetch(`https://openlibrary.org/works/${key}.json`)
+      .then(r => r.json())
+      .then(j => {
+        const raw = j.description
+        const text = typeof raw === 'string' ? raw : raw?.value ?? null
+        setDesc(text ? text.split('\n')[0].slice(0, 300) + (text.length > 300 ? '…' : '') : null)
+      })
+      .catch(() => {})
+  }, [book.olKey])
 
   async function handleAdd(status, e) {
     e.stopPropagation()
@@ -123,49 +162,54 @@ function DiscoverCard({ book, onSelect, myBookIds, onAdd }) {
     finally { setAdding(false) }
   }
 
-  async function handleClick() {
-    if (clicking) return
-    setClicking(true)
-    try { await onSelect(book) }
-    finally { setClicking(false) }
-  }
-
   return (
-    <div
-      style={{ ...s.card, ...(hover ? s.cardHover : {}), opacity: clicking ? 0.7 : 1, cursor: clicking ? 'wait' : 'pointer' }}
-      onClick={handleClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
-      <div style={s.cardCover}>
-        {book.coverUrl
-          ? <img src={book.coverUrl} alt={book.title} style={s.coverImg} loading="lazy" />
-          : <FakeCover title={book.title} author={book.author} />}
-        {(have || added) && (
-          <div style={s.haveBadge}>{have ? 'In Library' : STATUS_LABELS[added]}</div>
-        )}
-      </div>
-      <div style={s.cardBody}>
-        <div style={s.cardTitle}>{book.title}</div>
-        {book.author && <div style={s.cardAuthor}>{book.author}</div>}
-        {book.year   && <div style={s.cardYear}>{book.year}</div>}
-        {!have && !added && (
-          <div style={s.cardActions}>
-            {adding
-              ? <span style={s.addingDots}>···</span>
-              : Object.entries(STATUS_LABELS).map(([key, label]) => (
-                  <button key={key} style={{ ...s.addBtn, borderColor: STATUS_COLORS[key], color: STATUS_COLORS[key] }}
-                    onClick={e => handleAdd(key, e)}>{label}</button>
-                ))
-            }
+    <div style={s.previewBackdrop} onClick={onClose}>
+      <div style={s.previewBox} onClick={e => e.stopPropagation()}>
+        {/* Cover + info side by side */}
+        <div style={s.previewTop}>
+          <div style={s.previewCover}>
+            {book.coverUrl
+              ? <img src={book.coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 6 }} />
+              : <FakeCover title={book.title} author={book.author} />}
           </div>
-        )}
+          <div style={s.previewInfo}>
+            <div style={s.previewTitle}>{book.title}</div>
+            {book.author && <div style={s.previewAuthor}>by {book.author}</div>}
+            {book.year   && <div style={s.previewYear}>{book.year}</div>}
+            {desc && <div style={s.previewDesc}>{desc}</div>}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={s.previewActions}>
+          {!have && !added && (
+            <div style={s.previewAddRow}>
+              <span style={s.previewAddLabel}>Add to library:</span>
+              {adding
+                ? <span style={s.addingDots}>···</span>
+                : Object.entries(STATUS_LABELS).map(([key, label]) => (
+                    <button key={key}
+                      style={{ ...s.addBtn, borderColor: STATUS_COLORS[key], color: STATUS_COLORS[key] }}
+                      onClick={e => handleAdd(key, e)}>{label}</button>
+                  ))
+              }
+            </div>
+          )}
+          {(have || added) && (
+            <div style={s.previewInLib}>✓ {have ? 'In your library' : `Added as "${STATUS_LABELS[added]}"`}</div>
+          )}
+          <button style={s.previewDetailBtn} onClick={onViewDetail}>
+            View Full Details →
+          </button>
+        </div>
+
+        <button style={s.previewClose} onClick={onClose}>✕</button>
       </div>
     </div>
   )
 }
 
-function BookRow({ books, myBookIds, onSelect, onAdd, loading }) {
+function BookRow({ books, myBookIds, onPreview, loading }) {
   if (loading) return (
     <div style={s.row}>
       {[...Array(6)].map((_, i) => <div key={i} style={s.skeleton} />)}
@@ -175,7 +219,7 @@ function BookRow({ books, myBookIds, onSelect, onAdd, loading }) {
   return (
     <div style={s.row}>
       {books.map((b, i) => (
-        <DiscoverCard key={b.olKey ?? i} book={b} myBookIds={myBookIds} onSelect={onSelect} onAdd={onAdd} />
+        <DiscoverCard key={b.olKey ?? i} book={b} myBookIds={myBookIds} onPreview={onPreview} />
       ))}
     </div>
   )
@@ -201,7 +245,8 @@ export default function Discover({ session }) {
   const [genreBooks,  setGenreBooks]  = useState([])
   const [genreLoad,   setGenreLoad]   = useState(false)
 
-  const [selectedBook, setSelectedBook] = useState(null)
+  const [previewBook,  setPreviewBook]  = useState(null)   // OL book object for quick preview
+  const [selectedBook, setSelectedBook] = useState(null)   // Supabase UUID for full detail
 
   useEffect(() => {
     async function init() {
@@ -356,7 +401,7 @@ export default function Discover({ session }) {
             <h2 style={s.secTitle}>{forYouLabel}</h2>
             <p  style={s.secSub}>Tailored to your reading history</p>
           </div>
-          <BookRow books={forYou} myBookIds={myBookIds} onSelect={handleBookClick} onAdd={handleAdd} loading={forYouLoad} />
+          <BookRow books={forYou} myBookIds={myBookIds} onPreview={setPreviewBook} onAdd={handleAdd} loading={forYouLoad} />
         </section>
 
         {/* New Releases */}
@@ -365,7 +410,7 @@ export default function Discover({ session }) {
             <h2 style={s.secTitle}>✨ New Releases</h2>
             <p  style={s.secSub}>Fresh titles published this year</p>
           </div>
-          <BookRow books={newReleases} myBookIds={myBookIds} onSelect={handleBookClick} onAdd={handleAdd} loading={newRelLoad} />
+          <BookRow books={newReleases} myBookIds={myBookIds} onPreview={setPreviewBook} onAdd={handleAdd} loading={newRelLoad} />
         </section>
 
         {/* Friends Are Reading */}
@@ -380,7 +425,7 @@ export default function Discover({ session }) {
                 <span>Add friends to see what they're reading</span>
                 <button style={s.emptyBtn} onClick={() => navigate('/feed')}>Find Friends →</button>
               </div>
-            : <BookRow books={friends} myBookIds={myBookIds} onSelect={handleBookClick} onAdd={handleAdd} loading={friendsLoad} />
+            : <BookRow books={friends} myBookIds={myBookIds} onPreview={setPreviewBook} onAdd={handleAdd} loading={friendsLoad} />
           }
         </section>
 
@@ -406,18 +451,32 @@ export default function Discover({ session }) {
                 <span style={s.genrePanelTitle}>{activeGenre.emoji} {activeGenre.label}</span>
                 <button style={s.closeBtn} onClick={() => { setActiveGenre(null); setGenreBooks([]) }}>✕ Close</button>
               </div>
-              <BookRow books={genreBooks} myBookIds={myBookIds} onSelect={handleBookClick} onAdd={handleAdd} loading={genreLoad} />
+              <BookRow books={genreBooks} myBookIds={myBookIds} onPreview={setPreviewBook} onAdd={handleAdd} loading={genreLoad} />
             </div>
           )}
         </section>
       </div>
 
-      {selectedBook && (
-        <BookDetail
-          book={{ title: selectedBook.title, author: selectedBook.author, cover_image_url: selectedBook.coverUrl, published_year: selectedBook.year }}
-          session={session}
-          onClose={() => setSelectedBook(null)}
+      {/* Quick Preview — first click */}
+      {previewBook && !selectedBook && (
+        <QuickPreview
+          book={previewBook}
+          myBookIds={myBookIds}
+          onAdd={handleAdd}
+          onViewDetail={() => handleBookClick(previewBook)}
+          onClose={() => setPreviewBook(null)}
         />
+      )}
+
+      {/* Full Book Detail — second click */}
+      {selectedBook && (
+        <div style={{ position: 'fixed', inset: 0, background: '#f5f0e8', zIndex: 50, overflowY: 'auto' }}>
+          <BookDetail
+            bookId={selectedBook}
+            session={session}
+            onBack={() => { setSelectedBook(null); setPreviewBook(null) }}
+          />
+        </div>
       )}
     </div>
   )
@@ -451,6 +510,23 @@ const s = {
   cardCover:{ position: 'relative', width: '100%', height: 210, background: '#e0d8cc', overflow: 'hidden' },
   coverImg: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
   haveBadge:{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(90,122,90,0.9)', color: '#fff', fontSize: 10, fontWeight: 700, textAlign: 'center', padding: '4px 0' },
+
+  // Quick Preview
+  previewBackdrop: { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.55)', zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  previewBox:      { background: '#fdfaf4', borderRadius: 18, padding: 28, maxWidth: 560, width: '100%', boxShadow: '0 20px 60px rgba(26,18,8,0.25)', position: 'relative', maxHeight: '90vh', overflowY: 'auto' },
+  previewTop:      { display: 'flex', gap: 20, marginBottom: 20 },
+  previewCover:    { width: 110, height: 165, flexShrink: 0, borderRadius: 6, overflow: 'hidden', boxShadow: '0 4px 12px rgba(26,18,8,0.18)' },
+  previewInfo:     { flex: 1, minWidth: 0 },
+  previewTitle:    { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: '#1a1208', marginBottom: 6, lineHeight: 1.3 },
+  previewAuthor:   { fontSize: 14, color: '#5a7a5a', fontWeight: 500, marginBottom: 4 },
+  previewYear:     { fontSize: 12, color: '#8a7f72', marginBottom: 10 },
+  previewDesc:     { fontSize: 13, color: '#3a3028', lineHeight: 1.65, marginTop: 8 },
+  previewActions:  { borderTop: '1px solid #e8dfc8', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 },
+  previewAddRow:   { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  previewAddLabel: { fontSize: 12, color: '#8a7f72', marginRight: 4 },
+  previewInLib:    { fontSize: 13, color: '#5a7a5a', fontWeight: 600 },
+  previewDetailBtn:{ padding: '10px 20px', background: '#c0521e', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', alignSelf: 'flex-start', fontFamily: "'DM Sans', sans-serif" },
+  previewClose:    { position: 'absolute', top: 14, right: 16, background: 'none', border: 'none', fontSize: 18, color: '#8a7f72', cursor: 'pointer', lineHeight: 1 },
   cardBody: { padding: '10px 10px 8px' },
   cardTitle:{ fontSize: 12, fontWeight: 700, color: '#1a1208', lineHeight: '15px', marginBottom: 3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' },
   cardAuthor:{ fontSize: 11, color: '#8a7f72', marginBottom: 2, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' },

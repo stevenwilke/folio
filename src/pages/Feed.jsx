@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
+import { useTheme } from '../contexts/ThemeContext'
 
 const ACTION_TEXT = {
   read:    'finished reading',
@@ -32,10 +33,13 @@ function timeAgo(dateStr) {
 
 export default function Feed({ session }) {
   const navigate = useNavigate()
+  const { theme } = useTheme()
   const [activity, setActivity]         = useState([])
   const [loading, setLoading]           = useState(true)
   const [hasFriends, setHasFriends]     = useState(true)
   const [selectedBook, setSelectedBook] = useState(null)
+
+  const s = makeStyles(theme)
 
   useEffect(() => { fetchFeed() }, [])
 
@@ -117,6 +121,7 @@ export default function Feed({ session }) {
               <ActivityCard
                 key={item.id}
                 item={item}
+                theme={theme}
                 onBookClick={() => setSelectedBook(item.books.id)}
                 onProfileClick={() => navigate(`/profile/${item.profile?.username}`)}
               />
@@ -126,7 +131,7 @@ export default function Feed({ session }) {
       </div>
 
       {selectedBook && (
-        <div style={{ position: 'fixed', inset: 0, background: '#f5f0e8', zIndex: 40, overflowY: 'auto', isolation: 'isolate' }}>
+        <div style={{ position: 'fixed', inset: 0, background: theme.bg, zIndex: 40, overflowY: 'auto', isolation: 'isolate' }}>
           <BookDetail
             bookId={selectedBook}
             session={session}
@@ -139,11 +144,12 @@ export default function Feed({ session }) {
 }
 
 // ---- ACTIVITY CARD ----
-function ActivityCard({ item, onBookClick, onProfileClick }) {
+function ActivityCard({ item, onBookClick, onProfileClick, theme }) {
+  const s       = makeStyles(theme)
   const book    = item.books
   const profile = item.profile
   const action  = ACTION_TEXT[item.read_status] || 'added'
-  const color   = ACTION_COLOR[item.read_status] || '#8a7f72'
+  const color   = ACTION_COLOR[item.read_status] || theme.textSubtle
   const [hover, setHover] = useState(false)
 
   return (
@@ -211,43 +217,41 @@ function FakeCover({ title }) {
 }
 
 // ---- STYLES ----
-const s = {
-  page:        { minHeight: '100vh', background: '#f5f0e8', fontFamily: "'DM Sans', sans-serif" },
-  topbar:      { position: 'sticky', top: 0, zIndex: 10, background: 'rgba(245,240,232,0.92)', backdropFilter: 'blur(8px)', borderBottom: '1px solid #d4c9b0', padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  logo:        { fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, color: '#1a1208', cursor: 'pointer' },
-  topbarRight: { display: 'flex', gap: 10, alignItems: 'center' },
-  btnActive:   { padding: '6px 12px', background: 'rgba(192,82,30,0.1)', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0521e', fontWeight: 600 },
-  btnGhost:    { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
-  btnPrimary:  { padding: '8px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+function makeStyles(theme) {
+  return {
+    page:        { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
 
-  content:     { padding: '32px 32px', maxWidth: 680, margin: '0 auto' },
-  pageHeader:  { marginBottom: 28 },
-  pageTitle:   { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, color: '#1a1208', marginBottom: 6 },
-  pageSubtitle:{ fontSize: 14, color: '#8a7f72' },
+    content:     { padding: '32px 32px', maxWidth: 680, margin: '0 auto' },
+    pageHeader:  { marginBottom: 28 },
+    pageTitle:   { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, color: theme.text, marginBottom: 6 },
+    pageSubtitle:{ fontSize: 14, color: theme.textSubtle },
 
-  feed:        { display: 'flex', flexDirection: 'column', gap: 2 },
-  card:        { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, padding: '18px 20px', display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 12, borderLeft: '3px solid #e8dfc8' },
+    feed:        { display: 'flex', flexDirection: 'column', gap: 2 },
+    card:        { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '18px 20px', display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 12, borderLeft: `3px solid ${theme.borderLight}` },
 
-  avatar:      { width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 16, flexShrink: 0, cursor: 'pointer' },
-  cardBody:    { flex: 1, minWidth: 0 },
-  cardTop:     { fontSize: 14, color: '#3a3028', lineHeight: 1.5, flexWrap: 'wrap' },
-  username:    { fontWeight: 700, color: '#1a1208', cursor: 'pointer' },
-  action:      { fontWeight: 500 },
-  bookLink:    { fontWeight: 600, color: '#c0521e', cursor: 'pointer' },
-  byAuthor:    { color: '#8a7f72' },
-  stars:       { fontSize: 14, color: '#b8860b', letterSpacing: 1, marginTop: 6 },
-  review:      { fontSize: 13, color: '#3a3028', lineHeight: 1.6, marginTop: 8, fontStyle: 'italic', borderLeft: '3px solid #d4c9b0', paddingLeft: 10 },
-  meta:        { fontSize: 12, color: '#8a7f72', marginTop: 8 },
+    avatar:      { width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 16, flexShrink: 0, cursor: 'pointer' },
+    cardBody:    { flex: 1, minWidth: 0 },
+    cardTop:     { fontSize: 14, color: theme.text, lineHeight: 1.5, flexWrap: 'wrap' },
+    username:    { fontWeight: 700, color: theme.text, cursor: 'pointer' },
+    action:      { fontWeight: 500 },
+    bookLink:    { fontWeight: 600, color: theme.rust, cursor: 'pointer' },
+    byAuthor:    { color: theme.textSubtle },
+    stars:       { fontSize: 14, color: theme.gold, letterSpacing: 1, marginTop: 6 },
+    review:      { fontSize: 13, color: theme.text, lineHeight: 1.6, marginTop: 8, fontStyle: 'italic', borderLeft: `3px solid ${theme.border}`, paddingLeft: 10 },
+    meta:        { fontSize: 12, color: theme.textSubtle, marginTop: 8 },
 
-  cardHover:   { boxShadow: '0 4px 16px rgba(26,18,8,0.10)', transform: 'translateY(-1px)', transition: 'all 0.15s' },
-  ratingNum:   { fontSize: 11, color: '#8a7f72', fontWeight: 400 },
-  tapHint:     { color: '#c0521e', fontWeight: 500 },
-  coverWrap:   { width: 52, height: 78, flexShrink: 0, borderRadius: 4, overflow: 'hidden' },
-  coverImg:    { width: '100%', height: '100%', objectFit: 'cover' },
+    cardHover:   { boxShadow: theme.shadowCard, transform: 'translateY(-1px)', transition: 'all 0.15s' },
+    ratingNum:   { fontSize: 11, color: theme.textSubtle, fontWeight: 400 },
+    tapHint:     { color: theme.rust, fontWeight: 500 },
+    coverWrap:   { width: 52, height: 78, flexShrink: 0, borderRadius: 4, overflow: 'hidden' },
+    coverImg:    { width: '100%', height: '100%', objectFit: 'cover' },
 
-  empty:       { color: '#8a7f72', fontSize: 14, padding: '60px 0', textAlign: 'center' },
-  emptyBox:    { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, padding: '60px 32px', textAlign: 'center' },
-  emptyIcon:   { fontSize: 40, marginBottom: 16 },
-  emptyTitle:  { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: '#1a1208', marginBottom: 8 },
-  emptyText:   { fontSize: 14, color: '#8a7f72', marginBottom: 24 },
+    btnPrimary:  { padding: '8px 16px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+
+    empty:       { color: theme.textSubtle, fontSize: 14, padding: '60px 0', textAlign: 'center' },
+    emptyBox:    { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, padding: '60px 32px', textAlign: 'center' },
+    emptyIcon:   { fontSize: 40, marginBottom: 16 },
+    emptyTitle:  { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text, marginBottom: 8 },
+    emptyText:   { fontSize: 14, color: theme.textSubtle, marginBottom: 24 },
+  }
 }

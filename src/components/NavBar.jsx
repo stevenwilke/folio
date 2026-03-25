@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import SearchModal from './SearchModal'
+import { useTheme } from '../contexts/ThemeContext'
 
 const NAV_ITEMS = [
   { label: 'Library',     path: '/' },
@@ -24,6 +25,7 @@ export default function NavBar({ session, extra }) {
   const navigate  = useNavigate()
   const location  = useLocation()
   const dropdownRef = useRef(null)
+  const { theme, isDark, toggleTheme } = useTheme()
 
   const [profile, setProfile] = useState(
     session?.user?.id === _cachedId ? _cachedProfile : null
@@ -102,8 +104,8 @@ export default function NavBar({ session, extra }) {
 
   return (
     <>
-      <div style={s.topbar}>
-        <div style={s.logo} onClick={() => navigate('/')} role="button" tabIndex={0}
+      <div style={{ ...s.topbar, background: theme.navBg }}>
+        <div style={{ ...s.logo, color: theme.navText }} onClick={() => navigate('/')} role="button" tabIndex={0}
           onKeyDown={e => e.key === 'Enter' && navigate('/')}>
           Folio
         </div>
@@ -111,7 +113,9 @@ export default function NavBar({ session, extra }) {
         <div style={s.right}>
           {NAV_ITEMS.map(item => (
             <button key={item.path}
-              style={isActive(item) ? s.active : s.ghost}
+              style={isActive(item)
+                ? { ...s.active, color: theme.rust, background: `rgba(${isDark ? '212,105,58' : '192,82,30'},0.15)` }
+                : { ...s.ghost, color: theme.navText }}
               onClick={() => navigate(item.path)}>
               {item.label}
             </button>
@@ -119,12 +123,21 @@ export default function NavBar({ session, extra }) {
 
           <button style={s.addBtn} onClick={() => setShowSearch(true)}>+ Add Book</button>
 
+          {/* Dark mode toggle */}
+          <button
+            onClick={toggleTheme}
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer', padding: '0 6px' }}
+          >
+            {isDark ? '☀️' : '🌙'}
+          </button>
+
           {/* Slot for page-specific extras */}
           {extra}
 
           {/* Notification bell */}
           <div style={{ position: 'relative' }} ref={dropdownRef}>
-            <button style={s.bellBtn} onClick={() => setShowBell(v => !v)}>
+            <button style={{ ...s.bellBtn, color: theme.navText, borderColor: theme.border }} onClick={() => setShowBell(v => !v)}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
                 <path d="M13.73 21a2 2 0 0 1-3.46 0"/>

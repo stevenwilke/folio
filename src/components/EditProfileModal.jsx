@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useTheme } from '../contexts/ThemeContext'
 
 export default function EditProfileModal({ session, profile, onClose, onSaved }) {
+  const { theme } = useTheme()
   const [username, setUsername] = useState(profile.username || '')
   const [bio,      setBio]      = useState(profile.bio || '')
   const [saving,   setSaving]   = useState(false)
@@ -34,6 +36,8 @@ export default function EditProfileModal({ session, profile, onClose, onSaved })
     if (err) { setError('Could not save. Please try again.'); return }
     onSaved({ ...profile, username: u, bio: bio.trim() || null })
   }
+
+  const s = makeStyles(theme)
 
   return (
     <div style={s.overlay} onClick={onClose}>
@@ -81,20 +85,22 @@ export default function EditProfileModal({ session, profile, onClose, onSaved })
   )
 }
 
-const s = {
-  overlay:   { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  modal:     { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, width: 440, maxWidth: '92vw', boxShadow: '0 24px 64px rgba(26,18,8,0.2)' },
-  header:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #e8dfc8' },
-  title:     { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: '#1a1208' },
-  closeBtn:  { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#8a7f72', padding: 4 },
-  body:      { padding: '20px 24px 24px' },
-  fieldGroup:{ marginBottom: 18 },
-  label:     { display: 'block', fontSize: 11, fontWeight: 600, color: '#3a3028', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
-  input:     { width: '100%', padding: '9px 12px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
-  textarea:  { resize: 'vertical', minHeight: 80, lineHeight: 1.5 },
-  hint:      { fontSize: 11, color: '#8a7f72', marginTop: 4 },
-  errorMsg:  { fontSize: 13, color: '#c0521e', marginBottom: 12 },
-  footer:    { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 },
-  btnGhost:  { padding: '8px 16px', background: 'none', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
-  btnSave:   { padding: '8px 20px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+function makeStyles(theme) {
+  return {
+    overlay:   { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    modal:     { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 440, maxWidth: '92vw', boxShadow: theme.shadow },
+    header:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: `1px solid ${theme.borderLight}` },
+    title:     { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text },
+    closeBtn:  { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textSubtle, padding: 4 },
+    body:      { padding: '20px 24px 24px' },
+    fieldGroup:{ marginBottom: 18 },
+    label:     { display: 'block', fontSize: 11, fontWeight: 600, color: theme.textMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+    input:     { width: '100%', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgSubtle, color: theme.text, boxSizing: 'border-box' },
+    textarea:  { resize: 'vertical', minHeight: 80, lineHeight: 1.5 },
+    hint:      { fontSize: 11, color: theme.textSubtle, marginTop: 4 },
+    errorMsg:  { fontSize: 13, color: theme.rust, marginBottom: 12 },
+    footer:    { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 },
+    btnGhost:  { padding: '8px 16px', background: 'none', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textMuted },
+    btnSave:   { padding: '8px 20px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+  }
 }

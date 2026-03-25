@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import { useTheme } from '../contexts/ThemeContext'
 
 export default function Loans({ session }) {
+  const { theme } = useTheme()
   const navigate  = useNavigate()
   const [lending, setLending]   = useState([])
   const [borrowing, setBorrowing] = useState([])
@@ -62,6 +64,40 @@ export default function Loans({ session }) {
   const borActive    = borrowing.filter(r => r.status === 'active')
   const borHistory   = borrowing.filter(r => r.status === 'returned')
 
+  const s = {
+    page:          { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
+    btnPrimary:    { padding: '8px 16px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnGhost:      { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.text },
+    btnAccept:     { padding: '5px 12px', background: theme.rust, color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnDecline:    { padding: '5px 12px', background: 'transparent', color: theme.textSubtle, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    content:       { padding: '32px 32px', maxWidth: 800, margin: '0 auto' },
+    pageHeader:    { marginBottom: 28 },
+    pageTitle:     { fontFamily: 'Georgia, serif', fontSize: 32, fontWeight: 700, color: theme.text, margin: '0 0 6px' },
+    pageSubtitle:  { fontSize: 14, color: theme.textSubtle, margin: 0 },
+    tabRow:        { display: 'flex', gap: 0, marginBottom: 28, borderBottom: `1px solid ${theme.border}` },
+    tabActive:     { padding: '10px 20px', background: theme.rust, color: 'white', border: 'none', borderBottom: `2px solid ${theme.rust}`, marginBottom: -1, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 6 },
+    tabInactive:   { padding: '10px 20px', background: 'none', border: 'none', borderBottom: '2px solid transparent', marginBottom: -1, fontSize: 14, color: theme.textSubtle, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 6 },
+    tabBadge:      { background: theme.rust, color: 'white', borderRadius: '50%', width: 18, height: 18, fontSize: 10, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
+    sectionTitle:  { fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 },
+    sectionCount:  { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(192,82,30,0.1)', color: theme.rust, borderRadius: 20, padding: '2px 10px', fontSize: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 500 },
+    loanList:      { display: 'flex', flexDirection: 'column', gap: 12 },
+    loanCard:      { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '16px', display: 'flex', gap: 14, alignItems: 'flex-start', boxShadow: theme.shadowCard, transition: 'box-shadow 0.15s' },
+    loanCover:     { width: 52, height: 78, flexShrink: 0, borderRadius: 4, overflow: 'hidden', background: theme.bgSubtle },
+    loanInfo:      { flex: 1 },
+    loanBookTitle: { fontSize: 15, fontWeight: 600, color: theme.text, lineHeight: 1.3, marginBottom: 2 },
+    loanBookAuthor:{ fontSize: 13, color: theme.textSubtle, marginBottom: 6 },
+    loanMeta:      { fontSize: 13, color: theme.text, marginBottom: 4 },
+    loanUsername:  { fontWeight: 600, cursor: 'pointer', color: theme.rust },
+    loanMessage:   { fontSize: 13, color: theme.textMuted, fontStyle: 'italic', marginTop: 4 },
+    loanDue:       { fontSize: 12, marginTop: 4 },
+    loanActions:   { flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' },
+    emptyState:    { textAlign: 'center', padding: '60px 0' },
+    emptyIcon:     { fontSize: 48, marginBottom: 16 },
+    emptyTitle:    { fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: theme.text, marginBottom: 8 },
+    emptySub:      { fontSize: 14, color: theme.textSubtle, marginBottom: 20 },
+    empty:         { color: theme.textSubtle, fontSize: 14, padding: '60px 0', textAlign: 'center' },
+  }
+
   return (
     <div style={s.page}>
       <NavBar session={session} />
@@ -88,12 +124,12 @@ export default function Loans({ session }) {
         ) : tab === 'lending' ? (
           <LendingView
             pending={lendPending} active={lendActive} history={lendHistory}
-            onAction={handleAction} navigate={navigate}
+            onAction={handleAction} navigate={navigate} s={s} theme={theme}
           />
         ) : (
           <BorrowingView
             pending={borPending} active={borActive} history={borHistory}
-            onAction={handleAction} navigate={navigate}
+            onAction={handleAction} navigate={navigate} s={s} theme={theme}
           />
         )}
       </div>
@@ -101,7 +137,7 @@ export default function Loans({ session }) {
   )
 }
 
-function LendingView({ pending, active, history, onAction, navigate }) {
+function LendingView({ pending, active, history, onAction, navigate, s, theme }) {
   if (!pending.length && !active.length && !history.length) {
     return (
       <div style={s.emptyState}>
@@ -114,25 +150,25 @@ function LendingView({ pending, active, history, onAction, navigate }) {
   return (
     <>
       {pending.length > 0 && (
-        <Section title="Pending Requests" count={pending.length}>
-          {pending.map(r => <LoanCard key={r.id} req={r} mode="lend-pending" onAction={onAction} navigate={navigate} />)}
+        <Section title="Pending Requests" count={pending.length} s={s} theme={theme}>
+          {pending.map(r => <LoanCard key={r.id} req={r} mode="lend-pending" onAction={onAction} navigate={navigate} s={s} theme={theme} />)}
         </Section>
       )}
       {active.length > 0 && (
-        <Section title="Currently Lent Out" count={active.length}>
-          {active.map(r => <LoanCard key={r.id} req={r} mode="lend-active" onAction={onAction} navigate={navigate} />)}
+        <Section title="Currently Lent Out" count={active.length} s={s} theme={theme}>
+          {active.map(r => <LoanCard key={r.id} req={r} mode="lend-active" onAction={onAction} navigate={navigate} s={s} theme={theme} />)}
         </Section>
       )}
       {history.length > 0 && (
-        <Section title="History" count={history.length} muted>
-          {history.map(r => <LoanCard key={r.id} req={r} mode="history" onAction={onAction} navigate={navigate} />)}
+        <Section title="History" count={history.length} muted s={s} theme={theme}>
+          {history.map(r => <LoanCard key={r.id} req={r} mode="history" onAction={onAction} navigate={navigate} s={s} theme={theme} />)}
         </Section>
       )}
     </>
   )
 }
 
-function BorrowingView({ pending, active, history, onAction, navigate }) {
+function BorrowingView({ pending, active, history, onAction, navigate, s, theme }) {
   if (!pending.length && !active.length && !history.length) {
     return (
       <div style={s.emptyState}>
@@ -146,28 +182,28 @@ function BorrowingView({ pending, active, history, onAction, navigate }) {
   return (
     <>
       {pending.length > 0 && (
-        <Section title="Awaiting Response" count={pending.length}>
-          {pending.map(r => <LoanCard key={r.id} req={r} mode="borrow-pending" onAction={onAction} navigate={navigate} />)}
+        <Section title="Awaiting Response" count={pending.length} s={s} theme={theme}>
+          {pending.map(r => <LoanCard key={r.id} req={r} mode="borrow-pending" onAction={onAction} navigate={navigate} s={s} theme={theme} />)}
         </Section>
       )}
       {active.length > 0 && (
-        <Section title="Currently Borrowing" count={active.length}>
-          {active.map(r => <LoanCard key={r.id} req={r} mode="borrow-active" onAction={onAction} navigate={navigate} />)}
+        <Section title="Currently Borrowing" count={active.length} s={s} theme={theme}>
+          {active.map(r => <LoanCard key={r.id} req={r} mode="borrow-active" onAction={onAction} navigate={navigate} s={s} theme={theme} />)}
         </Section>
       )}
       {history.length > 0 && (
-        <Section title="History" count={history.length} muted>
-          {history.map(r => <LoanCard key={r.id} req={r} mode="history" onAction={onAction} navigate={navigate} />)}
+        <Section title="History" count={history.length} muted s={s} theme={theme}>
+          {history.map(r => <LoanCard key={r.id} req={r} mode="history" onAction={onAction} navigate={navigate} s={s} theme={theme} />)}
         </Section>
       )}
     </>
   )
 }
 
-function Section({ title, count, muted, children }) {
+function Section({ title, count, muted, children, s, theme }) {
   return (
     <div style={{ marginBottom: 36 }}>
-      <div style={{ ...s.sectionTitle, color: muted ? '#8a7f72' : '#1a1208' }}>
+      <div style={{ ...s.sectionTitle, color: muted ? theme.textSubtle : theme.text }}>
         {title}
         <span style={s.sectionCount}>{count}</span>
       </div>
@@ -176,7 +212,7 @@ function Section({ title, count, muted, children }) {
   )
 }
 
-function LoanCard({ req, mode, onAction, navigate }) {
+function LoanCard({ req, mode, onAction, navigate, s, theme }) {
   const book         = req.books
   const otherProfile = req.profiles
   const [acting, setActing] = useState(false)
@@ -221,13 +257,13 @@ function LoanCard({ req, mode, onAction, navigate }) {
         </div>
         {req.message && <div style={s.loanMessage}>"{req.message}"</div>}
         {dueDate && (
-          <div style={{ ...s.loanDue, color: isOverdue ? '#c0521e' : '#8a7f72' }}>
+          <div style={{ ...s.loanDue, color: isOverdue ? theme.rust : theme.textSubtle }}>
             Due {dueDate}{isOverdue ? ' — Overdue' : ''}
           </div>
         )}
       </div>
       <div style={s.loanActions}>
-        <StatusBadge status={req.status} />
+        <StatusBadge status={req.status} theme={theme} />
         {mode === 'lend-pending' && (
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
             <button style={s.btnAccept} onClick={() => act('accept')} disabled={acting}>
@@ -244,7 +280,7 @@ function LoanCard({ req, mode, onAction, navigate }) {
           </button>
         )}
         {mode === 'borrow-pending' && (
-          <button style={{ ...s.btnGhost, marginTop: 8, fontSize: 12, color: '#8a7f72' }} onClick={() => act('cancel')} disabled={acting}>
+          <button style={{ ...s.btnGhost, marginTop: 8, fontSize: 12, color: theme.textSubtle }} onClick={() => act('cancel')} disabled={acting}>
             {acting ? '…' : 'Cancel'}
           </button>
         )}
@@ -258,12 +294,12 @@ function LoanCard({ req, mode, onAction, navigate }) {
   )
 }
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, theme }) {
   const map = {
-    pending:  { label: 'Pending',  bg: 'rgba(184,134,11,0.12)',  color: '#b8860b' },
-    active:   { label: 'Active',   bg: 'rgba(90,122,90,0.15)',   color: '#5a7a5a' },
-    returned: { label: 'Returned', bg: 'rgba(138,127,114,0.15)', color: '#8a7f72' },
-    declined: { label: 'Declined', bg: 'rgba(192,82,30,0.12)',   color: '#c0521e' },
+    pending:  { label: 'Pending',  bg: 'rgba(184,134,11,0.12)',  color: theme.gold },
+    active:   { label: 'Active',   bg: 'rgba(90,122,90,0.15)',   color: theme.sage },
+    returned: { label: 'Returned', bg: 'rgba(138,127,114,0.15)', color: theme.textSubtle },
+    declined: { label: 'Declined', bg: 'rgba(192,82,30,0.12)',   color: theme.rust },
   }
   const { label, bg, color } = map[status] || map.pending
   return (
@@ -278,42 +314,4 @@ function MiniCover({ title }) {
   const c  = colors[title.charCodeAt(0) % colors.length]
   const c2 = colors[(title.charCodeAt(0) + 3) % colors.length]
   return <div style={{ width: '100%', height: '100%', borderRadius: 4, background: `linear-gradient(135deg, ${c}, ${c2})` }} />
-}
-
-const s = {
-  page:          { minHeight: '100vh', background: '#f5f0e8', fontFamily: "'DM Sans', sans-serif" },
-  topbar:        { position: 'sticky', top: 0, zIndex: 10, background: 'rgba(245,240,232,0.92)', backdropFilter: 'blur(8px)', borderBottom: '1px solid #d4c9b0', padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  logo:          { fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, color: '#1a1208', cursor: 'pointer' },
-  topbarRight:   { display: 'flex', gap: 10, alignItems: 'center' },
-  btnPrimary:    { padding: '8px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnGhost:      { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
-  btnActive:     { padding: '6px 12px', background: 'rgba(192,82,30,0.1)', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0521e', fontWeight: 600 },
-  btnAccept:     { padding: '5px 12px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnDecline:    { padding: '5px 12px', background: 'transparent', color: '#8a7f72', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  content:       { padding: '32px 32px', maxWidth: 800, margin: '0 auto' },
-  pageHeader:    { marginBottom: 28 },
-  pageTitle:     { fontFamily: 'Georgia, serif', fontSize: 32, fontWeight: 700, color: '#1a1208', margin: '0 0 6px' },
-  pageSubtitle:  { fontSize: 14, color: '#8a7f72', margin: 0 },
-  tabRow:        { display: 'flex', gap: 0, marginBottom: 28, borderBottom: '1px solid #d4c9b0' },
-  tabActive:     { padding: '10px 20px', background: '#c0521e', color: 'white', border: 'none', borderBottom: '2px solid #c0521e', marginBottom: -1, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 6 },
-  tabInactive:   { padding: '10px 20px', background: 'none', border: 'none', borderBottom: '2px solid transparent', marginBottom: -1, fontSize: 14, color: '#8a7f72', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 6 },
-  tabBadge:      { background: '#c0521e', color: 'white', borderRadius: '50%', width: 18, height: 18, fontSize: 10, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
-  sectionTitle:  { fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 },
-  sectionCount:  { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(192,82,30,0.1)', color: '#c0521e', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 500 },
-  loanList:      { display: 'flex', flexDirection: 'column', gap: 12 },
-  loanCard:      { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 12, padding: '16px', display: 'flex', gap: 14, alignItems: 'flex-start', boxShadow: '0 1px 4px rgba(26,18,8,0.07)', transition: 'box-shadow 0.15s' },
-  loanCover:     { width: 52, height: 78, flexShrink: 0, borderRadius: 4, overflow: 'hidden', background: '#e8dfc8' },
-  loanInfo:      { flex: 1 },
-  loanBookTitle: { fontSize: 15, fontWeight: 600, color: '#1a1208', lineHeight: 1.3, marginBottom: 2 },
-  loanBookAuthor:{ fontSize: 13, color: '#8a7f72', marginBottom: 6 },
-  loanMeta:      { fontSize: 13, color: '#3a3028', marginBottom: 4 },
-  loanUsername:  { fontWeight: 600, cursor: 'pointer', color: '#c0521e' },
-  loanMessage:   { fontSize: 13, color: '#5a4a3a', fontStyle: 'italic', marginTop: 4 },
-  loanDue:       { fontSize: 12, marginTop: 4 },
-  loanActions:   { flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end' },
-  emptyState:    { textAlign: 'center', padding: '60px 0' },
-  emptyIcon:     { fontSize: 48, marginBottom: 16 },
-  emptyTitle:    { fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#1a1208', marginBottom: 8 },
-  emptySub:      { fontSize: 14, color: '#8a7f72', marginBottom: 20 },
-  empty:         { color: '#8a7f72', fontSize: 14, padding: '60px 0', textAlign: 'center' },
 }

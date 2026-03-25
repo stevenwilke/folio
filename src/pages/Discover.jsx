@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
+import { useTheme } from '../contexts/ThemeContext'
 
 const GENRES = [
   { label: 'Fiction',            slug: 'fiction',                      emoji: '📖' },
@@ -110,8 +111,10 @@ function FakeCover({ title, author }) {
 }
 
 function DiscoverCard({ book, onPreview, myBookIds }) {
+  const { theme } = useTheme()
   const [hover, setHover] = useState(false)
   const have = myBookIds.has(titleKey(book.title, book.author))
+  const s = makeStyles(theme)
   return (
     <div
       style={{ ...s.card, ...(hover ? s.cardHover : {}), cursor: 'pointer' }}
@@ -136,8 +139,9 @@ function DiscoverCard({ book, onPreview, myBookIds }) {
 
 // ---- FRIEND STATS (reused in preview + detail) ----
 function PreviewFriendStats({ stats }) {
-  if (stats === null) return <div style={{ fontSize: 12, color: '#8a7f72', marginTop: 8, fontStyle: 'italic' }}>Checking friends…</div>
-  if (!stats.length) return <div style={{ fontSize: 12, color: '#8a7f72', marginTop: 8 }}>👥 No friends have read this yet</div>
+  const { theme } = useTheme()
+  if (stats === null) return <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 8, fontStyle: 'italic' }}>Checking friends…</div>
+  if (!stats.length) return <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 8 }}>👥 No friends have read this yet</div>
   const withRating = stats.filter(s => s.user_rating)
   const avg = withRating.length
     ? (withRating.reduce((sum, s) => sum + s.user_rating, 0) / withRating.length).toFixed(1) : null
@@ -146,21 +150,23 @@ function PreviewFriendStats({ stats }) {
     : names.length === 2 ? `${names[0]} and ${names[1]}`
     : `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length - 2 > 1 ? 's' : ''}`
   return (
-    <div style={{ fontSize: 12, color: '#3a3028', marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+    <div style={{ fontSize: 12, color: theme.text, marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
       <span>👥</span>
       <span><strong>{display}</strong> {stats.length === 1 ? 'has' : 'have'} read this</span>
-      {avg && <span style={{ color: '#b8860b', fontWeight: 600 }}>· avg ★{avg}</span>}
+      {avg && <span style={{ color: theme.gold, fontWeight: 600 }}>· avg ★{avg}</span>}
     </div>
   )
 }
 
 // ---- QUICK PREVIEW MODAL ----
 function QuickPreview({ book, myBookIds, onAdd, onViewDetail, onClose, session }) {
+  const { theme } = useTheme()
   const [desc,        setDesc]        = useState(null)
   const [adding,      setAdding]      = useState(false)
   const [added,       setAdded]       = useState(null)
   const [friendStats, setFriendStats] = useState(null)
   const have = myBookIds.has(titleKey(book.title, book.author))
+  const s = makeStyles(theme)
 
   useEffect(() => {
     setDesc(null)
@@ -253,6 +259,8 @@ function QuickPreview({ book, myBookIds, onAdd, onViewDetail, onClose, session }
 }
 
 function BookRow({ books, myBookIds, onPreview, loading }) {
+  const { theme } = useTheme()
+  const s = makeStyles(theme)
   if (loading) return (
     <div style={s.row}>
       {[...Array(6)].map((_, i) => <div key={i} style={s.skeleton} />)}
@@ -270,6 +278,7 @@ function BookRow({ books, myBookIds, onPreview, loading }) {
 
 export default function Discover({ session }) {
   const navigate = useNavigate()
+  const { theme } = useTheme()
   const [myBookIds,   setMyBookIds]   = useState(new Set())
 
   const [forYou,        setForYou]        = useState([])
@@ -289,6 +298,8 @@ export default function Discover({ session }) {
 
   const [previewBook,  setPreviewBook]  = useState(null)   // OL book object for quick preview
   const [selectedBook, setSelectedBook] = useState(null)   // Supabase UUID for full detail
+
+  const s = makeStyles(theme)
 
   useEffect(() => {
     async function init() {
@@ -498,7 +509,7 @@ export default function Discover({ session }) {
 
       {/* Full Book Detail — second click */}
       {selectedBook && (
-        <div style={{ position: 'fixed', inset: 0, background: '#f5f0e8', zIndex: 50, overflowY: 'auto' }}>
+        <div style={{ position: 'fixed', inset: 0, background: theme.bg, zIndex: 50, overflowY: 'auto' }}>
           <BookDetail
             bookId={selectedBook}
             session={session}
@@ -510,68 +521,64 @@ export default function Discover({ session }) {
   )
 }
 
-const s = {
-  root: { minHeight: '100vh', background: '#f5f0e8', fontFamily: "'DM Sans',sans-serif" },
-  page: { maxWidth: 1200, margin: '0 auto', padding: '36px 28px 80px' },
+function makeStyles(theme) {
+  return {
+    root: { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans',sans-serif" },
+    page: { maxWidth: 1200, margin: '0 auto', padding: '36px 28px 80px' },
 
-  topbar:      { position: 'sticky', top: 0, zIndex: 10, background: 'rgba(245,240,232,0.92)', backdropFilter: 'blur(8px)', borderBottom: '1px solid #d4c9b0', padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  logo:        { fontFamily: 'Georgia,serif', fontSize: 22, fontWeight: 700, color: '#1a1208', cursor: 'pointer' },
-  topbarRight: { display: 'flex', gap: 4, alignItems: 'center' },
-  navBtn:      { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', color: '#3a3028', fontFamily: "'DM Sans',sans-serif" },
-  navBtnActive:{ padding: '6px 12px', background: 'rgba(192,82,30,0.12)', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', color: '#c0521e', fontWeight: 700, fontFamily: "'DM Sans',sans-serif" },
+    pageHead:  { marginBottom: 40 },
+    pageTitle: { fontFamily: 'Georgia,serif', fontSize: 34, fontWeight: 700, color: theme.text, margin: '0 0 6px' },
+    pageSub:   { color: theme.textSubtle, fontSize: 15, margin: 0 },
 
-  pageHead:  { marginBottom: 40 },
-  pageTitle: { fontFamily: 'Georgia,serif', fontSize: 34, fontWeight: 700, color: '#1a1208', margin: '0 0 6px' },
-  pageSub:   { color: '#8a7f72', fontSize: 15, margin: 0 },
+    section: { marginBottom: 56 },
+    secHead: { marginBottom: 18 },
+    secTitle:{ fontFamily: 'Georgia,serif', fontSize: 22, fontWeight: 700, color: theme.text, margin: '0 0 3px' },
+    secSub:  { color: theme.textSubtle, fontSize: 13, margin: 0 },
 
-  section: { marginBottom: 56 },
-  secHead: { marginBottom: 18 },
-  secTitle:{ fontFamily: 'Georgia,serif', fontSize: 22, fontWeight: 700, color: '#1a1208', margin: '0 0 3px' },
-  secSub:  { color: '#8a7f72', fontSize: 13, margin: 0 },
+    row:      { display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 12, scrollbarWidth: 'thin', scrollbarColor: `${theme.border} transparent`, WebkitOverflowScrolling: 'touch' },
+    rowEmpty: { color: theme.textSubtle, fontSize: 14, margin: '12px 0 0' },
+    skeleton: { flexShrink: 0, width: 148, height: 280, borderRadius: 10, background: theme.bgSubtle },
 
-  row:      { display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 12, scrollbarWidth: 'thin', scrollbarColor: '#d4c9b0 transparent', WebkitOverflowScrolling: 'touch' },
-  rowEmpty: { color: '#8a7f72', fontSize: 14, margin: '12px 0 0' },
-  skeleton: { flexShrink: 0, width: 148, height: 280, borderRadius: 10, background: '#e8e0d4' },
+    card:     { flexShrink: 0, width: 148, background: theme.bgCard, borderRadius: 10, border: `1px solid ${theme.borderLight}`, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' },
+    cardHover:{ transform: 'translateY(-3px)', boxShadow: theme.shadowCard },
+    cardCover:{ position: 'relative', width: '100%', height: 210, background: theme.bgSubtle, overflow: 'hidden' },
+    coverImg: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
+    haveBadge:{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(90,122,90,0.9)', color: '#fff', fontSize: 10, fontWeight: 700, textAlign: 'center', padding: '4px 0' },
 
-  card:     { flexShrink: 0, width: 148, background: '#fdfaf4', borderRadius: 10, border: '1px solid #e8dece', overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' },
-  cardHover:{ transform: 'translateY(-3px)', boxShadow: '0 6px 20px rgba(0,0,0,0.10)' },
-  cardCover:{ position: 'relative', width: '100%', height: 210, background: '#e0d8cc', overflow: 'hidden' },
-  coverImg: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
-  haveBadge:{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(90,122,90,0.9)', color: '#fff', fontSize: 10, fontWeight: 700, textAlign: 'center', padding: '4px 0' },
+    // Quick Preview
+    previewBackdrop: { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.55)', zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 },
+    previewBox:      { background: theme.bgCard, borderRadius: 18, padding: 28, maxWidth: 560, width: '100%', boxShadow: '0 20px 60px rgba(26,18,8,0.25)', position: 'relative', maxHeight: '90vh', overflowY: 'auto' },
+    previewTop:      { display: 'flex', gap: 20, marginBottom: 20 },
+    previewCover:    { width: 110, height: 165, flexShrink: 0, borderRadius: 6, overflow: 'hidden', boxShadow: '0 4px 12px rgba(26,18,8,0.18)' },
+    previewInfo:     { flex: 1, minWidth: 0 },
+    previewTitle:    { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text, marginBottom: 6, lineHeight: 1.3 },
+    previewAuthor:   { fontSize: 14, color: theme.sage, fontWeight: 500, marginBottom: 4 },
+    previewYear:     { fontSize: 12, color: theme.textSubtle, marginBottom: 10 },
+    previewDesc:     { fontSize: 13, color: theme.text, lineHeight: 1.65, marginTop: 8 },
+    previewActions:  { borderTop: `1px solid ${theme.borderLight}`, paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 },
+    previewAddRow:   { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+    previewAddLabel: { fontSize: 12, color: theme.textSubtle, marginRight: 4 },
+    previewInLib:    { fontSize: 13, color: theme.sage, fontWeight: 600 },
+    previewDetailBtn:{ padding: '10px 20px', background: theme.rust, color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', alignSelf: 'flex-start', fontFamily: "'DM Sans', sans-serif" },
+    previewClose:    { position: 'absolute', top: 14, right: 16, background: 'none', border: 'none', fontSize: 18, color: theme.textSubtle, cursor: 'pointer', lineHeight: 1 },
+    cardBody: { padding: '10px 10px 8px' },
+    cardTitle:{ fontSize: 12, fontWeight: 700, color: theme.text, lineHeight: '15px', marginBottom: 3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' },
+    cardAuthor:{ fontSize: 11, color: theme.textSubtle, marginBottom: 2, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' },
+    cardYear: { fontSize: 10, color: theme.textSubtle, marginBottom: 6 },
+    cardActions:{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 },
+    addBtn:   { padding: '3px 7px', background: theme.bgCard, borderRadius: 4, border: '1px solid', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" },
+    addingDots:{ color: theme.rust, fontSize: 18, padding: '0 4px' },
 
-  // Quick Preview
-  previewBackdrop: { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.55)', zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  previewBox:      { background: '#fdfaf4', borderRadius: 18, padding: 28, maxWidth: 560, width: '100%', boxShadow: '0 20px 60px rgba(26,18,8,0.25)', position: 'relative', maxHeight: '90vh', overflowY: 'auto' },
-  previewTop:      { display: 'flex', gap: 20, marginBottom: 20 },
-  previewCover:    { width: 110, height: 165, flexShrink: 0, borderRadius: 6, overflow: 'hidden', boxShadow: '0 4px 12px rgba(26,18,8,0.18)' },
-  previewInfo:     { flex: 1, minWidth: 0 },
-  previewTitle:    { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: '#1a1208', marginBottom: 6, lineHeight: 1.3 },
-  previewAuthor:   { fontSize: 14, color: '#5a7a5a', fontWeight: 500, marginBottom: 4 },
-  previewYear:     { fontSize: 12, color: '#8a7f72', marginBottom: 10 },
-  previewDesc:     { fontSize: 13, color: '#3a3028', lineHeight: 1.65, marginTop: 8 },
-  previewActions:  { borderTop: '1px solid #e8dfc8', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 12 },
-  previewAddRow:   { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
-  previewAddLabel: { fontSize: 12, color: '#8a7f72', marginRight: 4 },
-  previewInLib:    { fontSize: 13, color: '#5a7a5a', fontWeight: 600 },
-  previewDetailBtn:{ padding: '10px 20px', background: '#c0521e', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', alignSelf: 'flex-start', fontFamily: "'DM Sans', sans-serif" },
-  previewClose:    { position: 'absolute', top: 14, right: 16, background: 'none', border: 'none', fontSize: 18, color: '#8a7f72', cursor: 'pointer', lineHeight: 1 },
-  cardBody: { padding: '10px 10px 8px' },
-  cardTitle:{ fontSize: 12, fontWeight: 700, color: '#1a1208', lineHeight: '15px', marginBottom: 3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' },
-  cardAuthor:{ fontSize: 11, color: '#8a7f72', marginBottom: 2, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' },
-  cardYear: { fontSize: 10, color: '#a09080', marginBottom: 6 },
-  cardActions:{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 },
-  addBtn:   { padding: '3px 7px', background: '#fdfaf4', borderRadius: 4, border: '1px solid', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" },
-  addingDots:{ color: '#c0521e', fontSize: 18, padding: '0 4px' },
+    genreGrid: { display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
+    chip:      { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 24, background: theme.bgCard, border: `1.5px solid ${theme.border}`, fontSize: 13, fontWeight: 600, cursor: 'pointer', color: theme.text, fontFamily: "'DM Sans',sans-serif", transition: 'all 0.15s' },
+    chipActive:{ background: theme.rust, borderColor: theme.rust, color: '#fff' },
 
-  genreGrid: { display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
-  chip:      { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 24, background: '#fdfaf4', border: '1.5px solid #d4c9b0', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#3a3028', fontFamily: "'DM Sans',sans-serif", transition: 'all 0.15s' },
-  chipActive:{ background: '#c0521e', borderColor: '#c0521e', color: '#fff' },
+    genrePanel:     { background: theme.bgCard, border: `1px solid ${theme.borderLight}`, borderRadius: 12, padding: '20px 20px 8px', marginTop: 4 },
+    genrePanelHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+    genrePanelTitle:{ fontFamily: 'Georgia,serif', fontSize: 20, fontWeight: 700, color: theme.text },
+    closeBtn:       { padding: '5px 12px', background: 'none', border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, cursor: 'pointer', color: theme.textSubtle, fontFamily: "'DM Sans',sans-serif" },
 
-  genrePanel:     { background: '#fdfaf4', border: '1px solid #e0d4c0', borderRadius: 12, padding: '20px 20px 8px', marginTop: 4 },
-  genrePanelHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  genrePanelTitle:{ fontFamily: 'Georgia,serif', fontSize: 20, fontWeight: 700, color: '#1a1208' },
-  closeBtn:       { padding: '5px 12px', background: 'none', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 13, cursor: 'pointer', color: '#8a7f72', fontFamily: "'DM Sans',sans-serif" },
-
-  emptyRow: { display: 'flex', alignItems: 'center', gap: 12, color: '#8a7f72', fontSize: 14, padding: '16px 0' },
-  emptyBtn: { padding: '7px 14px', background: '#c0521e', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" },
+    emptyRow: { display: 'flex', alignItems: 'center', gap: 12, color: theme.textSubtle, fontSize: 14, padding: '16px 0' },
+    emptyBtn: { padding: '7px 14px', background: theme.rust, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" },
+  }
 }

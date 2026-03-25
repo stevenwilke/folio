@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { useTheme } from '../contexts/ThemeContext'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -65,6 +66,7 @@ function isLikelyEnglish(text) {
 }
 
 export default function BookDetail({ bookId, session, onBack }) {
+  const { theme } = useTheme()
   const [book, setBook]                 = useState(null)
   const [entry, setEntry]               = useState(null)
   const [reviews, setReviews]           = useState([])
@@ -332,6 +334,74 @@ export default function BookDetail({ bookId, session, onBack }) {
     }
   }
 
+  const s = {
+    page:                { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
+    topbar:              { position: 'sticky', top: 0, zIndex: 10, background: theme.bg, backdropFilter: 'blur(8px)', borderBottom: `1px solid ${theme.border}`, padding: '14px 32px' },
+    backBtn:             { background: 'none', border: 'none', fontSize: 14, cursor: 'pointer', color: theme.rust, fontFamily: "'DM Sans', sans-serif", padding: 0, fontWeight: 500 },
+    content:             { padding: '32px 32px', maxWidth: 820, margin: '0 auto' },
+    hero:                { display: 'flex', gap: 32, marginBottom: 36 },
+    coverWrap:           { width: 160, height: 240, flexShrink: 0 },
+    coverImg:            { width: 160, height: 240, objectFit: 'cover', borderRadius: 8, boxShadow: '4px 6px 20px rgba(26,18,8,0.22)' },
+    heroInfo:            { flex: 1 },
+    title:               { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, lineHeight: 1.2, color: theme.text },
+    author:              { fontSize: 16, color: theme.textSubtle, marginTop: 6 },
+    communityRatingRow:  { display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 },
+    communityRatingNum:  { fontSize: 15, fontWeight: 700, color: theme.text },
+    communityRatingCount:{ fontSize: 13, color: theme.textSubtle },
+    metaRow:             { display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' },
+    metaPill:            { fontSize: 12, padding: '3px 10px', borderRadius: 20, background: theme.bgSubtle, color: theme.textSubtle },
+    ratingLabel:         { fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, color: theme.textSubtle, marginBottom: 6 },
+    stars:               { display: 'flex', alignItems: 'center', gap: 2 },
+    star:                { fontSize: 22, cursor: 'pointer', transition: 'color 0.1s', userSelect: 'none' },
+    ratingText:          { fontSize: 13, color: theme.textSubtle, marginLeft: 8 },
+    statusRow:           { display: 'flex', gap: 8, marginTop: 20, flexWrap: 'wrap' },
+    statusBtn:           { padding: '7px 14px', borderRadius: 8, border: `1px solid ${theme.border}`, background: 'transparent', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.text, transition: 'all 0.15s' },
+    removeBtn:           { padding: '7px 14px', borderRadius: 8, border: `1px solid ${theme.border}`, background: 'transparent', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.rust },
+    removeFromCollectionBtn:        { padding: '6px 14px', borderRadius: 8, border: '1px solid #f5c6c6', background: 'transparent', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0392b', transition: 'all 0.15s' },
+    removeFromCollectionBtnConfirm: { borderColor: '#c0392b', background: 'rgba(192,57,43,0.07)', fontWeight: 500 },
+    tabs:                { display: 'flex', borderBottom: `1px solid ${theme.border}`, marginBottom: 24 },
+    tab:                 { padding: '10px 20px', fontSize: 14, cursor: 'pointer', color: theme.textSubtle, borderBottom: '2px solid transparent', marginBottom: -1, transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6 },
+    tabActive:           { color: theme.rust, borderBottom: `2px solid ${theme.rust}`, fontWeight: 500 },
+    reviewCount:         { fontSize: 11, background: theme.bgSubtle, color: theme.textSubtle, padding: '1px 6px', borderRadius: 20 },
+    tabContent:          { maxWidth: 680, position: 'relative', zIndex: 1 },
+    description:         { fontSize: 14, lineHeight: 1.9, color: theme.text },
+    descriptionMuted:    { fontSize: 14, color: theme.textSubtle, fontStyle: 'italic' },
+    empty:               { color: theme.textSubtle, fontSize: 14, padding: '32px 0' },
+    reviewList:          { display: 'flex', flexDirection: 'column', gap: 20 },
+    reviewCard:          { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '16px 20px' },
+    reviewHeader:        { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 },
+    reviewAvatar:        { width: 32, height: 32, borderRadius: '50%', background: theme.rust, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 500, color: 'white', flexShrink: 0 },
+    reviewUsername:      { fontSize: 14, fontWeight: 500, color: theme.text },
+    reviewDate:          { fontSize: 12, color: theme.textSubtle, marginTop: 1 },
+    reviewStars:         { marginLeft: 'auto', color: theme.gold, fontSize: 13 },
+    reviewText:          { fontSize: 14, lineHeight: 1.7, color: theme.text, margin: 0 },
+    textarea:            { width: '100%', padding: '10px 14px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: theme.bgCard, color: theme.text, lineHeight: 1.6 },
+    saveBtn:             { padding: '8px 20px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+
+    valuationRow:    { display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 14, flexWrap: 'wrap' },
+    valuationPrice:  { fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: theme.sage },
+    valuationSub:    { fontSize: 12, color: theme.textSubtle },
+    valuationMuted:  { fontSize: 12, color: theme.textSubtle, fontStyle: 'italic' },
+
+    forSaleRow:      { display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 },
+    listForSaleBtn:  { padding: '7px 16px', background: 'transparent', border: `1px solid ${theme.sage}`, borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.sage },
+    forSaleTag:      { fontSize: 13, fontWeight: 600, color: theme.sage, background: theme.sageLight, padding: '4px 12px', borderRadius: 20 },
+    removeListingBtn:{ padding: '4px 10px', background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textSubtle },
+    progressBarBg:   { flex: 1, height: 6, background: theme.bgSubtle, borderRadius: 3, overflow: 'hidden' },
+    progressBarFill: { height: '100%', background: theme.rust, borderRadius: 3, transition: 'width 0.3s' },
+    progressPct:     { fontSize: 13, fontWeight: 600, color: theme.rust, minWidth: 36 },
+    pageInput:       { width: 72, padding: '5px 9px', border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgCard, color: theme.text, textAlign: 'center' },
+    modalOverlay:    { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    modalBox:        { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 420, maxWidth: '92vw' },
+    modalCloseBtn:   { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textSubtle, padding: 4, flexShrink: 0 },
+    fieldGroup:      { marginBottom: 18 },
+    fieldLabel:      { display: 'block', fontSize: 11, fontWeight: 600, color: theme.textMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+    priceWrap:       { display: 'flex', alignItems: 'center', border: `1px solid ${theme.border}`, borderRadius: 8, overflow: 'hidden', background: theme.bgCard, width: 140 },
+    priceDollar:     { padding: '9px 10px 9px 14px', fontSize: 15, color: theme.textSubtle, background: theme.bg, borderRight: `1px solid ${theme.border}` },
+    priceInput:      { flex: 1, padding: '9px 12px', border: 'none', outline: 'none', fontSize: 15, fontFamily: "'DM Sans', sans-serif", color: theme.text, background: theme.bgCard },
+    modalTextarea:   { width: '100%', padding: '10px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: theme.bgCard, color: theme.text, boxSizing: 'border-box' },
+  }
+
   if (loading || !book) {
     return (
       <div style={s.page}>
@@ -348,11 +418,11 @@ export default function BookDetail({ bookId, session, onBack }) {
   // Build a row of filled/half/empty stars for community rating display
   function CommunityStars({ avg }) {
     return (
-      <span style={{ color: '#b8860b', fontSize: 14, letterSpacing: 1 }}>
+      <span style={{ color: theme.gold, fontSize: 14, letterSpacing: 1 }}>
         {[1,2,3,4,5].map(n => {
           if (avg >= n) return <span key={n}>★</span>
           if (avg >= n - 0.5) return <span key={n} style={{ opacity: 0.5 }}>★</span>
-          return <span key={n} style={{ color: '#d4c9b0' }}>★</span>
+          return <span key={n} style={{ color: theme.border }}>★</span>
         })}
       </span>
     )
@@ -428,7 +498,7 @@ export default function BookDetail({ bookId, session, onBack }) {
                     key={n}
                     style={{
                       ...s.star,
-                      color: n <= (hoverRating || rating) ? '#b8860b' : '#d4c9b0',
+                      color: n <= (hoverRating || rating) ? theme.gold : theme.border,
                     }}
                     onClick={() => saveHeroRating(n)}
                     onMouseEnter={() => setHoverRating(n)}
@@ -528,7 +598,7 @@ export default function BookDetail({ bookId, session, onBack }) {
                     placeholder="0"
                     style={s.pageInput}
                   />
-                  <span style={{ fontSize: 13, color: '#8a7f72' }}>of {book.pages} pages</span>
+                  <span style={{ fontSize: 13, color: theme.textSubtle }}>of {book.pages} pages</span>
                 </div>
               </div>
             )}
@@ -628,7 +698,7 @@ export default function BookDetail({ bookId, session, onBack }) {
                       style={{
                         ...s.star,
                         fontSize: 30,
-                        color: n <= (hoverRating || rating) ? '#b8860b' : '#d4c9b0',
+                        color: n <= (hoverRating || rating) ? theme.gold : theme.border,
                       }}
                       onClick={() => saveHeroRating(n)}
                       onMouseEnter={() => setHoverRating(n)}
@@ -658,7 +728,7 @@ export default function BookDetail({ bookId, session, onBack }) {
                     {saving ? 'Saving…' : 'Save Review'}
                   </button>
                   {saved && (
-                    <span style={{ fontSize: 13, color: '#5a7a5a', fontWeight: 500 }}>
+                    <span style={{ fontSize: 13, color: theme.sage, fontWeight: 500 }}>
                       ✓ Saved!
                     </span>
                   )}
@@ -682,6 +752,7 @@ const CONDITION_OPTIONS = [
 ]
 
 function ListingModal({ session, book, onClose, onSuccess }) {
+  const { theme } = useTheme()
   const [price, setPrice]           = useState('')
   const [condition, setCondition]   = useState('good')
   const [description, setDescription] = useState('')
@@ -713,13 +784,26 @@ function ListingModal({ session, book, onClose, onSuccess }) {
     }
   }
 
+  const s = {
+    modalOverlay:  { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    modalBox:      { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 420, maxWidth: '92vw' },
+    modalCloseBtn: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textSubtle, padding: 4, flexShrink: 0 },
+    fieldGroup:    { marginBottom: 18 },
+    fieldLabel:    { display: 'block', fontSize: 11, fontWeight: 600, color: theme.textMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+    priceWrap:     { display: 'flex', alignItems: 'center', border: `1px solid ${theme.border}`, borderRadius: 8, overflow: 'hidden', background: theme.bgCard, width: 140 },
+    priceDollar:   { padding: '9px 10px 9px 14px', fontSize: 15, color: theme.textSubtle, background: theme.bg, borderRight: `1px solid ${theme.border}` },
+    priceInput:    { flex: 1, padding: '9px 12px', border: 'none', outline: 'none', fontSize: 15, fontFamily: "'DM Sans', sans-serif", color: theme.text, background: theme.bgCard },
+    modalTextarea: { width: '100%', padding: '10px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: theme.bgCard, color: theme.text, boxSizing: 'border-box' },
+    saveBtn:       { padding: '8px 20px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+  }
+
   return (
     <div style={s.modalOverlay} onClick={onClose}>
       <div style={s.modalBox} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '22px 24px 0' }}>
           <div>
-            <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: '#1a1208' }}>List for Sale</div>
-            <div style={{ fontSize: 13, color: '#8a7f72', marginTop: 3 }}>{book.title}</div>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: theme.text }}>List for Sale</div>
+            <div style={{ fontSize: 13, color: theme.textSubtle, marginTop: 3 }}>{book.title}</div>
           </div>
           <button style={s.modalCloseBtn} onClick={onClose}>✕</button>
         </div>
@@ -742,9 +826,9 @@ function ListingModal({ session, book, onClose, onSuccess }) {
               {CONDITION_OPTIONS.map(opt => (
                 <button key={opt.value}
                   style={{ padding: '6px 12px', fontSize: 12, borderRadius: 20, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
-                    background: condition === opt.value ? '#c0521e' : 'transparent',
-                    color: condition === opt.value ? 'white' : '#3a3028',
-                    border: condition === opt.value ? '1px solid #c0521e' : '1px solid #d4c9b0',
+                    background: condition === opt.value ? theme.rust : 'transparent',
+                    color: condition === opt.value ? 'white' : theme.textMuted,
+                    border: condition === opt.value ? `1px solid ${theme.rust}` : `1px solid ${theme.border}`,
                   }}
                   onClick={() => setCondition(opt.value)}
                 >
@@ -762,12 +846,12 @@ function ListingModal({ session, book, onClose, onSuccess }) {
               rows={3}
             />
           </div>
-          {error && <div style={{ color: '#c0521e', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+          {error && <div style={{ color: theme.rust, fontSize: 13, marginBottom: 12 }}>{error}</div>}
           <div style={{ display: 'flex', gap: 8 }}>
             <button style={s.saveBtn} onClick={submit} disabled={submitting}>
               {submitting ? 'Listing…' : 'List for Sale'}
             </button>
-            <button style={{ ...s.saveBtn, background: 'transparent', border: '1px solid #d4c9b0', color: '#1a1208' }} onClick={onClose}>
+            <button style={{ ...s.saveBtn, background: 'transparent', border: `1px solid ${theme.border}`, color: theme.text }} onClick={onClose}>
               Cancel
             </button>
           </div>
@@ -777,10 +861,11 @@ function ListingModal({ session, book, onClose, onSuccess }) {
   )
 }
 
-// ---- FAKE COVER ----
+// ---- FRIEND STATS ROW ----
 function FriendStatsRow({ stats }) {
-  if (stats === null) return <div style={fs.row}><span style={fs.muted}>Checking friends…</span></div>
-  if (!stats.length) return <div style={fs.row}><span style={fs.muted}>👥 No friends have read this yet</span></div>
+  const { theme } = useTheme()
+  if (stats === null) return <div style={{ display: 'flex', alignItems: 'center', gap: 4, margin: '8px 0', fontSize: 13, flexWrap: 'wrap' }}><span style={{ color: theme.textSubtle, fontStyle: 'italic' }}>Checking friends…</span></div>
+  if (!stats.length) return <div style={{ display: 'flex', alignItems: 'center', gap: 4, margin: '8px 0', fontSize: 13, flexWrap: 'wrap' }}><span style={{ color: theme.textSubtle, fontStyle: 'italic' }}>👥 No friends have read this yet</span></div>
   const withRating = stats.filter(s => s.user_rating)
   const avg = withRating.length
     ? (withRating.reduce((sum, s) => sum + s.user_rating, 0) / withRating.length).toFixed(1)
@@ -790,21 +875,15 @@ function FriendStatsRow({ stats }) {
     : names.length === 2 ? `${names[0]} and ${names[1]}`
     : `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length - 2 > 1 ? 's' : ''}`
   return (
-    <div style={fs.row}>
-      <span style={fs.icon}>👥</span>
-      <span style={fs.text}><strong>{display}</strong> {stats.length === 1 ? 'has' : 'have'} read this</span>
-      {avg && <span style={fs.avg}> · avg ★{avg}</span>}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, margin: '8px 0', fontSize: 13, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 15 }}>👥</span>
+      <span style={{ color: theme.textMuted }}><strong>{display}</strong> {stats.length === 1 ? 'has' : 'have'} read this</span>
+      {avg && <span style={{ color: theme.gold, fontWeight: 600 }}> · avg ★{avg}</span>}
     </div>
   )
 }
-const fs = {
-  row:  { display: 'flex', alignItems: 'center', gap: 4, margin: '8px 0', fontSize: 13, flexWrap: 'wrap' },
-  icon: { fontSize: 15 },
-  text: { color: '#3a3028' },
-  avg:  { color: '#b8860b', fontWeight: 600 },
-  muted:{ color: '#8a7f72', fontStyle: 'italic' },
-}
 
+// ---- FAKE COVER ----
 function FakeCover({ title }) {
   const colors = ['#7b4f3a','#4a6b8a','#5a7a5a','#2c3e50','#8b2500','#b8860b','#3d5a5a','#c0521e']
   const color  = colors[title.charCodeAt(0) % colors.length]
@@ -822,73 +901,4 @@ function FakeCover({ title }) {
       <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.9)', textShadow: '0 1px 2px rgba(0,0,0,0.5)', lineHeight: 1.3, position: 'relative', zIndex: 1 }}>{title}</span>
     </div>
   )
-}
-
-// ---- STYLES ----
-const s = {
-  page:                { minHeight: '100vh', background: '#f5f0e8', fontFamily: "'DM Sans', sans-serif" },
-  topbar:              { position: 'sticky', top: 0, zIndex: 10, background: 'rgba(245,240,232,0.92)', backdropFilter: 'blur(8px)', borderBottom: '1px solid #d4c9b0', padding: '14px 32px' },
-  backBtn:             { background: 'none', border: 'none', fontSize: 14, cursor: 'pointer', color: '#c0521e', fontFamily: "'DM Sans', sans-serif", padding: 0, fontWeight: 500 },
-  content:             { padding: '32px 32px', maxWidth: 820, margin: '0 auto' },
-  hero:                { display: 'flex', gap: 32, marginBottom: 36 },
-  coverWrap:           { width: 160, height: 240, flexShrink: 0 },
-  coverImg:            { width: 160, height: 240, objectFit: 'cover', borderRadius: 8, boxShadow: '4px 6px 20px rgba(26,18,8,0.22)' },
-  heroInfo:            { flex: 1 },
-  title:               { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, lineHeight: 1.2, color: '#1a1208' },
-  author:              { fontSize: 16, color: '#8a7f72', marginTop: 6 },
-  communityRatingRow:  { display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 },
-  communityRatingNum:  { fontSize: 15, fontWeight: 700, color: '#1a1208' },
-  communityRatingCount:{ fontSize: 13, color: '#8a7f72' },
-  metaRow:             { display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' },
-  metaPill:            { fontSize: 12, padding: '3px 10px', borderRadius: 20, background: '#e8dfc8', color: '#8a7f72' },
-  ratingLabel:         { fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, color: '#8a7f72', marginBottom: 6 },
-  stars:               { display: 'flex', alignItems: 'center', gap: 2 },
-  star:                { fontSize: 22, cursor: 'pointer', transition: 'color 0.1s', userSelect: 'none' },
-  ratingText:          { fontSize: 13, color: '#8a7f72', marginLeft: 8 },
-  statusRow:           { display: 'flex', gap: 8, marginTop: 20, flexWrap: 'wrap' },
-  statusBtn:           { padding: '7px 14px', borderRadius: 8, border: '1px solid #d4c9b0', background: 'transparent', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#1a1208', transition: 'all 0.15s' },
-  removeBtn:           { padding: '7px 14px', borderRadius: 8, border: '1px solid #d4c9b0', background: 'transparent', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0521e' },
-  removeFromCollectionBtn:        { padding: '6px 14px', borderRadius: 8, border: '1px solid #f5c6c6', background: 'transparent', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0392b', transition: 'all 0.15s' },
-  removeFromCollectionBtnConfirm: { borderColor: '#c0392b', background: 'rgba(192,57,43,0.07)', fontWeight: 500 },
-  tabs:                { display: 'flex', borderBottom: '1px solid #d4c9b0', marginBottom: 24 },
-  tab:                 { padding: '10px 20px', fontSize: 14, cursor: 'pointer', color: '#8a7f72', borderBottom: '2px solid transparent', marginBottom: -1, transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6 },
-  tabActive:           { color: '#c0521e', borderBottom: '2px solid #c0521e', fontWeight: 500 },
-  reviewCount:         { fontSize: 11, background: '#e8dfc8', color: '#8a7f72', padding: '1px 6px', borderRadius: 20 },
-  tabContent:          { maxWidth: 680, position: 'relative', zIndex: 1 },
-  description:         { fontSize: 14, lineHeight: 1.9, color: '#1a1208' },
-  descriptionMuted:    { fontSize: 14, color: '#8a7f72', fontStyle: 'italic' },
-  empty:               { color: '#8a7f72', fontSize: 14, padding: '32px 0' },
-  reviewList:          { display: 'flex', flexDirection: 'column', gap: 20 },
-  reviewCard:          { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 12, padding: '16px 20px' },
-  reviewHeader:        { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 },
-  reviewAvatar:        { width: 32, height: 32, borderRadius: '50%', background: '#c0521e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 500, color: 'white', flexShrink: 0 },
-  reviewUsername:      { fontSize: 14, fontWeight: 500, color: '#1a1208' },
-  reviewDate:          { fontSize: 12, color: '#8a7f72', marginTop: 1 },
-  reviewStars:         { marginLeft: 'auto', color: '#b8860b', fontSize: 13 },
-  reviewText:          { fontSize: 14, lineHeight: 1.7, color: '#1a1208', margin: 0 },
-  textarea:            { width: '100%', padding: '10px 14px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: 'white', color: '#1a1208', lineHeight: 1.6 },
-  saveBtn:             { padding: '8px 20px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-
-  valuationRow:    { display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 14, flexWrap: 'wrap' },
-  valuationPrice:  { fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#5a7a5a' },
-  valuationSub:    { fontSize: 12, color: '#8a7f72' },
-  valuationMuted:  { fontSize: 12, color: '#b0a898', fontStyle: 'italic' },
-
-  forSaleRow:      { display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 },
-  listForSaleBtn:  { padding: '7px 16px', background: 'transparent', border: '1px solid #5a7a5a', borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#5a7a5a' },
-  forSaleTag:      { fontSize: 13, fontWeight: 600, color: '#5a7a5a', background: 'rgba(90,122,90,0.1)', padding: '4px 12px', borderRadius: 20 },
-  removeListingBtn:{ padding: '4px 10px', background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#8a7f72' },
-  progressBarBg:   { flex: 1, height: 6, background: '#e8dfc8', borderRadius: 3, overflow: 'hidden' },
-  progressBarFill: { height: '100%', background: '#c0521e', borderRadius: 3, transition: 'width 0.3s' },
-  progressPct:     { fontSize: 13, fontWeight: 600, color: '#c0521e', minWidth: 36 },
-  pageInput:       { width: 72, padding: '5px 9px', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208', textAlign: 'center' },
-  modalOverlay:    { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  modalBox:        { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, width: 420, maxWidth: '92vw' },
-  modalCloseBtn:   { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#8a7f72', padding: 4, flexShrink: 0 },
-  fieldGroup:      { marginBottom: 18 },
-  fieldLabel:      { display: 'block', fontSize: 11, fontWeight: 600, color: '#3a3028', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
-  priceWrap:       { display: 'flex', alignItems: 'center', border: '1px solid #d4c9b0', borderRadius: 8, overflow: 'hidden', background: 'white', width: 140 },
-  priceDollar:     { padding: '9px 10px 9px 14px', fontSize: 15, color: '#8a7f72', background: '#f5f0e8', borderRight: '1px solid #d4c9b0' },
-  priceInput:      { flex: 1, padding: '9px 12px', border: 'none', outline: 'none', fontSize: 15, fontFamily: "'DM Sans', sans-serif", color: '#1a1208', background: 'white' },
-  modalTextarea:   { width: '100%', padding: '10px 12px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
 }

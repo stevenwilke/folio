@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import ManualAddModal from './ManualAddModal'
+import { useTheme } from '../contexts/ThemeContext'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -44,6 +45,7 @@ function fromFolio(b) {
 }
 
 export default function SearchModal({ session, onClose, onAdded = () => {} }) {
+  const { theme } = useTheme()
   const [showManual, setShowManual] = useState(false)
   const [query,      setQuery]      = useState('')
   const [results,    setResults]    = useState([])
@@ -168,6 +170,8 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
     onAdded()
   }
 
+  const s = makeStyles(theme)
+
   return (
     <div style={s.overlay} onClick={onClose}>
       <div style={s.modal} onClick={e => e.stopPropagation()}>
@@ -215,7 +219,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
                 <div style={s.resultCover}>
                   {result.coverUrl
                     ? <img src={result.coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 3 }} />
-                    : <div style={{ width: '100%', height: '100%', background: '#d4c9b0', borderRadius: 3 }} />
+                    : <div style={{ width: '100%', height: '100%', background: theme.border, borderRadius: 3 }} />
                   }
                 </div>
 
@@ -274,32 +278,34 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
   )
 }
 
-const s = {
-  overlay:        { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  modal:          { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, width: 600, maxWidth: '94vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' },
-  modalHeader:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px 0' },
-  modalTitle:     { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: '#1a1208' },
-  closeBtn:       { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#8a7f72', padding: 4 },
-  searchRow:      { display: 'flex', gap: 10, padding: '16px 24px' },
-  searchInput:    { flex: 1, padding: '9px 14px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208' },
-  results:        { overflowY: 'auto', padding: '0 24px 20px', flex: 1 },
-  resultRow:      { display: 'flex', gap: 14, alignItems: 'center', padding: '14px 0', borderBottom: '1px solid #e8dfc8' },
-  resultCover:    { width: 36, height: 54, flexShrink: 0, borderRadius: 3, overflow: 'hidden', background: '#d4c9b0' },
-  resultInfo:     { flex: 1, minWidth: 0 },
-  resultTitleRow: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  resultTitle:    { fontSize: 14, fontWeight: 500, color: '#1a1208', lineHeight: 1.3 },
-  folioBadge:     { fontSize: 10, fontWeight: 600, color: '#5a7a5a', background: 'rgba(90,122,90,0.12)', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 },
-  resultAuthor:   { fontSize: 12, color: '#8a7f72', marginTop: 2 },
-  resultYear:     { fontSize: 11, color: '#8a7f72', marginTop: 2 },
-  resultActions:  { display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0, alignItems: 'flex-end' },
-  addBtnPrimary:  { padding: '6px 14px', fontSize: 12, background: '#c0521e', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, whiteSpace: 'nowrap' },
-  statusShortcuts:{ display: 'flex', gap: 4 },
-  addBtn:         { padding: '4px 8px', fontSize: 11, background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#1a1208', whiteSpace: 'nowrap' },
-  addBtnLoading:  { opacity: 0.5, cursor: 'not-allowed' },
-  addedConfirm:   { fontSize: 12, color: '#5a7a5a', fontWeight: 500 },
-  manualRow:      { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0 6px', borderBottom: '1px solid #e8dfc8', marginBottom: 4 },
-  manualText:     { fontSize: 12, color: '#8a7f72' },
-  manualBtn:      { fontSize: 12, fontWeight: 600, color: '#c0521e', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: "'DM Sans', sans-serif" },
-  btnPrimary:     { padding: '8px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  empty:          { padding: '40px 0', textAlign: 'center', color: '#8a7f72', fontSize: 14 },
+function makeStyles(theme) {
+  return {
+    overlay:        { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    modal:          { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 600, maxWidth: '94vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' },
+    modalHeader:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px 0' },
+    modalTitle:     { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text },
+    closeBtn:       { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textSubtle, padding: 4 },
+    searchRow:      { display: 'flex', gap: 10, padding: '16px 24px' },
+    searchInput:    { flex: 1, padding: '9px 14px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgSubtle, color: theme.text },
+    results:        { overflowY: 'auto', padding: '0 24px 20px', flex: 1 },
+    resultRow:      { display: 'flex', gap: 14, alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${theme.borderLight}` },
+    resultCover:    { width: 36, height: 54, flexShrink: 0, borderRadius: 3, overflow: 'hidden', background: theme.border },
+    resultInfo:     { flex: 1, minWidth: 0 },
+    resultTitleRow: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+    resultTitle:    { fontSize: 14, fontWeight: 500, color: theme.text, lineHeight: 1.3 },
+    folioBadge:     { fontSize: 10, fontWeight: 600, color: theme.sage, background: theme.sageLight, borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 },
+    resultAuthor:   { fontSize: 12, color: theme.textSubtle, marginTop: 2 },
+    resultYear:     { fontSize: 11, color: theme.textSubtle, marginTop: 2 },
+    resultActions:  { display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0, alignItems: 'flex-end' },
+    addBtnPrimary:  { padding: '6px 14px', fontSize: 12, background: theme.rust, color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, whiteSpace: 'nowrap' },
+    statusShortcuts:{ display: 'flex', gap: 4 },
+    addBtn:         { padding: '4px 8px', fontSize: 11, background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.text, whiteSpace: 'nowrap' },
+    addBtnLoading:  { opacity: 0.5, cursor: 'not-allowed' },
+    addedConfirm:   { fontSize: 12, color: theme.sage, fontWeight: 500 },
+    manualRow:      { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0 6px', borderBottom: `1px solid ${theme.borderLight}`, marginBottom: 4 },
+    manualText:     { fontSize: 12, color: theme.textSubtle },
+    manualBtn:      { fontSize: 12, fontWeight: 600, color: theme.rust, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: "'DM Sans', sans-serif" },
+    btnPrimary:     { padding: '8px 16px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    empty:          { padding: '40px 0', textAlign: 'center', color: theme.textSubtle, fontSize: 14 },
+  }
 }

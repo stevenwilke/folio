@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
+import { ThemeProvider } from './contexts/ThemeContext'
 import Auth from './pages/Auth'
 import Library from './pages/Library'
 import Profile from './pages/Profile'
@@ -34,6 +35,7 @@ export default function App() {
   if (loading) return null
 
   return (
+    <ThemeProvider>
     <BrowserRouter>
       <Routes>
         <Route
@@ -83,5 +85,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+    </ThemeProvider>
   )
 }

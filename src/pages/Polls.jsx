@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import { useTheme } from '../contexts/ThemeContext'
 
 function timeAgo(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -46,6 +47,7 @@ function UserAvatar({ profile, size = 36 }) {
 
 // ---- POLL CARD ----
 function PollCard({ poll, userId, onVote, onClose }) {
+  const { theme } = useTheme()
   const [hoverOption, setHoverOption] = useState(null)
   const [voting, setVoting] = useState(false)
 
@@ -61,6 +63,34 @@ function PollCard({ poll, userId, onVote, onClose }) {
     setVoting(true)
     await onVote(poll.id, optionId)
     setVoting(false)
+  }
+
+  const s = {
+    pollCard:     { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '20px 22px', borderLeft: `3px solid ${theme.gold}` },
+    pollHeader:   { display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 16 },
+    pollHeaderInfo:{ flex: 1, minWidth: 0 },
+    pollAuthor:   { fontWeight: 700, color: theme.text, fontSize: 14 },
+    pollAsks:     { color: theme.textSubtle, fontSize: 14 },
+    pollQuestion: { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 600, color: theme.text, marginTop: 3 },
+
+    badgeOpen:    { background: theme.sageLight, color: theme.sage, borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' },
+    badgeClosed:  { background: 'rgba(26,18,8,0.07)', color: theme.textSubtle, borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 500 },
+    closeEarlyLink:{ fontSize: 12, color: theme.rust, cursor: 'pointer', textDecoration: 'underline' },
+
+    pollOptions:  { display: 'flex', flexDirection: 'column', gap: 10 },
+    pollOption:   { borderRadius: 10, padding: '12px 14px', cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s', userSelect: 'none' },
+    pollOptionInner:{ display: 'flex', gap: 12, alignItems: 'center' },
+    pollOptionText: { flex: 1, minWidth: 0 },
+    pollOptionTitle:{ fontSize: 14, fontWeight: 600, color: theme.text },
+    pollOptionAuthor:{ fontSize: 12, color: theme.textSubtle, marginTop: 2 },
+    pollVoteCount:{ fontSize: 14, fontWeight: 700, color: theme.text, flexShrink: 0 },
+
+    pollBarTrack: { marginTop: 8, height: 6, background: theme.bgSubtle, borderRadius: 3, overflow: 'hidden' },
+    pollBar:      { height: '100%', borderRadius: 3, minWidth: 4 },
+
+    pollFooter:   { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, paddingTop: 12, borderTop: `1px solid ${theme.borderLight}` },
+    pollVoteTotal:{ fontSize: 12, color: theme.textSubtle, fontWeight: 500 },
+    pollTime:     { fontSize: 12, color: theme.textSubtle },
   }
 
   return (
@@ -92,7 +122,7 @@ function PollCard({ poll, userId, onVote, onClose }) {
           const pct = totalVotes > 0 ? Math.round((optVotes / totalVotes) * 100) : 0
           const isMyChoice = myVote?.option_id === opt.id
           const isLeading = hasVoted && totalVotes > 0 && optVotes === Math.max(...(poll.poll_options || []).map(o => (poll.poll_votes || []).filter(v => v.option_id === o.id).length))
-          const barColor = isLeading ? '#b8860b' : '#5a7a5a'
+          const barColor = isLeading ? theme.gold : theme.sage
 
           return (
             <div
@@ -101,11 +131,11 @@ function PollCard({ poll, userId, onVote, onClose }) {
                 ...s.pollOption,
                 cursor: hasVoted || isClosed ? 'default' : 'pointer',
                 border: isMyChoice
-                  ? '2px solid #c0521e'
+                  ? `2px solid ${theme.rust}`
                   : hoverOption === opt.id && !hasVoted && !isClosed
-                  ? '2px solid #b8860b'
-                  : '2px solid #e8dfc8',
-                background: isMyChoice ? 'rgba(192,82,30,0.04)' : '#fdfaf4',
+                  ? `2px solid ${theme.gold}`
+                  : `2px solid ${theme.borderLight}`,
+                background: isMyChoice ? theme.rustLight : theme.bgCard,
               }}
               onClick={() => handleVote(opt.id)}
               onMouseEnter={() => setHoverOption(opt.id)}
@@ -119,7 +149,7 @@ function PollCard({ poll, userId, onVote, onClose }) {
                 <div style={s.pollOptionText}>
                   <div style={s.pollOptionTitle}>{book?.title}</div>
                   <div style={s.pollOptionAuthor}>{book?.author}</div>
-                  {isMyChoice && <div style={{ fontSize: 11, color: '#c0521e', fontWeight: 600, marginTop: 4 }}>Your vote</div>}
+                  {isMyChoice && <div style={{ fontSize: 11, color: theme.rust, fontWeight: 600, marginTop: 4 }}>Your vote</div>}
                 </div>
                 {hasVoted && (
                   <div style={s.pollVoteCount}>{pct}%</div>
@@ -153,6 +183,7 @@ function PollCard({ poll, userId, onVote, onClose }) {
 
 // ---- CREATE POLL MODAL ----
 function CreatePollModal({ session, onClose, onCreated }) {
+  const { theme } = useTheme()
   const [question, setQuestion] = useState("What should I read next?")
   const [bookSearch, setBookSearch] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -260,6 +291,36 @@ function CreatePollModal({ session, onClose, onCreated }) {
     onCreated()
   }
 
+  const s = {
+    modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 24 },
+    modal:        { background: theme.bgCard, borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: theme.shadow },
+    modalHeader:  { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 16px', borderBottom: `1px solid ${theme.borderLight}` },
+    modalTitle:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 20, fontWeight: 700, color: theme.text },
+    modalClose:   { background: 'none', border: 'none', fontSize: 16, color: theme.textSubtle, cursor: 'pointer', padding: '4px 8px', borderRadius: 6 },
+    modalBody:    { flex: 1, overflowY: 'auto', padding: '20px 24px' },
+    modalFooter:  { display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '16px 24px', borderTop: `1px solid ${theme.borderLight}` },
+
+    label:        { display: 'block', fontSize: 13, fontWeight: 600, color: theme.textMuted, marginBottom: 6 },
+    input:        { width: '100%', padding: '9px 13px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgCard, color: theme.text, boxSizing: 'border-box' },
+    select:       { width: '100%', padding: '9px 13px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgCard, color: theme.text, boxSizing: 'border-box' },
+
+    bookResults:  { border: `1px solid ${theme.border}`, borderRadius: 8, overflow: 'hidden', marginTop: 6, maxHeight: 220, overflowY: 'auto' },
+    bookResultRow:{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 12px', cursor: 'pointer', border: '1px solid transparent', borderRadius: 0, transition: 'background 0.1s' },
+    bookResultHint:{ padding: '14px 12px', fontSize: 13, color: theme.textSubtle, textAlign: 'center' },
+
+    selectedBooks:{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10, alignItems: 'center' },
+    selectedBookChip:{ display: 'flex', alignItems: 'center', gap: 6, background: theme.rustLight, color: theme.rust, borderRadius: 20, padding: '4px 10px', fontSize: 12, fontWeight: 500 },
+    chipRemove:   { cursor: 'pointer', fontSize: 11, opacity: 0.7 },
+
+    shareRow:     { display: 'flex', alignItems: 'center', marginBottom: 10 },
+    radioLabel:   { display: 'flex', alignItems: 'center', fontSize: 14, color: theme.textMuted, cursor: 'pointer' },
+    friendChecklist:{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8, maxHeight: 160, overflowY: 'auto', background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 8, padding: '10px 12px' },
+    checkLabel:   { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 },
+
+    btnPrimary:   { padding: '9px 18px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
+    btnGhost:     { padding: '9px 16px', background: 'transparent', color: theme.textSubtle, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+  }
+
   return (
     <div style={s.modalOverlay} onClick={onClose}>
       <div style={s.modal} onClick={e => e.stopPropagation()}>
@@ -302,7 +363,7 @@ function CreatePollModal({ session, onClose, onCreated }) {
                   return (
                     <div
                       key={book.id}
-                      style={{ ...s.bookResultRow, background: selected ? 'rgba(192,82,30,0.06)' : '#fdfaf4', borderColor: selected ? '#c0521e' : '#e8dfc8' }}
+                      style={{ ...s.bookResultRow, background: selected ? theme.rustLight : theme.bgCard, borderColor: selected ? theme.rust : theme.borderLight }}
                       onClick={() => toggleBook(book)}
                     >
                       {book.cover_image_url
@@ -310,10 +371,10 @@ function CreatePollModal({ session, onClose, onCreated }) {
                         : <FakeCover title={book.title} size={32} />
                       }
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1208' }}>{book.title}</div>
-                        <div style={{ fontSize: 12, color: '#8a7f72' }}>{book.author}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{book.title}</div>
+                        <div style={{ fontSize: 12, color: theme.textSubtle }}>{book.author}</div>
                       </div>
-                      <div style={{ fontSize: 13, color: selected ? '#c0521e' : '#b0a898' }}>
+                      <div style={{ fontSize: 13, color: selected ? theme.rust : theme.textSubtle }}>
                         {selected ? '✓ Added' : '+ Add'}
                       </div>
                     </div>
@@ -332,7 +393,7 @@ function CreatePollModal({ session, onClose, onCreated }) {
                   <span style={s.chipRemove} onClick={() => toggleBook(book)}>✕</span>
                 </div>
               ))}
-              <div style={{ fontSize: 12, color: '#8a7f72', alignSelf: 'center' }}>
+              <div style={{ fontSize: 12, color: theme.textSubtle, alignSelf: 'center' }}>
                 {selectedBooks.length}/6
               </div>
             </div>
@@ -359,10 +420,10 @@ function CreatePollModal({ session, onClose, onCreated }) {
                     type="checkbox"
                     checked={selectedFriends.includes(f.id)}
                     onChange={() => toggleFriend(f.id)}
-                    style={{ accentColor: '#c0521e' }}
+                    style={{ accentColor: theme.rust }}
                   />
                   <UserAvatar profile={f} size={24} />
-                  <span style={{ fontSize: 13, color: '#1a1208', marginLeft: 6 }}>{f.username}</span>
+                  <span style={{ fontSize: 13, color: theme.text, marginLeft: 6 }}>{f.username}</span>
                 </label>
               ))}
             </div>
@@ -398,6 +459,7 @@ function CreatePollModal({ session, onClose, onCreated }) {
 
 // ---- MAIN PAGE ----
 export default function Polls({ session }) {
+  const { theme } = useTheme()
   const [tab, setTab] = useState('active') // 'active' | 'mine' | 'past'
   const [polls, setPolls] = useState([])
   const [loading, setLoading] = useState(true)
@@ -470,6 +532,31 @@ export default function Polls({ session }) {
     { key: 'mine',   label: 'My Polls',     count: myPolls.length },
     { key: 'past',   label: 'Past Polls',   count: pastPolls.length },
   ]
+
+  const s = {
+    page:         { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
+    content:      { maxWidth: 600, margin: '0 auto', padding: '32px 24px' },
+
+    pageHeader:   { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 },
+    pageTitle:    { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 28, fontWeight: 700, color: theme.text, marginBottom: 4 },
+    pageSubtitle: { fontSize: 14, color: theme.textSubtle },
+
+    tabs:         { display: 'flex', gap: 2, marginBottom: 24, borderBottom: `1px solid ${theme.border}`, paddingBottom: 0 },
+    tab:          { padding: '8px 16px', background: 'none', border: 'none', borderBottom: '2px solid transparent', borderRadius: 0, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textSubtle, fontWeight: 500, transition: 'color 0.15s', marginBottom: -1 },
+    tabActive:    { padding: '8px 16px', background: 'none', border: 'none', borderBottom: `2px solid ${theme.rust}`, borderRadius: 0, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.rust, fontWeight: 600, marginBottom: -1 },
+    tabCount:     { marginLeft: 6, background: 'rgba(26,18,8,0.07)', color: theme.textSubtle, borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 500 },
+    tabCountActive:{ marginLeft: 6, background: theme.rustLight, color: theme.rust, borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 600 },
+
+    feed:         { display: 'flex', flexDirection: 'column', gap: 16 },
+
+    empty:        { color: theme.textSubtle, fontSize: 14, padding: '60px 0', textAlign: 'center' },
+    emptyBox:     { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, padding: '60px 32px', textAlign: 'center' },
+    emptyIcon:    { fontSize: 40, marginBottom: 16 },
+    emptyTitle:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 20, fontWeight: 700, color: theme.text, marginBottom: 8 },
+    emptyText:    { fontSize: 14, color: theme.textSubtle, marginBottom: 24 },
+
+    btnPrimary:   { padding: '9px 18px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
+  }
 
   return (
     <div style={s.page}>
@@ -551,84 +638,4 @@ export default function Polls({ session }) {
       )}
     </div>
   )
-}
-
-// ---- STYLES ----
-const s = {
-  page:         { minHeight: '100vh', background: '#f5f0e8', fontFamily: "'DM Sans', sans-serif" },
-  content:      { maxWidth: 600, margin: '0 auto', padding: '32px 24px' },
-
-  pageHeader:   { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 },
-  pageTitle:    { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 28, fontWeight: 700, color: '#1a1208', marginBottom: 4 },
-  pageSubtitle: { fontSize: 14, color: '#8a7f72' },
-
-  tabs:         { display: 'flex', gap: 2, marginBottom: 24, borderBottom: '1px solid #d4c9b0', paddingBottom: 0 },
-  tab:          { padding: '8px 16px', background: 'none', border: 'none', borderBottom: '2px solid transparent', borderRadius: 0, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#8a7f72', fontWeight: 500, transition: 'color 0.15s', marginBottom: -1 },
-  tabActive:    { padding: '8px 16px', background: 'none', border: 'none', borderBottom: '2px solid #c0521e', borderRadius: 0, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0521e', fontWeight: 600, marginBottom: -1 },
-  tabCount:     { marginLeft: 6, background: 'rgba(26,18,8,0.07)', color: '#8a7f72', borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 500 },
-  tabCountActive:{ marginLeft: 6, background: 'rgba(192,82,30,0.12)', color: '#c0521e', borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 600 },
-
-  feed:         { display: 'flex', flexDirection: 'column', gap: 16 },
-
-  pollCard:     { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, padding: '20px 22px', borderLeft: '3px solid #b8860b' },
-  pollHeader:   { display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 16 },
-  pollHeaderInfo:{ flex: 1, minWidth: 0 },
-  pollAuthor:   { fontWeight: 700, color: '#1a1208', fontSize: 14 },
-  pollAsks:     { color: '#8a7f72', fontSize: 14 },
-  pollQuestion: { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 600, color: '#1a1208', marginTop: 3 },
-
-  badgeOpen:    { background: 'rgba(90,122,90,0.12)', color: '#5a7a5a', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' },
-  badgeClosed:  { background: 'rgba(26,18,8,0.07)', color: '#8a7f72', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 500 },
-  closeEarlyLink:{ fontSize: 12, color: '#c0521e', cursor: 'pointer', textDecoration: 'underline' },
-
-  pollOptions:  { display: 'flex', flexDirection: 'column', gap: 10 },
-  pollOption:   { borderRadius: 10, padding: '12px 14px', cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s', userSelect: 'none' },
-  pollOptionInner:{ display: 'flex', gap: 12, alignItems: 'center' },
-  pollOptionText: { flex: 1, minWidth: 0 },
-  pollOptionTitle:{ fontSize: 14, fontWeight: 600, color: '#1a1208' },
-  pollOptionAuthor:{ fontSize: 12, color: '#8a7f72', marginTop: 2 },
-  pollVoteCount:{ fontSize: 14, fontWeight: 700, color: '#1a1208', flexShrink: 0 },
-
-  pollBarTrack: { marginTop: 8, height: 6, background: '#e8dfc8', borderRadius: 3, overflow: 'hidden' },
-  pollBar:      { height: '100%', borderRadius: 3, minWidth: 4 },
-
-  pollFooter:   { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, paddingTop: 12, borderTop: '1px solid #e8dfc8' },
-  pollVoteTotal:{ fontSize: 12, color: '#8a7f72', fontWeight: 500 },
-  pollTime:     { fontSize: 12, color: '#8a7f72' },
-
-  empty:        { color: '#8a7f72', fontSize: 14, padding: '60px 0', textAlign: 'center' },
-  emptyBox:     { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, padding: '60px 32px', textAlign: 'center' },
-  emptyIcon:    { fontSize: 40, marginBottom: 16 },
-  emptyTitle:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 20, fontWeight: 700, color: '#1a1208', marginBottom: 8 },
-  emptyText:    { fontSize: 14, color: '#8a7f72', marginBottom: 24 },
-
-  // Buttons
-  btnPrimary:   { padding: '9px 18px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
-  btnGhost:     { padding: '9px 16px', background: 'transparent', color: '#8a7f72', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-
-  // Modal
-  modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 24 },
-  modal:        { background: '#fdfaf4', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(26,18,8,0.25)' },
-  modalHeader:  { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 16px', borderBottom: '1px solid #e8dfc8' },
-  modalTitle:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 20, fontWeight: 700, color: '#1a1208' },
-  modalClose:   { background: 'none', border: 'none', fontSize: 16, color: '#8a7f72', cursor: 'pointer', padding: '4px 8px', borderRadius: 6 },
-  modalBody:    { flex: 1, overflowY: 'auto', padding: '20px 24px' },
-  modalFooter:  { display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '16px 24px', borderTop: '1px solid #e8dfc8' },
-
-  label:        { display: 'block', fontSize: 13, fontWeight: 600, color: '#3a3028', marginBottom: 6 },
-  input:        { width: '100%', padding: '9px 13px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
-  select:       { width: '100%', padding: '9px 13px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
-
-  bookResults:  { border: '1px solid #d4c9b0', borderRadius: 8, overflow: 'hidden', marginTop: 6, maxHeight: 220, overflowY: 'auto' },
-  bookResultRow:{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 12px', cursor: 'pointer', border: '1px solid transparent', borderRadius: 0, transition: 'background 0.1s' },
-  bookResultHint:{ padding: '14px 12px', fontSize: 13, color: '#8a7f72', textAlign: 'center' },
-
-  selectedBooks:{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10, alignItems: 'center' },
-  selectedBookChip:{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(192,82,30,0.1)', color: '#c0521e', borderRadius: 20, padding: '4px 10px', fontSize: 12, fontWeight: 500 },
-  chipRemove:   { cursor: 'pointer', fontSize: 11, opacity: 0.7 },
-
-  shareRow:     { display: 'flex', alignItems: 'center', marginBottom: 10 },
-  radioLabel:   { display: 'flex', alignItems: 'center', fontSize: 14, color: '#3a3028', cursor: 'pointer' },
-  friendChecklist:{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8, maxHeight: 160, overflowY: 'auto', background: 'white', border: '1px solid #d4c9b0', borderRadius: 8, padding: '10px 12px' },
-  checkLabel:   { display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 },
 }

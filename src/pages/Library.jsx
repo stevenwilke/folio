@@ -5,6 +5,7 @@ import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
 import SearchModal from '../components/SearchModal'
 import GoodreadsImportModal from '../components/GoodreadsImportModal'
+import { useTheme } from '../contexts/ThemeContext'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -21,6 +22,7 @@ const STATUS_COLORS = {
 
 export default function Library({ session }) {
   const navigate = useNavigate()
+  const { theme } = useTheme()
   const [books, setBooks]             = useState([])
   const [loading, setLoading]         = useState(true)
   const [filter, setFilter]           = useState('all')
@@ -155,6 +157,90 @@ export default function Library({ session }) {
     fetchCollection()
   }
 
+  const s = {
+    page:           { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
+    topbar:         { position: 'sticky', top: 0, zIndex: 10, background: theme.bg, backdropFilter: 'blur(8px)', borderBottom: `1px solid ${theme.border}`, padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+    logo:           { fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, color: theme.text, cursor: 'pointer' },
+    topbarRight:    { display: 'flex', gap: 10, alignItems: 'center' },
+    content:        { padding: '28px 32px' },
+    statsRow:       { display: 'flex', gap: 14, marginBottom: 28 },
+    statCard:       { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '18px 22px', flex: 1, transition: 'box-shadow 0.15s' },
+    statVal:        { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700 },
+    statLabel:      { fontSize: 11, color: theme.textSubtle, marginTop: 4, textTransform: 'uppercase', letterSpacing: 1 },
+    filterRow:      { display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' },
+    filterActive:   { padding: '7px 16px', borderRadius: 8, border: 'none', background: theme.rust, color: 'white', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    filterInactive: { padding: '7px 16px', borderRadius: 8, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.text, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    grid:           { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: 24 },
+    card:           { cursor: 'pointer', transition: 'transform 0.18s, box-shadow 0.18s' },
+    cardHover:      { transform: 'translateY(-4px)' },
+    coverWrap:      { width: '100%', aspectRatio: '2/3' },
+    coverImg:       { width: '100%', height: '100%', objectFit: 'cover', borderRadius: 5, boxShadow: '2px 3px 10px rgba(26,18,8,0.2)' },
+    fakeCover:      { width: '100%', height: '100%', borderRadius: 5, display: 'flex', alignItems: 'flex-end', padding: '8px 8px 8px 14px', position: 'relative', overflow: 'hidden', boxShadow: '2px 3px 10px rgba(26,18,8,0.2)' },
+    fakeSpine:      { position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, background: 'rgba(0,0,0,0.2)' },
+    fakeCoverText:  { fontSize: 9, fontWeight: 500, color: 'rgba(255,255,255,0.9)', textShadow: '0 1px 2px rgba(0,0,0,0.5)', lineHeight: 1.3, position: 'relative', zIndex: 1 },
+    bookTitle:      { fontSize: 13, fontWeight: 500, lineHeight: 1.3, color: theme.text },
+    bookAuthor:     { fontSize: 12, color: theme.textSubtle, marginTop: 2 },
+    badge:          { display: 'inline-block', fontSize: 10, padding: '2px 8px', borderRadius: 20, fontWeight: 500 },
+    menu:           { position: 'absolute', top: '100%', left: 0, marginTop: 4, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 8, zIndex: 20, minWidth: 160, boxShadow: theme.shadow },
+    menuItem:       { padding: '8px 14px', fontSize: 13, cursor: 'pointer', color: theme.textMuted },
+    empty:          { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 0', gap: 12, color: theme.textSubtle },
+    skeleton:       { background: theme.bgSubtle, borderRadius: 5, aspectRatio: '2/3', width: '100%' },
+    btnPrimary:     { padding: '8px 16px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnGhost:       { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textMuted },
+    navLinkActive:  { padding: '6px 12px', background: 'rgba(192,82,30,0.1)', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.rust, fontWeight: 600 },
+    overlay:        { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    modal:          { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 600, maxWidth: '94vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' },
+    modalHeader:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px 0' },
+    modalTitle:     { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text },
+    closeBtn:       { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textSubtle, padding: 4 },
+    searchRow:      { display: 'flex', gap: 10, padding: '16px 24px' },
+    searchInput:    { flex: 1, padding: '9px 14px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgCard, color: theme.text },
+    results:        { overflowY: 'auto', padding: '0 24px 20px', flex: 1 },
+    resultRow:      { display: 'flex', gap: 14, alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${theme.borderLight}` },
+    resultCover:    { width: 36, height: 54, flexShrink: 0, borderRadius: 3, overflow: 'hidden', background: theme.border },
+    resultInfo:     { flex: 1 },
+    resultTitle:    { fontSize: 14, fontWeight: 500, color: theme.text, lineHeight: 1.3 },
+    resultAuthor:   { fontSize: 12, color: theme.textSubtle, marginTop: 2 },
+    resultYear:     { fontSize: 11, color: theme.textSubtle, marginTop: 2 },
+    resultActions:  { display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0, alignItems: 'flex-end' },
+    addBtnPrimary:  { padding: '6px 14px', fontSize: 12, background: theme.rust, color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, whiteSpace: 'nowrap' },
+    statusShortcuts:{ display: 'flex', gap: 4 },
+    addBtn:         { padding: '4px 8px', fontSize: 11, background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.text, whiteSpace: 'nowrap' },
+    addBtnLoading:  { opacity: 0.5, cursor: 'not-allowed' },
+    addedConfirm:   { fontSize: 12, color: theme.sage, fontWeight: 500 },
+
+    bellBtn:        { position: 'relative', background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 8, padding: '7px 10px', cursor: 'pointer', color: theme.text, display: 'flex', alignItems: 'center' },
+    bellBadge:      { position: 'absolute', top: -6, right: -6, background: theme.rust, color: 'white', borderRadius: '50%', width: 18, height: 18, fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    reqDropdown:    { position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, minWidth: 320, boxShadow: theme.shadow, zIndex: 100 },
+    reqHeader:      { padding: '14px 16px 10px', fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, color: theme.text, borderBottom: `1px solid ${theme.borderLight}`, display: 'flex', alignItems: 'center', gap: 8 },
+    reqCount:       { background: 'rgba(192,82,30,0.1)', color: theme.rust, borderRadius: 20, padding: '1px 8px', fontSize: 12, fontWeight: 600 },
+    reqEmpty:       { padding: '20px 16px', fontSize: 13, color: theme.textSubtle, textAlign: 'center' },
+    reqRow:         { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: `1px solid ${theme.borderLight}` },
+    reqAvatar:      { width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 14, flexShrink: 0 },
+    reqUsername:    { fontSize: 14, fontWeight: 600, color: theme.text, cursor: 'pointer' },
+    reqSub:         { fontSize: 12, color: theme.textSubtle, marginTop: 1 },
+    reqAccept:      { padding: '5px 12px', background: theme.rust, color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    reqDecline:     { padding: '5px 12px', background: 'transparent', color: theme.textSubtle, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+
+    forSaleBadge:   { position: 'absolute', bottom: 6, right: 6, background: theme.sage, color: 'white', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, letterSpacing: 0.3 },
+    cardSelected:   { outline: `2px solid ${theme.rust}`, borderRadius: 6 },
+    bulkBar:        { position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, background: theme.bgCard, borderTop: `1px solid ${theme.border}`, boxShadow: '0 -4px 20px rgba(26,18,8,0.1)', padding: '14px 32px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' },
+    bulkCount:      { fontSize: 14, fontWeight: 600, color: theme.text, marginRight: 4 },
+    bulkSelect:     { padding: '7px 10px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", background: theme.bgCard, color: theme.text, cursor: 'pointer', outline: 'none' },
+    bulkBtn:        { padding: '7px 16px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    bulkBtnDanger:  { background: theme.bgCard, color: '#c0392b', border: '1px solid #f5c6c6' },
+    bulkBtnCancel:  { padding: '7px 14px', background: 'none', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textSubtle },
+    fieldGroup:     { marginBottom: 18 },
+    fieldLabel:     { display: 'block', fontSize: 11, fontWeight: 600, color: theme.textMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+    priceInputWrap: { display: 'flex', alignItems: 'center', border: `1px solid ${theme.border}`, borderRadius: 8, overflow: 'hidden', background: theme.bgCard, width: 140 },
+    priceDollar:    { padding: '9px 10px 9px 14px', fontSize: 15, color: theme.textSubtle, background: theme.bg, borderRight: `1px solid ${theme.border}` },
+    priceInput:     { flex: 1, padding: '9px 12px', border: 'none', outline: 'none', fontSize: 15, fontFamily: "'DM Sans', sans-serif", color: theme.text, background: theme.bgCard },
+    condRow:        { display: 'flex', gap: 6, flexWrap: 'wrap' },
+    condBtn:        { padding: '6px 12px', fontSize: 12, background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 20, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textMuted },
+    condBtnActive:  { background: theme.rust, color: 'white', border: `1px solid ${theme.rust}` },
+    textarea:       { width: '100%', padding: '10px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: theme.bgCard, color: theme.text, boxSizing: 'border-box' },
+  }
+
   return (
     <div style={s.page}>
       <NavBar session={session} />
@@ -172,7 +258,7 @@ export default function Library({ session }) {
               : []),
           ].map(([label, val, color, icon]) => (
             <div key={label} style={s.statCard}>
-              <div style={{ ...s.statVal, color: color || '#1a1208' }}>{icon} {val}</div>
+              <div style={{ ...s.statVal, color: color || theme.text }}>{icon} {val}</div>
               <div style={s.statLabel}>{label}</div>
             </div>
           ))}
@@ -190,7 +276,7 @@ export default function Library({ session }) {
 
         {/* Sort pills + Select toggle */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: '#8a7f72', fontWeight: 500 }}>Sort:</span>
+          <span style={{ fontSize: 12, color: theme.textSubtle, fontWeight: 500 }}>Sort:</span>
           {[
             { key: 'added',  label: 'Date Added' },
             { key: 'title',  label: 'Title' },
@@ -206,7 +292,7 @@ export default function Library({ session }) {
           ))}
           <div style={{ marginLeft: 'auto' }}>
             <button
-              style={selectMode ? s.filterActive : { ...s.filterInactive, borderColor: '#b8860b', color: '#b8860b' }}
+              style={selectMode ? s.filterActive : { ...s.filterInactive, borderColor: theme.gold, color: theme.gold }}
               onClick={toggleSelectMode}
             >
               {selectMode ? '✕ Cancel Select' : '✓ Select'}
@@ -216,7 +302,7 @@ export default function Library({ session }) {
 
         {/* Import button */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-          <button style={{ ...s.filterInactive, color: '#5a7a5a', borderColor: '#5a7a5a' }} onClick={() => setShowImport(true)}>
+          <button style={{ ...s.filterInactive, color: theme.sage, borderColor: theme.sage }} onClick={() => setShowImport(true)}>
             📥 Import from Goodreads
           </button>
         </div>
@@ -285,7 +371,7 @@ export default function Library({ session }) {
 
       {/* Book detail overlay */}
       {selectedBook && (
-        <div style={{ position: 'fixed', inset: 0, background: '#f5f0e8', zIndex: 40, overflowY: 'auto', isolation: 'isolate' }}>
+        <div style={{ position: 'fixed', inset: 0, background: theme.bg, zIndex: 40, overflowY: 'auto', isolation: 'isolate' }}>
           <BookDetail
             bookId={selectedBook}
             session={session}
@@ -337,6 +423,7 @@ export default function Library({ session }) {
 
 // ---- BOOK CARD ----
 function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMode, isSelected }) {
+  const { theme } = useTheme()
   const book   = entry.books
   const status = entry.read_status
   const [menuOpen, setMenuOpen] = useState(false)
@@ -357,6 +444,20 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
     onUpdate()
   }
 
+  const s = {
+    card:       { cursor: 'pointer', transition: 'transform 0.18s, box-shadow 0.18s' },
+    cardHover:  { transform: 'translateY(-4px)' },
+    cardSelected: { outline: `2px solid ${theme.rust}`, borderRadius: 6 },
+    coverWrap:  { width: '100%', aspectRatio: '2/3' },
+    coverImg:   { width: '100%', height: '100%', objectFit: 'cover', borderRadius: 5, boxShadow: '2px 3px 10px rgba(26,18,8,0.2)' },
+    bookTitle:  { fontSize: 13, fontWeight: 500, lineHeight: 1.3, color: theme.text },
+    bookAuthor: { fontSize: 12, color: theme.textSubtle, marginTop: 2 },
+    badge:      { display: 'inline-block', fontSize: 10, padding: '2px 8px', borderRadius: 20, fontWeight: 500 },
+    menu:       { position: 'absolute', top: '100%', left: 0, marginTop: 4, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 8, zIndex: 20, minWidth: 160, boxShadow: theme.shadow },
+    menuItem:   { padding: '8px 14px', fontSize: 13, cursor: 'pointer', color: theme.textMuted },
+    forSaleBadge: { position: 'absolute', bottom: 6, right: 6, background: theme.sage, color: 'white', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, letterSpacing: 0.3 },
+  }
+
   return (
     <div
       style={{
@@ -374,8 +475,8 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
         <div style={{
           position: 'absolute', top: 6, left: 6, zIndex: 10,
           width: 22, height: 22, borderRadius: '50%',
-          background: isSelected ? '#c0521e' : 'rgba(255,255,255,0.85)',
-          border: `2px solid ${isSelected ? '#c0521e' : '#d4c9b0'}`,
+          background: isSelected ? theme.rust : 'rgba(255,255,255,0.85)',
+          border: `2px solid ${isSelected ? theme.rust : theme.border}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', backdropFilter: 'blur(4px)',
           transition: 'all 0.15s',
@@ -390,9 +491,9 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
           style={{
             position: 'absolute', top: 6, right: 6, zIndex: 10,
             width: 22, height: 22, borderRadius: '50%',
-            background: 'rgba(255,255,255,0.9)', border: '1px solid #d4c9b0',
+            background: theme.bgCard, border: `1px solid ${theme.border}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', fontSize: 11, color: '#c0521e', fontWeight: 700,
+            cursor: 'pointer', fontSize: 11, color: theme.rust, fontWeight: 700,
             backdropFilter: 'blur(4px)',
           }}
           onClick={e => {
@@ -425,21 +526,21 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
                   <div key={val} style={{
                     ...s.menuItem,
                     fontWeight: val === status ? 600 : 400,
-                    color: val === status ? '#1a1208' : '#3a3028',
+                    color: val === status ? theme.text : theme.textMuted,
                   }} onClick={e => { e.stopPropagation(); changeStatus(val) }}>
                     {val === status ? '✓ ' : ''}{label}
                   </div>
                 ))}
                 {entry.read_status === 'owned' && (
                   <div
-                    style={{ ...s.menuItem, color: '#5a7a5a', borderTop: '1px solid #e8dfc8', marginTop: 4 }}
+                    style={{ ...s.menuItem, color: theme.sage, borderTop: `1px solid ${theme.borderLight}`, marginTop: 4 }}
                     onClick={e => { e.stopPropagation(); setMenuOpen(false); onListForSale() }}
                   >
                     List for sale
                   </div>
                 )}
                 <div
-                  style={{ ...s.menuItem, borderTop: '1px solid #e8dfc8', color: '#c0521e', marginTop: 4 }}
+                  style={{ ...s.menuItem, borderTop: `1px solid ${theme.borderLight}`, color: theme.rust, marginTop: 4 }}
                   onClick={e => { e.stopPropagation(); removeBook() }}
                 >
                   Remove from library
@@ -463,9 +564,9 @@ function FakeCover({ title }) {
   const color  = colors[title.charCodeAt(0) % colors.length]
   const color2 = colors[(title.charCodeAt(0) + 3) % colors.length]
   return (
-    <div style={{ ...s.fakeCover, background: `linear-gradient(135deg, ${color}, ${color2})` }}>
-      <div style={s.fakeSpine} />
-      <span style={s.fakeCoverText}>{title}</span>
+    <div style={{ width: '100%', height: '100%', borderRadius: 5, display: 'flex', alignItems: 'flex-end', padding: '8px 8px 8px 14px', position: 'relative', overflow: 'hidden', boxShadow: '2px 3px 10px rgba(26,18,8,0.2)', background: `linear-gradient(135deg, ${color}, ${color2})` }}>
+      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, background: 'rgba(0,0,0,0.2)' }} />
+      <span style={{ fontSize: 9, fontWeight: 500, color: 'rgba(255,255,255,0.9)', textShadow: '0 1px 2px rgba(0,0,0,0.5)', lineHeight: 1.3, position: 'relative', zIndex: 1 }}>{title}</span>
     </div>
   )
 }
@@ -480,6 +581,7 @@ const CONDITION_OPTIONS = [
 ]
 
 function ListingModal({ session, entry, onClose, onSuccess }) {
+  const { theme } = useTheme()
   const book = entry.books
   const [price, setPrice]         = useState('')
   const [condition, setCondition] = useState('good')
@@ -510,13 +612,32 @@ function ListingModal({ session, entry, onClose, onSuccess }) {
     }
   }
 
+  const s = {
+    overlay:        { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    modal:          { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 600, maxWidth: '94vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' },
+    modalHeader:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px 0' },
+    modalTitle:     { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text },
+    closeBtn:       { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textSubtle, padding: 4 },
+    fieldGroup:     { marginBottom: 18 },
+    fieldLabel:     { display: 'block', fontSize: 11, fontWeight: 600, color: theme.textMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+    priceInputWrap: { display: 'flex', alignItems: 'center', border: `1px solid ${theme.border}`, borderRadius: 8, overflow: 'hidden', background: theme.bgCard, width: 140 },
+    priceDollar:    { padding: '9px 10px 9px 14px', fontSize: 15, color: theme.textSubtle, background: theme.bg, borderRight: `1px solid ${theme.border}` },
+    priceInput:     { flex: 1, padding: '9px 12px', border: 'none', outline: 'none', fontSize: 15, fontFamily: "'DM Sans', sans-serif", color: theme.text, background: theme.bgCard },
+    condRow:        { display: 'flex', gap: 6, flexWrap: 'wrap' },
+    condBtn:        { padding: '6px 12px', fontSize: 12, background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 20, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textMuted },
+    condBtnActive:  { background: theme.rust, color: 'white', border: `1px solid ${theme.rust}` },
+    textarea:       { width: '100%', padding: '10px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: theme.bgCard, color: theme.text, boxSizing: 'border-box' },
+    btnPrimary:     { padding: '8px 16px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnGhost:       { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textMuted },
+  }
+
   return (
     <div style={s.overlay} onClick={onClose}>
       <div style={s.modal} onClick={e => e.stopPropagation()}>
         <div style={s.modalHeader}>
           <div>
             <div style={s.modalTitle}>List for Sale</div>
-            <div style={{ fontSize: 13, color: '#8a7f72', marginTop: 3 }}>{book.title}</div>
+            <div style={{ fontSize: 13, color: theme.textSubtle, marginTop: 3 }}>{book.title}</div>
           </div>
           <button style={s.closeBtn} onClick={onClose}>✕</button>
         </div>
@@ -564,7 +685,7 @@ function ListingModal({ session, entry, onClose, onSuccess }) {
               rows={3}
             />
           </div>
-          {error && <div style={{ color: '#c0521e', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+          {error && <div style={{ color: theme.rust, fontSize: 13, marginBottom: 12 }}>{error}</div>}
           <div style={{ display: 'flex', gap: 8 }}>
             <button style={s.btnPrimary} onClick={submit} disabled={submitting}>
               {submitting ? 'Listing…' : 'List for Sale'}
@@ -575,89 +696,4 @@ function ListingModal({ session, entry, onClose, onSuccess }) {
       </div>
     </div>
   )
-}
-
-// ---- STYLES ----
-const s = {
-  page:           { minHeight: '100vh', background: '#f5f0e8', fontFamily: "'DM Sans', sans-serif" },
-  topbar:         { position: 'sticky', top: 0, zIndex: 10, background: 'rgba(245,240,232,0.92)', backdropFilter: 'blur(8px)', borderBottom: '1px solid #d4c9b0', padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  logo:           { fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, color: '#1a1208', cursor: 'pointer' },
-  topbarRight:    { display: 'flex', gap: 10, alignItems: 'center' },
-  content:        { padding: '28px 32px' },
-  statsRow:       { display: 'flex', gap: 14, marginBottom: 28 },
-  statCard:       { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, padding: '18px 22px', flex: 1, transition: 'box-shadow 0.15s' },
-  statVal:        { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700 },
-  statLabel:      { fontSize: 11, color: '#8a7f72', marginTop: 4, textTransform: 'uppercase', letterSpacing: 1 },
-  filterRow:      { display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' },
-  filterActive:   { padding: '7px 16px', borderRadius: 8, border: 'none', background: '#c0521e', color: 'white', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  filterInactive: { padding: '7px 16px', borderRadius: 8, border: '1px solid #d4c9b0', background: 'transparent', color: '#1a1208', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  grid:           { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: 24 },
-  card:           { cursor: 'pointer', transition: 'transform 0.18s, box-shadow 0.18s' },
-  cardHover:      { transform: 'translateY(-4px)' },
-  coverWrap:      { width: '100%', aspectRatio: '2/3' },
-  coverImg:       { width: '100%', height: '100%', objectFit: 'cover', borderRadius: 5, boxShadow: '2px 3px 10px rgba(26,18,8,0.2)' },
-  fakeCover:      { width: '100%', height: '100%', borderRadius: 5, display: 'flex', alignItems: 'flex-end', padding: '8px 8px 8px 14px', position: 'relative', overflow: 'hidden', boxShadow: '2px 3px 10px rgba(26,18,8,0.2)' },
-  fakeSpine:      { position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, background: 'rgba(0,0,0,0.2)' },
-  fakeCoverText:  { fontSize: 9, fontWeight: 500, color: 'rgba(255,255,255,0.9)', textShadow: '0 1px 2px rgba(0,0,0,0.5)', lineHeight: 1.3, position: 'relative', zIndex: 1 },
-  bookTitle:      { fontSize: 13, fontWeight: 500, lineHeight: 1.3, color: '#1a1208' },
-  bookAuthor:     { fontSize: 12, color: '#8a7f72', marginTop: 2 },
-  badge:          { display: 'inline-block', fontSize: 10, padding: '2px 8px', borderRadius: 20, fontWeight: 500 },
-  menu:           { position: 'absolute', top: '100%', left: 0, marginTop: 4, background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 8, zIndex: 20, minWidth: 160, boxShadow: '0 4px 16px rgba(26,18,8,0.12)' },
-  menuItem:       { padding: '8px 14px', fontSize: 13, cursor: 'pointer', color: '#3a3028' },
-  empty:          { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px 0', gap: 12, color: '#8a7f72' },
-  skeleton:       { background: '#e8e0d4', borderRadius: 5, aspectRatio: '2/3', width: '100%' },
-  btnPrimary:     { padding: '8px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnGhost:       { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
-  navLinkActive:  { padding: '6px 12px', background: 'rgba(192,82,30,0.1)', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0521e', fontWeight: 600 },
-  overlay:        { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  modal:          { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, width: 600, maxWidth: '94vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' },
-  modalHeader:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px 0' },
-  modalTitle:     { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: '#1a1208' },
-  closeBtn:       { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#8a7f72', padding: 4 },
-  searchRow:      { display: 'flex', gap: 10, padding: '16px 24px' },
-  searchInput:    { flex: 1, padding: '9px 14px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208' },
-  results:        { overflowY: 'auto', padding: '0 24px 20px', flex: 1 },
-  resultRow:      { display: 'flex', gap: 14, alignItems: 'center', padding: '14px 0', borderBottom: '1px solid #e8dfc8' },
-  resultCover:    { width: 36, height: 54, flexShrink: 0, borderRadius: 3, overflow: 'hidden', background: '#d4c9b0' },
-  resultInfo:     { flex: 1 },
-  resultTitle:    { fontSize: 14, fontWeight: 500, color: '#1a1208', lineHeight: 1.3 },
-  resultAuthor:   { fontSize: 12, color: '#8a7f72', marginTop: 2 },
-  resultYear:     { fontSize: 11, color: '#8a7f72', marginTop: 2 },
-  resultActions:  { display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0, alignItems: 'flex-end' },
-  addBtnPrimary:  { padding: '6px 14px', fontSize: 12, background: '#c0521e', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, whiteSpace: 'nowrap' },
-  statusShortcuts:{ display: 'flex', gap: 4 },
-  addBtn:         { padding: '4px 8px', fontSize: 11, background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#1a1208', whiteSpace: 'nowrap' },
-  addBtnLoading:  { opacity: 0.5, cursor: 'not-allowed' },
-  addedConfirm:   { fontSize: 12, color: '#5a7a5a', fontWeight: 500 },
-
-  bellBtn:        { position: 'relative', background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', color: '#1a1208', display: 'flex', alignItems: 'center' },
-  bellBadge:      { position: 'absolute', top: -6, right: -6, background: '#c0521e', color: 'white', borderRadius: '50%', width: 18, height: 18, fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  reqDropdown:    { position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 12, minWidth: 320, boxShadow: '0 8px 24px rgba(26,18,8,0.12)', zIndex: 100 },
-  reqHeader:      { padding: '14px 16px 10px', fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, color: '#1a1208', borderBottom: '1px solid #e8dfc8', display: 'flex', alignItems: 'center', gap: 8 },
-  reqCount:       { background: 'rgba(192,82,30,0.1)', color: '#c0521e', borderRadius: 20, padding: '1px 8px', fontSize: 12, fontWeight: 600 },
-  reqEmpty:       { padding: '20px 16px', fontSize: 13, color: '#8a7f72', textAlign: 'center' },
-  reqRow:         { display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #f0e8d8' },
-  reqAvatar:      { width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 14, flexShrink: 0 },
-  reqUsername:    { fontSize: 14, fontWeight: 600, color: '#1a1208', cursor: 'pointer' },
-  reqSub:         { fontSize: 12, color: '#8a7f72', marginTop: 1 },
-  reqAccept:      { padding: '5px 12px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  reqDecline:     { padding: '5px 12px', background: 'transparent', color: '#8a7f72', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-
-  forSaleBadge:   { position: 'absolute', bottom: 6, right: 6, background: '#5a7a5a', color: 'white', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, letterSpacing: 0.3 },
-  cardSelected:   { outline: '2px solid #c0521e', borderRadius: 6 },
-  bulkBar:        { position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, background: 'white', borderTop: '1px solid #d4c9b0', boxShadow: '0 -4px 20px rgba(26,18,8,0.1)', padding: '14px 32px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' },
-  bulkCount:      { fontSize: 14, fontWeight: 600, color: '#1a1208', marginRight: 4 },
-  bulkSelect:     { padding: '7px 10px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", background: 'white', color: '#1a1208', cursor: 'pointer', outline: 'none' },
-  bulkBtn:        { padding: '7px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  bulkBtnDanger:  { background: 'white', color: '#c0392b', border: '1px solid #f5c6c6' },
-  bulkBtnCancel:  { padding: '7px 14px', background: 'none', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#8a7f72' },
-  fieldGroup:     { marginBottom: 18 },
-  fieldLabel:     { display: 'block', fontSize: 11, fontWeight: 600, color: '#3a3028', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
-  priceInputWrap: { display: 'flex', alignItems: 'center', border: '1px solid #d4c9b0', borderRadius: 8, overflow: 'hidden', background: 'white', width: 140 },
-  priceDollar:    { padding: '9px 10px 9px 14px', fontSize: 15, color: '#8a7f72', background: '#f5f0e8', borderRight: '1px solid #d4c9b0' },
-  priceInput:     { flex: 1, padding: '9px 12px', border: 'none', outline: 'none', fontSize: 15, fontFamily: "'DM Sans', sans-serif", color: '#1a1208', background: 'white' },
-  condRow:        { display: 'flex', gap: 6, flexWrap: 'wrap' },
-  condBtn:        { padding: '6px 12px', fontSize: 12, background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 20, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
-  condBtnActive:  { background: '#c0521e', color: 'white', border: '1px solid #c0521e' },
-  textarea:       { width: '100%', padding: '10px 12px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
 }

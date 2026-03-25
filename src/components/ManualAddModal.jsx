@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { useTheme } from '../contexts/ThemeContext'
 
 const FORMATS  = ['Hardcover', 'Paperback', 'Mass Market Paperback', 'eBook', 'Audiobook', 'Other']
 const GENRES   = ['Fiction', 'Non-Fiction', 'Mystery', 'Thriller', 'Science Fiction', 'Fantasy', 'Romance', 'Historical Fiction', 'Horror', 'Biography', 'Memoir', 'Self-Help', 'Business', 'Science', 'History', 'Travel', 'Cooking', 'Art', 'Poetry', 'Graphic Novel', 'Children\'s', 'Young Adult', 'Other']
@@ -11,6 +12,7 @@ const STATUSES = [
 ]
 
 export default function ManualAddModal({ session, onClose, onAdded = () => {} }) {
+  const { theme } = useTheme()
   const fileRef = useRef(null)
 
   // Cover
@@ -138,6 +140,8 @@ export default function ManualAddModal({ session, onClose, onAdded = () => {} })
     onAdded()
   }
 
+  const s = makeStyles(theme)
+
   return (
     <div style={s.overlay} onClick={onClose}>
       <div style={s.modal} onClick={e => e.stopPropagation()}>
@@ -198,13 +202,13 @@ export default function ManualAddModal({ session, onClose, onAdded = () => {} })
             {/* Basic */}
             <div style={s.formSection}>
               <div style={s.sectionLabel}>Basic Info</div>
-              <Field label="Title" required error={errors.title}>
+              <Field label="Title" required error={errors.title} theme={theme}>
                 <input style={s.input} value={title} onChange={e => setTitle(e.target.value)} placeholder="Book title" />
               </Field>
-              <Field label="Author" required error={errors.author}>
+              <Field label="Author" required error={errors.author} theme={theme}>
                 <input style={s.input} value={author} onChange={e => setAuthor(e.target.value)} placeholder="Author name" />
               </Field>
-              <Field label="Description / Synopsis">
+              <Field label="Description / Synopsis" theme={theme}>
                 <textarea style={{ ...s.input, ...s.textarea }} value={description} onChange={e => setDescription(e.target.value)} placeholder="What's the book about?" rows={4} />
               </Field>
             </div>
@@ -213,28 +217,28 @@ export default function ManualAddModal({ session, onClose, onAdded = () => {} })
             <div style={s.formSection}>
               <div style={s.sectionLabel}>Publishing</div>
               <div style={s.row2}>
-                <Field label="Publisher">
+                <Field label="Publisher" theme={theme}>
                   <input style={s.input} value={publisher} onChange={e => setPublisher(e.target.value)} placeholder="Publisher name" />
                 </Field>
-                <Field label="Year Published">
+                <Field label="Year Published" theme={theme}>
                   <input style={s.input} type="number" value={year} onChange={e => setYear(e.target.value)} placeholder="e.g. 2023" min="1000" max="2099" />
                 </Field>
               </div>
               <div style={s.row3}>
-                <Field label="Format">
+                <Field label="Format" theme={theme}>
                   <select style={s.input} value={format} onChange={e => setFormat(e.target.value)}>
                     <option value="">— select —</option>
                     {FORMATS.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </Field>
-                <Field label="Pages">
+                <Field label="Pages" theme={theme}>
                   <input style={s.input} type="number" value={pages} onChange={e => setPages(e.target.value)} placeholder="e.g. 320" min="1" />
                 </Field>
-                <Field label="Language">
+                <Field label="Language" theme={theme}>
                   <input style={s.input} value={language} onChange={e => setLanguage(e.target.value)} placeholder="English" />
                 </Field>
               </div>
-              <Field label="Genre">
+              <Field label="Genre" theme={theme}>
                 <select style={s.input} value={genre} onChange={e => setGenre(e.target.value)}>
                   <option value="">— select genre —</option>
                   {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
@@ -246,10 +250,10 @@ export default function ManualAddModal({ session, onClose, onAdded = () => {} })
             <div style={s.formSection}>
               <div style={s.sectionLabel}>Identifiers</div>
               <div style={s.row2}>
-                <Field label="ISBN-13">
+                <Field label="ISBN-13" theme={theme}>
                   <input style={s.input} value={isbn13} onChange={e => setIsbn13(e.target.value)} placeholder="978-X-XXX-XXXXX-X" maxLength={17} />
                 </Field>
-                <Field label="ISBN-10">
+                <Field label="ISBN-10" theme={theme}>
                   <input style={s.input} value={isbn10} onChange={e => setIsbn10(e.target.value)} placeholder="X-XXX-XXXXX-X" maxLength={13} />
                 </Field>
               </div>
@@ -259,10 +263,10 @@ export default function ManualAddModal({ session, onClose, onAdded = () => {} })
             <div style={s.formSection}>
               <div style={s.sectionLabel}>Series</div>
               <div style={s.row2}>
-                <Field label="Series Name">
+                <Field label="Series Name" theme={theme}>
                   <input style={s.input} value={seriesName} onChange={e => setSeriesName(e.target.value)} placeholder="e.g. Harry Potter" />
                 </Field>
-                <Field label="Volume / #">
+                <Field label="Volume / #" theme={theme}>
                   <input style={s.input} value={seriesNumber} onChange={e => setSeriesNumber(e.target.value)} placeholder="e.g. 1" />
                 </Field>
               </div>
@@ -284,57 +288,58 @@ export default function ManualAddModal({ session, onClose, onAdded = () => {} })
   )
 }
 
-function Field({ label, required, error, children }) {
+function Field({ label, required, error, theme, children }) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <label style={s.fieldLabel}>
-        {label}{required && <span style={{ color: '#c0521e' }}> *</span>}
+      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: theme.textMuted, marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+        {label}{required && <span style={{ color: theme.rust }}> *</span>}
       </label>
       {children}
-      {error && <div style={s.errorText}>{error}</div>}
+      {error && <div style={{ fontSize: 11, color: theme.rust, marginTop: 4 }}>{error}</div>}
     </div>
   )
 }
 
-const s = {
-  overlay:  { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.55)', zIndex: 1010, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' },
-  modal:    { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 18, width: '100%', maxWidth: 820, maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(26,18,8,0.2)' },
+function makeStyles(theme) {
+  return {
+    overlay:  { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.55)', zIndex: 1010, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' },
+    modal:    { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 18, width: '100%', maxWidth: 820, maxHeight: '92vh', display: 'flex', flexDirection: 'column', boxShadow: theme.shadow },
 
-  header:      { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #e8dfc8', flexShrink: 0 },
-  headerTitle: { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: '#1a1208' },
-  closeBtn:    { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#8a7f72', padding: 4 },
+    header:      { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: `1px solid ${theme.borderLight}`, flexShrink: 0 },
+    headerTitle: { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text },
+    closeBtn:    { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textSubtle, padding: 4 },
 
-  body:    { display: 'flex', gap: 28, padding: '24px', overflowY: 'auto', flex: 1 },
+    body:    { display: 'flex', gap: 28, padding: '24px', overflowY: 'auto', flex: 1 },
 
-  // Cover column
-  coverCol:       { width: 168, flexShrink: 0, display: 'flex', flexDirection: 'column' },
-  coverLabel:     { fontSize: 11, fontWeight: 600, color: '#3a3028', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  coverBox:       { width: '100%', aspectRatio: '2/3', borderRadius: 8, overflow: 'hidden', cursor: 'pointer', position: 'relative' },
-  coverBoxEmpty:  { border: '2px dashed #d4c9b0', background: '#f5f0e8', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  coverImg:       { width: '100%', height: '100%', objectFit: 'cover' },
-  coverPlaceholder: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: 12 },
-  coverIcon:      { fontSize: 28, color: '#b0a898' },
-  coverHint:      { fontSize: 12, color: '#8a7f72', textAlign: 'center', fontWeight: 500 },
-  coverHint2:     { fontSize: 10, color: '#b0a898', textAlign: 'center' },
-  clearCover:     { marginTop: 8, fontSize: 11, color: '#8a7f72', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' },
+    // Cover column
+    coverCol:       { width: 168, flexShrink: 0, display: 'flex', flexDirection: 'column' },
+    coverLabel:     { fontSize: 11, fontWeight: 600, color: theme.textMuted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+    coverBox:       { width: '100%', aspectRatio: '2/3', borderRadius: 8, overflow: 'hidden', cursor: 'pointer', position: 'relative' },
+    coverBoxEmpty:  { border: `2px dashed ${theme.border}`, background: theme.bgSubtle, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    coverImg:       { width: '100%', height: '100%', objectFit: 'cover' },
+    coverPlaceholder: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: 12 },
+    coverIcon:      { fontSize: 28, color: theme.textSubtle },
+    coverHint:      { fontSize: 12, color: theme.textSubtle, textAlign: 'center', fontWeight: 500 },
+    coverHint2:     { fontSize: 10, color: theme.textSubtle, textAlign: 'center' },
+    clearCover:     { marginTop: 8, fontSize: 11, color: theme.textSubtle, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' },
 
-  statusGrid:    { display: 'flex', flexDirection: 'column', gap: 6 },
-  statusBtn:     { width: '100%', padding: '7px 10px', fontSize: 12, border: '1px solid #d4c9b0', borderRadius: 7, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", background: 'transparent', color: '#3a3028', textAlign: 'left' },
-  statusBtnActive: { background: 'rgba(192,82,30,0.1)', borderColor: '#c0521e', color: '#c0521e', fontWeight: 600 },
+    statusGrid:    { display: 'flex', flexDirection: 'column', gap: 6 },
+    statusBtn:     { width: '100%', padding: '7px 10px', fontSize: 12, border: `1px solid ${theme.border}`, borderRadius: 7, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", background: 'transparent', color: theme.textMuted, textAlign: 'left' },
+    statusBtnActive: { background: 'rgba(192,82,30,0.1)', borderColor: theme.rust, color: theme.rust, fontWeight: 600 },
 
-  // Form column
-  formCol:     { flex: 1, minWidth: 0 },
-  formSection: { marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid #f0e8d8' },
-  sectionLabel:{ fontSize: 11, fontWeight: 700, color: '#8a7f72', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 },
-  row2:        { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 },
-  row3:        { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 },
+    // Form column
+    formCol:     { flex: 1, minWidth: 0 },
+    formSection: { marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${theme.borderLight}` },
+    sectionLabel:{ fontSize: 11, fontWeight: 700, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 },
+    row2:        { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 },
+    row3:        { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 },
 
-  fieldLabel:  { display: 'block', fontSize: 11, fontWeight: 600, color: '#3a3028', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 },
-  input:       { width: '100%', padding: '8px 11px', border: '1px solid #d4c9b0', borderRadius: 7, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
-  textarea:    { resize: 'vertical', minHeight: 80, lineHeight: 1.5 },
-  errorText:   { fontSize: 11, color: '#c0521e', marginTop: 4 },
+    fieldLabel:  { display: 'block', fontSize: 11, fontWeight: 600, color: theme.textMuted, marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.4 },
+    input:       { width: '100%', padding: '8px 11px', border: `1px solid ${theme.border}`, borderRadius: 7, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgSubtle, color: theme.text, boxSizing: 'border-box' },
+    textarea:    { resize: 'vertical', minHeight: 80, lineHeight: 1.5 },
 
-  footer:    { display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '16px 24px', borderTop: '1px solid #e8dfc8', flexShrink: 0 },
-  btnGhost:  { padding: '8px 16px', background: 'none', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
-  btnSave:   { padding: '8px 20px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    footer:    { display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '16px 24px', borderTop: `1px solid ${theme.borderLight}`, flexShrink: 0 },
+    btnGhost:  { padding: '8px 16px', background: 'none', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textMuted },
+    btnSave:   { padding: '8px 20px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+  }
 }

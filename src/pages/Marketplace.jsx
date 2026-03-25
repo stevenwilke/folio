@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import { useTheme } from '../contexts/ThemeContext'
 
 const CONDITION_META = {
   like_new:   { label: 'Like New',   color: '#5a7a5a', bg: 'rgba(90,122,90,0.12)' },
@@ -12,6 +13,7 @@ const CONDITION_META = {
 }
 
 export default function Marketplace({ session }) {
+  const { theme } = useTheme()
   const navigate  = useNavigate()
   const [tab, setTab]           = useState('browse')
   const [listings, setListings] = useState([])
@@ -70,6 +72,54 @@ export default function Marketplace({ session }) {
     return matchSearch && matchCond
   })
 
+  const s = {
+    page:          { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
+    btnPrimary:    { padding: '8px 16px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnGhost:      { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.text },
+    btnSold:       { padding: '5px 12px', background: theme.sage, color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnRemove:     { padding: '5px 12px', background: 'transparent', color: theme.textSubtle, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    content:       { padding: '32px 32px', maxWidth: 1100, margin: '0 auto' },
+    pageHeader:    { marginBottom: 28 },
+    pageTitle:     { fontFamily: 'Georgia, serif', fontSize: 32, fontWeight: 700, color: theme.text, margin: '0 0 6px' },
+    pageSubtitle:  { fontSize: 14, color: theme.textSubtle, margin: 0 },
+    tabRow:        { display: 'flex', gap: 0, marginBottom: 28, borderBottom: `1px solid ${theme.border}` },
+    tabActive:     { padding: '10px 20px', background: theme.rust, color: 'white', border: 'none', borderBottom: `2px solid ${theme.rust}`, marginBottom: -1, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    tabInactive:   { padding: '10px 20px', background: 'none', border: 'none', borderBottom: '2px solid transparent', marginBottom: -1, fontSize: 14, color: theme.textSubtle, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    searchRow:     { marginBottom: 14 },
+    searchInput:   { width: '100%', maxWidth: 400, padding: '9px 14px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgCard, color: theme.text, boxSizing: 'border-box' },
+    filterRow:     { display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' },
+    filterActive:  { padding: '6px 14px', borderRadius: 8, border: 'none', background: theme.rust, color: 'white', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    filterInactive:{ padding: '6px 14px', borderRadius: 8, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.text, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    grid:          { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 },
+    listingCard:   { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, overflow: 'hidden', boxShadow: theme.shadowCard, transition: 'box-shadow 0.15s' },
+    listingCover:  { width: '100%', aspectRatio: '3/2', background: theme.bgSubtle },
+    listingInfo:   { padding: '14px' },
+    listingTitle:  { fontSize: 14, fontWeight: 600, color: theme.text, lineHeight: 1.3, marginBottom: 2 },
+    listingAuthor: { fontSize: 12, color: theme.textSubtle },
+    listingDesc:   { fontSize: 12, color: theme.textMuted, marginTop: 6, lineHeight: 1.5 },
+    listingFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 10 },
+    listingPrice:  { fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: theme.text },
+    listingSeller: { fontSize: 12, color: theme.textSubtle },
+    sellerLink:    { color: theme.rust, cursor: 'pointer', fontWeight: 500 },
+    condBadge:     { display: 'inline-block', fontSize: 11, padding: '2px 9px', borderRadius: 20, fontWeight: 500 },
+    contactBtn:    { marginTop: 12, width: '100%', padding: '8px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    sectionTitle:  { fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10, color: theme.text },
+    sectionCount:  { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(192,82,30,0.1)', color: theme.rust, borderRadius: 20, padding: '2px 10px', fontSize: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 500 },
+    myListingList: { display: 'flex', flexDirection: 'column', gap: 12 },
+    myListingCard: { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '16px', display: 'flex', gap: 14, alignItems: 'flex-start' },
+    myListingCover:{ width: 52, height: 78, flexShrink: 0, borderRadius: 4, overflow: 'hidden', background: theme.bgSubtle },
+    myListingInfo: { flex: 1 },
+    myListingRight:{ flexShrink: 0, textAlign: 'right' },
+    externalBox:   { textAlign: 'center', padding: '80px 0' },
+    externalIcon:  { fontSize: 56, marginBottom: 20 },
+    comingSoonBadge: { display: 'inline-block', background: 'rgba(184,134,11,0.12)', color: theme.gold, border: '1px solid rgba(184,134,11,0.3)', borderRadius: 20, padding: '6px 20px', fontSize: 13, fontWeight: 600 },
+    empty:         { color: theme.textSubtle, fontSize: 14, padding: '60px 0', textAlign: 'center' },
+    emptyState:    { textAlign: 'center', padding: '60px 0' },
+    emptyIcon:     { fontSize: 48, marginBottom: 16 },
+    emptyTitle:    { fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: theme.text, marginBottom: 8 },
+    emptySub:      { fontSize: 14, color: theme.textSubtle, marginBottom: 20 },
+  }
+
   return (
     <div style={s.page}>
       <NavBar session={session} />
@@ -103,6 +153,7 @@ export default function Marketplace({ session }) {
             condFilter={condFilter}
             onCondFilter={setCondFilter}
             navigate={navigate}
+            s={s}
           />
         )}
         {tab === 'selling' && (
@@ -112,16 +163,18 @@ export default function Marketplace({ session }) {
             onRemove={removeListing}
             onMarkSold={markSold}
             navigate={navigate}
+            s={s}
+            theme={theme}
           />
         )}
-        {tab === 'external' && <ExternalTab />}
+        {tab === 'external' && <ExternalTab s={s} theme={theme} />}
       </div>
     </div>
   )
 }
 
 // ---- BROWSE TAB ----
-function BrowseTab({ listings, loading, search, onSearch, condFilter, onCondFilter, navigate }) {
+function BrowseTab({ listings, loading, search, onSearch, condFilter, onCondFilter, navigate, s }) {
   return (
     <>
       <div style={s.searchRow}>
@@ -155,7 +208,7 @@ function BrowseTab({ listings, loading, search, onSearch, condFilter, onCondFilt
       ) : (
         <div style={s.grid}>
           {listings.map(l => (
-            <ListingCard key={l.id} listing={l} navigate={navigate} />
+            <ListingCard key={l.id} listing={l} navigate={navigate} s={s} />
           ))}
         </div>
       )}
@@ -164,7 +217,7 @@ function BrowseTab({ listings, loading, search, onSearch, condFilter, onCondFilt
 }
 
 // ---- SELLING TAB ----
-function SellingTab({ listings, loading, onRemove, onMarkSold, navigate }) {
+function SellingTab({ listings, loading, onRemove, onMarkSold, navigate, s, theme }) {
   const active  = listings.filter(l => l.status === 'active')
   const history = listings.filter(l => l.status !== 'active')
 
@@ -190,19 +243,19 @@ function SellingTab({ listings, loading, onRemove, onMarkSold, navigate }) {
           </div>
           <div style={s.myListingList}>
             {active.map(l => (
-              <MyListingCard key={l.id} listing={l} onRemove={onRemove} onMarkSold={onMarkSold} />
+              <MyListingCard key={l.id} listing={l} onRemove={onRemove} onMarkSold={onMarkSold} s={s} theme={theme} />
             ))}
           </div>
         </div>
       )}
       {history.length > 0 && (
         <div>
-          <div style={{ ...s.sectionTitle, color: '#8a7f72' }}>
+          <div style={{ ...s.sectionTitle, color: theme.textSubtle }}>
             History <span style={s.sectionCount}>{history.length}</span>
           </div>
           <div style={s.myListingList}>
             {history.map(l => (
-              <MyListingCard key={l.id} listing={l} onRemove={onRemove} onMarkSold={onMarkSold} />
+              <MyListingCard key={l.id} listing={l} onRemove={onRemove} onMarkSold={onMarkSold} s={s} theme={theme} />
             ))}
           </div>
         </div>
@@ -212,14 +265,14 @@ function SellingTab({ listings, loading, onRemove, onMarkSold, navigate }) {
 }
 
 // ---- EXTERNAL TAB ----
-function ExternalTab() {
+function ExternalTab({ s, theme }) {
   return (
     <div style={s.externalBox}>
       <div style={s.externalIcon}>🔗</div>
-      <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#1a1208', marginBottom: 8 }}>
+      <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: theme.text, marginBottom: 8 }}>
         External Marketplace
       </div>
-      <div style={{ fontSize: 14, color: '#8a7f72', maxWidth: 420, lineHeight: 1.7, marginBottom: 24 }}>
+      <div style={{ fontSize: 14, color: theme.textSubtle, maxWidth: 420, lineHeight: 1.7, marginBottom: 24 }}>
         Search eBay, AbeBooks, and other platforms for books not listed on Folio.
         This feature is coming soon — we'll show sold prices to help you find fair deals.
       </div>
@@ -229,7 +282,7 @@ function ExternalTab() {
 }
 
 // ---- LISTING CARD (browse) ----
-function ListingCard({ listing, navigate }) {
+function ListingCard({ listing, navigate, s }) {
   const book  = listing.books
   const seller = listing.profiles
   const cond  = CONDITION_META[listing.condition] || CONDITION_META.good
@@ -269,15 +322,15 @@ function ListingCard({ listing, navigate }) {
 }
 
 // ---- MY LISTING CARD ----
-function MyListingCard({ listing, onRemove, onMarkSold }) {
+function MyListingCard({ listing, onRemove, onMarkSold, s, theme }) {
   const book  = listing.books
   const cond  = CONDITION_META[listing.condition] || CONDITION_META.good
   const [acting, setActing] = useState(false)
 
   const statusMeta = {
-    active:  { label: 'Active',  bg: 'rgba(90,122,90,0.15)',   color: '#5a7a5a' },
-    sold:    { label: 'Sold',    bg: 'rgba(138,127,114,0.15)', color: '#8a7f72' },
-    removed: { label: 'Removed', bg: 'rgba(192,82,30,0.10)',   color: '#c0521e' },
+    active:  { label: 'Active',  bg: 'rgba(90,122,90,0.15)',   color: theme.sage },
+    sold:    { label: 'Sold',    bg: 'rgba(138,127,114,0.15)', color: theme.textSubtle },
+    removed: { label: 'Removed', bg: 'rgba(192,82,30,0.10)',   color: theme.rust },
   }
   const sm = statusMeta[listing.status] || statusMeta.active
 
@@ -337,57 +390,4 @@ function MiniCover({ title }) {
   const c  = colors[title.charCodeAt(0) % colors.length]
   const c2 = colors[(title.charCodeAt(0) + 3) % colors.length]
   return <div style={{ width: '100%', height: '100%', borderRadius: 4, background: `linear-gradient(135deg, ${c}, ${c2})` }} />
-}
-
-// ---- STYLES ----
-const s = {
-  page:          { minHeight: '100vh', background: '#f5f0e8', fontFamily: "'DM Sans', sans-serif" },
-  topbar:        { position: 'sticky', top: 0, zIndex: 10, background: 'rgba(245,240,232,0.92)', backdropFilter: 'blur(8px)', borderBottom: '1px solid #d4c9b0', padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  logo:          { fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, color: '#1a1208', cursor: 'pointer' },
-  topbarRight:   { display: 'flex', gap: 10, alignItems: 'center' },
-  btnPrimary:    { padding: '8px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnGhost:      { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
-  btnActive:     { padding: '6px 12px', background: 'rgba(192,82,30,0.1)', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0521e', fontWeight: 600 },
-  btnSold:       { padding: '5px 12px', background: '#5a7a5a', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnRemove:     { padding: '5px 12px', background: 'transparent', color: '#8a7f72', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  content:       { padding: '32px 32px', maxWidth: 1100, margin: '0 auto' },
-  pageHeader:    { marginBottom: 28 },
-  pageTitle:     { fontFamily: 'Georgia, serif', fontSize: 32, fontWeight: 700, color: '#1a1208', margin: '0 0 6px' },
-  pageSubtitle:  { fontSize: 14, color: '#8a7f72', margin: 0 },
-  tabRow:        { display: 'flex', gap: 0, marginBottom: 28, borderBottom: '1px solid #d4c9b0' },
-  tabActive:     { padding: '10px 20px', background: '#c0521e', color: 'white', border: 'none', borderBottom: '2px solid #c0521e', marginBottom: -1, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  tabInactive:   { padding: '10px 20px', background: 'none', border: 'none', borderBottom: '2px solid transparent', marginBottom: -1, fontSize: 14, color: '#8a7f72', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  searchRow:     { marginBottom: 14 },
-  searchInput:   { width: '100%', maxWidth: 400, padding: '9px 14px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
-  filterRow:     { display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' },
-  filterActive:  { padding: '6px 14px', borderRadius: 8, border: 'none', background: '#c0521e', color: 'white', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  filterInactive:{ padding: '6px 14px', borderRadius: 8, border: '1px solid #d4c9b0', background: 'transparent', color: '#1a1208', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  grid:          { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 },
-  listingCard:   { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 2px 8px rgba(26,18,8,0.08)', transition: 'box-shadow 0.15s' },
-  listingCover:  { width: '100%', aspectRatio: '3/2', background: '#e8dfc8' },
-  listingInfo:   { padding: '14px' },
-  listingTitle:  { fontSize: 14, fontWeight: 600, color: '#1a1208', lineHeight: 1.3, marginBottom: 2 },
-  listingAuthor: { fontSize: 12, color: '#8a7f72' },
-  listingDesc:   { fontSize: 12, color: '#5a4a3a', marginTop: 6, lineHeight: 1.5 },
-  listingFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 10 },
-  listingPrice:  { fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#1a1208' },
-  listingSeller: { fontSize: 12, color: '#8a7f72' },
-  sellerLink:    { color: '#c0521e', cursor: 'pointer', fontWeight: 500 },
-  condBadge:     { display: 'inline-block', fontSize: 11, padding: '2px 9px', borderRadius: 20, fontWeight: 500 },
-  contactBtn:    { marginTop: 12, width: '100%', padding: '8px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  sectionTitle:  { fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10, color: '#1a1208' },
-  sectionCount:  { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(192,82,30,0.1)', color: '#c0521e', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontFamily: "'DM Sans', sans-serif", fontWeight: 500 },
-  myListingList: { display: 'flex', flexDirection: 'column', gap: 12 },
-  myListingCard: { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 12, padding: '16px', display: 'flex', gap: 14, alignItems: 'flex-start' },
-  myListingCover:{ width: 52, height: 78, flexShrink: 0, borderRadius: 4, overflow: 'hidden', background: '#e8dfc8' },
-  myListingInfo: { flex: 1 },
-  myListingRight:{ flexShrink: 0, textAlign: 'right' },
-  externalBox:   { textAlign: 'center', padding: '80px 0' },
-  externalIcon:  { fontSize: 56, marginBottom: 20 },
-  comingSoonBadge: { display: 'inline-block', background: 'rgba(184,134,11,0.12)', color: '#b8860b', border: '1px solid rgba(184,134,11,0.3)', borderRadius: 20, padding: '6px 20px', fontSize: 13, fontWeight: 600 },
-  empty:         { color: '#8a7f72', fontSize: 14, padding: '60px 0', textAlign: 'center' },
-  emptyState:    { textAlign: 'center', padding: '60px 0' },
-  emptyIcon:     { fontSize: 48, marginBottom: 16 },
-  emptyTitle:    { fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: '#1a1208', marginBottom: 8 },
-  emptySub:      { fontSize: 14, color: '#8a7f72', marginBottom: 20 },
 }

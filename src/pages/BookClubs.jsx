@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import { useTheme } from '../contexts/ThemeContext'
 
 function timeAgo(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -37,17 +38,18 @@ function UserAvatar({ profile, size = 32 }) {
 
 // ---- MEMBER AVATAR STACK ----
 function AvatarStack({ members, max = 4 }) {
+  const { theme } = useTheme()
   const shown = members.slice(0, max)
   const extra = members.length - max
   return (
     <div style={{ display: 'flex', alignItems: 'center' }}>
       {shown.map((m, i) => (
-        <div key={m.user_id || i} style={{ marginLeft: i > 0 ? -8 : 0, zIndex: shown.length - i, border: '2px solid #fdfaf4', borderRadius: '50%', flexShrink: 0 }}>
+        <div key={m.user_id || i} style={{ marginLeft: i > 0 ? -8 : 0, zIndex: shown.length - i, border: `2px solid ${theme.bgCard}`, borderRadius: '50%', flexShrink: 0 }}>
           <UserAvatar profile={m.profiles} size={28} />
         </div>
       ))}
       {extra > 0 && (
-        <div style={{ marginLeft: -8, width: 28, height: 28, borderRadius: '50%', background: '#e8dfc8', border: '2px solid #fdfaf4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, color: '#8a7f72', flexShrink: 0, zIndex: 0 }}>
+        <div style={{ marginLeft: -8, width: 28, height: 28, borderRadius: '50%', background: theme.bgHover, border: `2px solid ${theme.bgCard}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, color: theme.textSubtle, flexShrink: 0, zIndex: 0 }}>
           +{extra}
         </div>
       )}
@@ -57,6 +59,8 @@ function AvatarStack({ members, max = 4 }) {
 
 // ---- CLUB CARD ----
 function ClubCard({ club, isMember, onEnter, onJoin, joining }) {
+  const { theme } = useTheme()
+  const s = makeStyles(theme)
   const [hover, setHover] = useState(false)
   const book = club.books
   const members = club.book_club_members || []
@@ -67,7 +71,7 @@ function ClubCard({ club, isMember, onEnter, onJoin, joining }) {
       style={{
         ...s.clubCard,
         ...(hover ? s.clubCardHover : {}),
-        borderLeft: '4px solid #5a7a5a',
+        borderLeft: `4px solid ${theme.sage}`,
       }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -120,6 +124,8 @@ function ClubCard({ club, isMember, onEnter, onJoin, joining }) {
 
 // ---- CREATE CLUB MODAL ----
 function CreateClubModal({ session, onClose, onCreated }) {
+  const { theme } = useTheme()
+  const s = makeStyles(theme)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [isPublic, setIsPublic] = useState(true)
@@ -155,7 +161,7 @@ function CreateClubModal({ session, onClose, onCreated }) {
           <button style={s.modalClose} onClick={onClose}>✕</button>
         </div>
         <div style={s.modalBody}>
-          <label style={s.label}>Club name <span style={{ color: '#c0521e' }}>*</span></label>
+          <label style={s.label}>Club name <span style={{ color: theme.rust }}>*</span></label>
           <input
             style={s.input}
             placeholder="e.g. The Sunday Readers"
@@ -163,7 +169,7 @@ function CreateClubModal({ session, onClose, onCreated }) {
             onChange={e => setName(e.target.value)}
             maxLength={80}
           />
-          <label style={{ ...s.label, marginTop: 16 }}>Description <span style={{ color: '#8a7f72', fontWeight: 400 }}>(optional)</span></label>
+          <label style={{ ...s.label, marginTop: 16 }}>Description <span style={{ color: theme.textSubtle, fontWeight: 400 }}>(optional)</span></label>
           <textarea
             style={{ ...s.input, height: 80, resize: 'vertical', lineHeight: 1.5 }}
             placeholder="What's this club about?"
@@ -172,8 +178,8 @@ function CreateClubModal({ session, onClose, onCreated }) {
             maxLength={300}
           />
           <label style={{ ...s.checkLabel, marginTop: 16, gap: 10 }}>
-            <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} style={{ accentColor: '#c0521e', width: 16, height: 16 }} />
-            <span style={{ fontSize: 14, color: '#3a3028' }}>Public club (discoverable by anyone)</span>
+            <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} style={{ accentColor: theme.rust, width: 16, height: 16 }} />
+            <span style={{ fontSize: 14, color: theme.text }}>Public club (discoverable by anyone)</span>
           </label>
         </div>
         <div style={s.modalFooter}>
@@ -193,6 +199,8 @@ function CreateClubModal({ session, onClose, onCreated }) {
 
 // ---- CLUB DETAIL ----
 function ClubDetail({ club, session, onBack, onClubUpdate }) {
+  const { theme } = useTheme()
+  const s = makeStyles(theme)
   const [posts, setPosts] = useState([])
   const [members, setMembers] = useState([])
   const [myProgress, setMyProgress] = useState(null)
@@ -355,7 +363,7 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
       <div style={s.detailPanels}>
         {/* Left: Discussion */}
         <div style={s.discussionPanel}>
-          <div style={s.panelTitle}>Discussion</div>
+          <div style={{ ...s.panelTitle, padding: '14px 16px 0' }}>Discussion</div>
           <div style={s.chatThread}>
             {loadingPosts ? (
               <div style={s.chatEmpty}>Loading…</div>
@@ -382,13 +390,13 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
                     </div>
                     <div style={{ maxWidth: '72%', display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', gap: 2 }}>
                       {showAvatar && (
-                        <div style={{ fontSize: 11, color: '#8a7f72', marginBottom: 2, paddingLeft: isMe ? 0 : 2, paddingRight: isMe ? 2 : 0 }}>
+                        <div style={{ fontSize: 11, color: theme.textSubtle, marginBottom: 2, paddingLeft: isMe ? 0 : 2, paddingRight: isMe ? 2 : 0 }}>
                           {isMe ? 'You' : post.profiles?.username}
                         </div>
                       )}
                       <div style={{
-                        background: isMe ? '#c0521e' : '#f0ebe0',
-                        color: isMe ? 'white' : '#1a1208',
+                        background: isMe ? theme.rust : theme.bgSubtle,
+                        color: isMe ? 'white' : theme.text,
                         borderRadius: isMe ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
                         padding: '8px 12px',
                         fontSize: 14,
@@ -397,7 +405,7 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
                       }}>
                         {post.content}
                       </div>
-                      <div style={{ fontSize: 10, color: '#b0a898', paddingLeft: 2, paddingRight: 2 }}>
+                      <div style={{ fontSize: 10, color: theme.textSubtle, paddingLeft: 2, paddingRight: 2 }}>
                         {timeAgo(post.created_at)}
                       </div>
                     </div>
@@ -457,7 +465,7 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
                       : inviteResults.map(u => (
                         <div key={u.id} style={s.inviteRow}>
                           <UserAvatar profile={u} size={26} />
-                          <span style={{ flex: 1, fontSize: 13, color: '#1a1208' }}>{u.username}</span>
+                          <span style={{ flex: 1, fontSize: 13, color: theme.text }}>{u.username}</span>
                           <button
                             style={{ ...s.btnSmall, opacity: inviting === u.id ? 0.6 : 1 }}
                             onClick={() => inviteMember(u.id)}
@@ -478,8 +486,8 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
                 <div key={m.user_id} style={s.memberRow}>
                   <UserAvatar profile={m.profiles} size={32} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1208' }}>{m.profiles?.username}</div>
-                    {m.role === 'admin' && <div style={{ fontSize: 11, color: '#c0521e' }}>Admin</div>}
+                    <div style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{m.profiles?.username}</div>
+                    {m.role === 'admin' && <div style={{ fontSize: 11, color: theme.rust }}>Admin</div>}
                   </div>
                 </div>
               ))}
@@ -501,16 +509,16 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
                   return (
                     <div key={m.user_id}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                        <span style={{ fontSize: 12, fontWeight: 500, color: '#3a3028' }}>{m.profiles?.username}</span>
-                        <span style={{ fontSize: 11, color: '#8a7f72' }}>
+                        <span style={{ fontSize: 12, fontWeight: 500, color: theme.text }}>{m.profiles?.username}</span>
+                        <span style={{ fontSize: 11, color: theme.textSubtle }}>
                           {status === 'read' ? 'Finished' : pct !== null ? `${pct}% · p.${currentPage}` : 'Not started'}
                         </span>
                       </div>
-                      <div style={{ height: 5, background: '#e8dfc8', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ height: 5, background: theme.bgHover, borderRadius: 3, overflow: 'hidden' }}>
                         <div style={{
                           height: '100%',
                           borderRadius: 3,
-                          background: status === 'read' ? '#5a7a5a' : '#b8860b',
+                          background: status === 'read' ? theme.sage : theme.gold,
                           width: status === 'read' ? '100%' : pct !== null ? `${pct}%` : '0%',
                           transition: 'width 0.4s ease',
                         }} />
@@ -552,8 +560,8 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
                               : <FakeCover title={book.title} size={28} />
                             }
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 12, fontWeight: 600, color: '#1a1208' }}>{book.title}</div>
-                              <div style={{ fontSize: 11, color: '#8a7f72' }}>{book.author}</div>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>{book.title}</div>
+                              <div style={{ fontSize: 11, color: theme.textSubtle }}>{book.author}</div>
                             </div>
                             <button
                               style={{ ...s.btnSmall, opacity: changingBook ? 0.6 : 1 }}
@@ -579,6 +587,8 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
 
 // ---- MAIN PAGE ----
 export default function BookClubs({ session }) {
+  const { theme } = useTheme()
+  const s = makeStyles(theme)
   const [myClubs, setMyClubs] = useState([])
   const [discoverClubs, setDiscoverClubs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -755,84 +765,86 @@ export default function BookClubs({ session }) {
 }
 
 // ---- STYLES ----
-const s = {
-  page:         { minHeight: '100vh', background: '#f5f0e8', fontFamily: "'DM Sans', sans-serif" },
-  content:      { maxWidth: 900, margin: '0 auto', padding: '32px 28px' },
+function makeStyles(theme) {
+  return {
+    page:         { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
+    content:      { maxWidth: 900, margin: '0 auto', padding: '32px 28px' },
 
-  pageHeader:   { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32 },
-  pageTitle:    { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 28, fontWeight: 700, color: '#1a1208', marginBottom: 4 },
-  pageSubtitle: { fontSize: 14, color: '#8a7f72' },
+    pageHeader:   { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32 },
+    pageTitle:    { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 28, fontWeight: 700, color: theme.text, marginBottom: 4 },
+    pageSubtitle: { fontSize: 14, color: theme.textSubtle },
 
-  section:      { marginBottom: 40 },
-  sectionHead:  { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 },
-  sectionTitle: { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700, color: '#1a1208' },
-  countChip:    { background: 'rgba(26,18,8,0.07)', color: '#8a7f72', borderRadius: 20, padding: '2px 9px', fontSize: 12, fontWeight: 500 },
+    section:      { marginBottom: 40 },
+    sectionHead:  { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 },
+    sectionTitle: { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700, color: theme.text },
+    countChip:    { background: 'rgba(26,18,8,0.07)', color: theme.textSubtle, borderRadius: 20, padding: '2px 9px', fontSize: 12, fontWeight: 500 },
 
-  grid:         { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 },
+    grid:         { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 },
 
-  clubCard:     { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, padding: '20px 20px 18px', transition: 'box-shadow 0.15s, transform 0.15s', cursor: 'default' },
-  clubCardHover:{ boxShadow: '0 4px 18px rgba(26,18,8,0.1)', transform: 'translateY(-2px)' },
-  clubName:     { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700, color: '#1a1208', marginBottom: 10 },
-  clubMemberCount:{ fontSize: 12, color: '#8a7f72' },
-  clubBookRow:  { display: 'flex', gap: 10, alignItems: 'center', background: '#f5f0e8', borderRadius: 8, padding: '8px 10px', marginBottom: 6 },
-  clubBookLabel:{ fontSize: 11, color: '#8a7f72', marginBottom: 2 },
-  clubBookTitle:{ fontSize: 13, fontWeight: 600, color: '#1a1208' },
-  clubNoBook:   { fontSize: 13, color: '#b0a898', fontStyle: 'italic', marginBottom: 6 },
-  clubDescription:{ fontSize: 13, color: '#6b6055', lineHeight: 1.5, marginTop: 8 },
+    clubCard:     { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '20px 20px 18px', transition: 'box-shadow 0.15s, transform 0.15s', cursor: 'default' },
+    clubCardHover:{ boxShadow: theme.shadowCard, transform: 'translateY(-2px)' },
+    clubName:     { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700, color: theme.text, marginBottom: 10 },
+    clubMemberCount:{ fontSize: 12, color: theme.textSubtle },
+    clubBookRow:  { display: 'flex', gap: 10, alignItems: 'center', background: theme.bg, borderRadius: 8, padding: '8px 10px', marginBottom: 6 },
+    clubBookLabel:{ fontSize: 11, color: theme.textSubtle, marginBottom: 2 },
+    clubBookTitle:{ fontSize: 13, fontWeight: 600, color: theme.text },
+    clubNoBook:   { fontSize: 13, color: theme.textSubtle, fontStyle: 'italic', marginBottom: 6 },
+    clubDescription:{ fontSize: 13, color: theme.textMuted, lineHeight: 1.5, marginTop: 8 },
 
-  empty:        { color: '#8a7f72', fontSize: 14, padding: '60px 0', textAlign: 'center' },
-  emptyBox:     { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, padding: '48px 32px', textAlign: 'center' },
-  emptyIcon:    { fontSize: 36, marginBottom: 12 },
-  emptyTitle:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700, color: '#1a1208', marginBottom: 8 },
-  emptyText:    { fontSize: 14, color: '#8a7f72', marginBottom: 20 },
+    empty:        { color: theme.textSubtle, fontSize: 14, padding: '60px 0', textAlign: 'center' },
+    emptyBox:     { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, padding: '48px 32px', textAlign: 'center' },
+    emptyIcon:    { fontSize: 36, marginBottom: 12 },
+    emptyTitle:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700, color: theme.text, marginBottom: 8 },
+    emptyText:    { fontSize: 14, color: theme.textSubtle, marginBottom: 20 },
 
-  // Detail page
-  detailPage:   { },
-  detailHeader: { display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', marginBottom: 24, paddingBottom: 20, borderBottom: '1px solid #d4c9b0' },
-  backBtn:      { background: 'none', border: 'none', fontSize: 14, color: '#c0521e', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, padding: '4px 0', flexShrink: 0 },
-  detailHeaderMain:{ flex: 1 },
-  detailClubName:{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 24, fontWeight: 700, color: '#1a1208', marginBottom: 2 },
-  detailMeta:   { fontSize: 13, color: '#8a7f72' },
-  detailCurrentBook:{ display: 'flex', gap: 10, alignItems: 'center' },
-  detailBookLabel:{ fontSize: 11, color: '#8a7f72', marginBottom: 2 },
-  detailBookTitle:{ fontSize: 14, fontWeight: 600, color: '#1a1208' },
+    // Detail page
+    detailPage:   { },
+    detailHeader: { display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', marginBottom: 24, paddingBottom: 20, borderBottom: `1px solid ${theme.border}` },
+    backBtn:      { background: 'none', border: 'none', fontSize: 14, color: theme.rust, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, padding: '4px 0', flexShrink: 0 },
+    detailHeaderMain:{ flex: 1 },
+    detailClubName:{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 24, fontWeight: 700, color: theme.text, marginBottom: 2 },
+    detailMeta:   { fontSize: 13, color: theme.textSubtle },
+    detailCurrentBook:{ display: 'flex', gap: 10, alignItems: 'center' },
+    detailBookLabel:{ fontSize: 11, color: theme.textSubtle, marginBottom: 2 },
+    detailBookTitle:{ fontSize: 14, fontWeight: 600, color: theme.text },
 
-  detailPanels: { display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24, alignItems: 'start' },
+    detailPanels: { display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24, alignItems: 'start' },
 
-  discussionPanel:{ background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 480 },
-  panelTitle:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 700, color: '#1a1208' },
+    discussionPanel:{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 480 },
+    panelTitle:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 700, color: theme.text },
 
-  chatThread:   { flex: 1, overflowY: 'auto', padding: '16px 16px 8px', display: 'flex', flexDirection: 'column', minHeight: 360, maxHeight: 480, background: '#fdfaf4' },
-  chatEmpty:    { color: '#8a7f72', fontSize: 13, textAlign: 'center', padding: '40px 0' },
-  chatInputRow: { display: 'flex', gap: 8, padding: '12px 16px', borderTop: '1px solid #e8dfc8', background: '#f9f5ee' },
-  chatInput:    { flex: 1, padding: '9px 13px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208' },
+    chatThread:   { flex: 1, overflowY: 'auto', padding: '16px 16px 8px', display: 'flex', flexDirection: 'column', minHeight: 360, maxHeight: 480, background: theme.bgCard },
+    chatEmpty:    { color: theme.textSubtle, fontSize: 13, textAlign: 'center', padding: '40px 0' },
+    chatInputRow: { display: 'flex', gap: 8, padding: '12px 16px', borderTop: `1px solid ${theme.borderLight}`, background: theme.bgSubtle },
+    chatInput:    { flex: 1, padding: '9px 13px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgCard, color: theme.text },
 
-  sidePanel:    { display: 'flex', flexDirection: 'column', gap: 16 },
-  panelSection: { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, padding: '16px 18px' },
-  memberRow:    { display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0' },
+    sidePanel:    { display: 'flex', flexDirection: 'column', gap: 16 },
+    panelSection: { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '16px 18px' },
+    memberRow:    { display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0' },
 
-  inviteResults:{ border: '1px solid #d4c9b0', borderRadius: 8, overflow: 'hidden', maxHeight: 200, overflowY: 'auto', marginTop: 4 },
-  inviteRow:    { display: 'flex', gap: 8, alignItems: 'center', padding: '8px 10px', background: '#fdfaf4', borderBottom: '1px solid #f0e8d8' },
-  smallHint:    { padding: '10px 12px', fontSize: 12, color: '#8a7f72', textAlign: 'center' },
+    inviteResults:{ border: `1px solid ${theme.border}`, borderRadius: 8, overflow: 'hidden', maxHeight: 200, overflowY: 'auto', marginTop: 4 },
+    inviteRow:    { display: 'flex', gap: 8, alignItems: 'center', padding: '8px 10px', background: theme.bgCard, borderBottom: `1px solid ${theme.borderLight}` },
+    smallHint:    { padding: '10px 12px', fontSize: 12, color: theme.textSubtle, textAlign: 'center' },
 
-  // Buttons
-  btnPrimary:   { padding: '9px 18px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
-  btnGhost:     { padding: '9px 16px', background: 'transparent', color: '#8a7f72', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnEnter:     { padding: '8px 16px', background: 'transparent', color: '#c0521e', border: '1px solid #c0521e', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnJoin:      { padding: '8px 16px', background: '#5a7a5a', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnSmall:     { padding: '5px 12px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
-  btnSmallGhost:{ padding: '5px 12px', background: 'transparent', color: '#5a7a5a', border: '1px solid #5a7a5a', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
+    // Buttons
+    btnPrimary:   { padding: '9px 18px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
+    btnGhost:     { padding: '9px 16px', background: 'transparent', color: theme.textSubtle, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnEnter:     { padding: '8px 16px', background: 'transparent', color: theme.rust, border: `1px solid ${theme.rust}`, borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnJoin:      { padding: '8px 16px', background: theme.sage, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnSmall:     { padding: '5px 12px', background: theme.rust, color: 'white', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
+    btnSmallGhost:{ padding: '5px 12px', background: 'transparent', color: theme.sage, border: `1px solid ${theme.sage}`, borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
 
-  // Modal
-  modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 24 },
-  modal:        { background: '#fdfaf4', borderRadius: 16, width: '100%', maxWidth: 460, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(26,18,8,0.25)' },
-  modalHeader:  { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 16px', borderBottom: '1px solid #e8dfc8' },
-  modalTitle:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 20, fontWeight: 700, color: '#1a1208' },
-  modalClose:   { background: 'none', border: 'none', fontSize: 16, color: '#8a7f72', cursor: 'pointer', padding: '4px 8px', borderRadius: 6 },
-  modalBody:    { flex: 1, overflowY: 'auto', padding: '20px 24px' },
-  modalFooter:  { display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '16px 24px', borderTop: '1px solid #e8dfc8' },
+    // Modal
+    modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 24 },
+    modal:        { background: theme.bgCard, borderRadius: 16, width: '100%', maxWidth: 460, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: theme.shadowCard },
+    modalHeader:  { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 16px', borderBottom: `1px solid ${theme.borderLight}` },
+    modalTitle:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 20, fontWeight: 700, color: theme.text },
+    modalClose:   { background: 'none', border: 'none', fontSize: 16, color: theme.textSubtle, cursor: 'pointer', padding: '4px 8px', borderRadius: 6 },
+    modalBody:    { flex: 1, overflowY: 'auto', padding: '20px 24px' },
+    modalFooter:  { display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '16px 24px', borderTop: `1px solid ${theme.borderLight}` },
 
-  label:        { display: 'block', fontSize: 13, fontWeight: 600, color: '#3a3028', marginBottom: 6 },
-  input:        { width: '100%', padding: '9px 13px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
-  checkLabel:   { display: 'flex', alignItems: 'center', cursor: 'pointer' },
+    label:        { display: 'block', fontSize: 13, fontWeight: 600, color: theme.text, marginBottom: 6 },
+    input:        { width: '100%', padding: '9px 13px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgCard, color: theme.text, boxSizing: 'border-box' },
+    checkLabel:   { display: 'flex', alignItems: 'center', cursor: 'pointer' },
+  }
 }

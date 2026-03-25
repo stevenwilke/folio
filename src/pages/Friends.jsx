@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import { useTheme } from '../contexts/ThemeContext'
 
 export default function Friends({ session }) {
   const navigate = useNavigate()
+  const { theme } = useTheme()
 
   const [friends,   setFriends]   = useState([])   // accepted
   const [incoming,  setIncoming]  = useState([])   // pending → me
@@ -159,7 +161,7 @@ export default function Friends({ session }) {
     fetchAll()
   }
 
-  const totalNotifs = incoming.length
+  const s = makeStyles(theme)
 
   return (
     <div style={s.page}>
@@ -347,8 +349,10 @@ export default function Friends({ session }) {
 
 // ── FRIEND CARD ──
 function FriendCard({ friend, onVisit, onUnfriend, acting }) {
+  const { theme } = useTheme()
   const [hover, setHover] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const s = makeStyles(theme)
 
   return (
     <div
@@ -389,75 +393,77 @@ function FriendCard({ friend, onVisit, onUnfriend, acting }) {
 
 // ── USER AVATAR ──
 function UserAvatar({ profile, size }) {
-  const r = size / 2
+  const { theme } = useTheme()
   if (profile?.avatar_url) {
     return <img src={profile.avatar_url} alt={profile.username} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
   }
   const initial = profile?.username?.charAt(0).toUpperCase() || '?'
   return (
-    <div style={{ width: size, height: size, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: Math.round(size * 0.38), flexShrink: 0, cursor: 'pointer' }}>
+    <div style={{ width: size, height: size, borderRadius: '50%', background: `linear-gradient(135deg, ${theme.rust}, ${theme.gold})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: Math.round(size * 0.38), flexShrink: 0, cursor: 'pointer' }}>
       {initial}
     </div>
   )
 }
 
 // ── STYLES ──
-const s = {
-  page:    { minHeight: '100vh', background: '#f5f0e8', fontFamily: "'DM Sans', sans-serif" },
-  content: { maxWidth: 720, margin: '0 auto', padding: '36px 32px' },
+function makeStyles(theme) {
+  return {
+    page:    { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
+    content: { maxWidth: 720, margin: '0 auto', padding: '36px 32px' },
 
-  pageHead:  { marginBottom: 32 },
-  pageTitle: { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, color: '#1a1208' },
-  pageSub:   { fontSize: 14, color: '#8a7f72', marginTop: 4 },
+    pageHead:  { marginBottom: 32 },
+    pageTitle: { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, color: theme.text },
+    pageSub:   { fontSize: 14, color: theme.textSubtle, marginTop: 4 },
 
-  section:     { marginBottom: 36 },
-  sectionHead: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 },
-  sectionTitle:{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: '#1a1208' },
-  badge:       { background: '#c0521e', color: 'white', borderRadius: 20, padding: '2px 9px', fontSize: 12, fontWeight: 600 },
-  countChip:   { background: 'rgba(26,18,8,0.07)', color: '#8a7f72', borderRadius: 20, padding: '2px 9px', fontSize: 12, fontWeight: 500 },
+    section:     { marginBottom: 36 },
+    sectionHead: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 },
+    sectionTitle:{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: theme.text },
+    badge:       { background: theme.rust, color: 'white', borderRadius: 20, padding: '2px 9px', fontSize: 12, fontWeight: 600 },
+    countChip:   { background: theme.bgSubtle, color: theme.textSubtle, borderRadius: 20, padding: '2px 9px', fontSize: 12, fontWeight: 500 },
 
-  // Pending requests
-  requestList: { display: 'flex', flexDirection: 'column', gap: 2 },
-  requestRow:  { display: 'flex', alignItems: 'center', gap: 14, background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 12, padding: '14px 18px' },
-  requestInfo: { flex: 1 },
-  requestName: { fontSize: 15, fontWeight: 600, color: '#1a1208', cursor: 'pointer' },
-  requestSub:  { fontSize: 12, color: '#8a7f72', marginTop: 2 },
-  requestActions: { display: 'flex', gap: 8 },
+    // Pending requests
+    requestList: { display: 'flex', flexDirection: 'column', gap: 2 },
+    requestRow:  { display: 'flex', alignItems: 'center', gap: 14, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '14px 18px' },
+    requestInfo: { flex: 1 },
+    requestName: { fontSize: 15, fontWeight: 600, color: theme.text, cursor: 'pointer' },
+    requestSub:  { fontSize: 12, color: theme.textSubtle, marginTop: 2 },
+    requestActions: { display: 'flex', gap: 8 },
 
-  // Search
-  searchRow:       { display: 'flex', gap: 10, marginBottom: 4 },
-  searchInput:     { flex: 1, padding: '9px 14px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208' },
-  searchResults:   { marginTop: 12, display: 'flex', flexDirection: 'column', gap: 2 },
-  searchResultRow: { display: 'flex', alignItems: 'center', gap: 12, background: '#fdfaf4', border: '1px solid #e8dfc8', borderRadius: 10, padding: '12px 16px' },
-  searchResultName:{ fontSize: 14, fontWeight: 600, color: '#1a1208', cursor: 'pointer' },
-  emptySearch:     { color: '#8a7f72', fontSize: 14, padding: '20px 0', textAlign: 'center' },
+    // Search
+    searchRow:       { display: 'flex', gap: 10, marginBottom: 4 },
+    searchInput:     { flex: 1, padding: '9px 14px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgCard, color: theme.text },
+    searchResults:   { marginTop: 12, display: 'flex', flexDirection: 'column', gap: 2 },
+    searchResultRow: { display: 'flex', alignItems: 'center', gap: 12, background: theme.bgCard, border: `1px solid ${theme.borderLight}`, borderRadius: 10, padding: '12px 16px' },
+    searchResultName:{ fontSize: 14, fontWeight: 600, color: theme.text, cursor: 'pointer' },
+    emptySearch:     { color: theme.textSubtle, fontSize: 14, padding: '20px 0', textAlign: 'center' },
 
-  // Friends grid
-  friendsGrid:   { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16 },
-  friendCard:    { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, padding: '22px 18px 18px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', transition: 'box-shadow 0.15s, transform 0.15s' },
-  friendCardHover: { boxShadow: '0 4px 18px rgba(26,18,8,0.1)', transform: 'translateY(-2px)' },
-  friendAvatarWrap:{ cursor: 'pointer', marginBottom: 12 },
-  friendName:    { fontSize: 15, fontWeight: 700, color: '#1a1208', cursor: 'pointer', marginBottom: 4 },
-  friendStats:   { fontSize: 12, color: '#8a7f72', marginBottom: 14 },
-  friendActions: { display: 'flex', gap: 6, alignItems: 'center' },
+    // Friends grid
+    friendsGrid:   { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16 },
+    friendCard:    { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '22px 18px 18px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', transition: 'box-shadow 0.15s, transform 0.15s' },
+    friendCardHover: { boxShadow: theme.shadowCard, transform: 'translateY(-2px)' },
+    friendAvatarWrap:{ cursor: 'pointer', marginBottom: 12 },
+    friendName:    { fontSize: 15, fontWeight: 700, color: theme.text, cursor: 'pointer', marginBottom: 4 },
+    friendStats:   { fontSize: 12, color: theme.textSubtle, marginBottom: 14 },
+    friendActions: { display: 'flex', gap: 6, alignItems: 'center' },
 
-  // Empty state
-  emptyMsg:   { color: '#8a7f72', fontSize: 14, padding: '20px 0' },
-  emptyBox:   { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, padding: '48px 32px', textAlign: 'center' },
-  emptyIcon:  { fontSize: 36, marginBottom: 12 },
-  emptyTitle: { fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: '#1a1208', marginBottom: 8 },
-  emptySub:   { fontSize: 14, color: '#8a7f72', maxWidth: 320, margin: '0 auto' },
+    // Empty state
+    emptyMsg:   { color: theme.textSubtle, fontSize: 14, padding: '20px 0' },
+    emptyBox:   { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, padding: '48px 32px', textAlign: 'center' },
+    emptyIcon:  { fontSize: 36, marginBottom: 12 },
+    emptyTitle: { fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: theme.text, marginBottom: 8 },
+    emptySub:   { fontSize: 14, color: theme.textSubtle, maxWidth: 320, margin: '0 auto' },
 
-  // Buttons
-  btnAccept:    { padding: '6px 14px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnDecline:   { padding: '6px 12px', background: 'transparent', color: '#8a7f72', border: '1px solid #d4c9b0', borderRadius: 7, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnDeclineSmall: { padding: '5px 10px', background: 'transparent', color: '#8a7f72', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnSearch:    { padding: '9px 18px', background: '#1a1208', color: '#fdf8f0', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnAdd:       { padding: '6px 14px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
-  btnPending:   { padding: '6px 12px', background: 'transparent', color: '#5a7a5a', border: '1px solid #5a7a5a', borderRadius: 7, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
-  friendChip:   { fontSize: 13, color: '#5a7a5a', fontWeight: 500 },
-  btnVisit:     { padding: '6px 14px', background: 'transparent', color: '#c0521e', border: '1px solid #c0521e', borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnMore:      { padding: '5px 9px', background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 7, fontSize: 14, cursor: 'pointer', color: '#8a7f72', lineHeight: 1 },
-  moreMenu:     { position: 'absolute', top: 'calc(100% + 4px)', right: 0, background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 8, minWidth: 140, boxShadow: '0 4px 16px rgba(26,18,8,0.1)', zIndex: 20 },
-  moreMenuItem: { padding: '10px 14px', fontSize: 13, cursor: 'pointer', color: '#c0521e' },
+    // Buttons
+    btnAccept:    { padding: '6px 14px', background: theme.rust, color: 'white', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnDecline:   { padding: '6px 12px', background: 'transparent', color: theme.textSubtle, border: `1px solid ${theme.border}`, borderRadius: 7, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnDeclineSmall: { padding: '5px 10px', background: 'transparent', color: theme.textSubtle, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnSearch:    { padding: '9px 18px', background: theme.text, color: theme.bg, border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnAdd:       { padding: '6px 14px', background: theme.rust, color: 'white', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
+    btnPending:   { padding: '6px 12px', background: 'transparent', color: theme.sage, border: `1px solid ${theme.sage}`, borderRadius: 7, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
+    friendChip:   { fontSize: 13, color: theme.sage, fontWeight: 500 },
+    btnVisit:     { padding: '6px 14px', background: 'transparent', color: theme.rust, border: `1px solid ${theme.rust}`, borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnMore:      { padding: '5px 9px', background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 7, fontSize: 14, cursor: 'pointer', color: theme.textSubtle, lineHeight: 1 },
+    moreMenu:     { position: 'absolute', top: 'calc(100% + 4px)', right: 0, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 8, minWidth: 140, boxShadow: theme.shadow, zIndex: 20 },
+    moreMenuItem: { padding: '10px 14px', fontSize: 13, cursor: 'pointer', color: theme.rust },
+  }
 }

@@ -1,17 +1,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import { useTheme } from '../contexts/ThemeContext'
 
-// ── PALETTE ──
-const CREAM  = '#f5f0e8'
-const RUST   = '#c0521e'
-const SAGE   = '#5a7a5a'
-const GOLD   = '#b8860b'
-const INK    = '#1a1208'
-
-const CHART_COLORS = [RUST, SAGE, GOLD, '#4a6b8a', '#7b4f3a', '#8b5e83', '#3d6b6b']
+const CHART_COLORS = ['#c0521e', '#5a7a5a', '#b8860b', '#4a6b8a', '#7b4f3a', '#8b5e83', '#3d6b6b']
 
 export default function Stats({ session }) {
+  const { theme } = useTheme()
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -103,6 +98,47 @@ export default function Stats({ session }) {
     if (streak > 120) break // safety
   }
 
+  const s = {
+    page:    { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
+    content: { maxWidth: 960, margin: '0 auto', padding: '32px 32px 60px' },
+
+    pageHeading:   { marginBottom: 28 },
+    h1:            { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 28, fontWeight: 700, color: theme.text, margin: 0, marginBottom: 4 },
+    pageSubtitle:  { fontSize: 14, color: theme.textSubtle },
+
+    cardRow:   { display: 'flex', gap: 14, marginBottom: 24, flexWrap: 'wrap' },
+    statCard:  { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '18px 22px', flex: 1, minWidth: 160 },
+    statVal:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 26, fontWeight: 700, marginBottom: 4 },
+    statLabel: { fontSize: 11, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 1 },
+
+    twoCol:    { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 },
+
+    chartCard:  { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, padding: '22px 24px' },
+    chartTitle: { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 17, fontWeight: 700, color: theme.text, marginBottom: 4 },
+    chartEmpty: { fontSize: 13, color: theme.textSubtle, padding: '20px 0' },
+
+    barRow:   { display: 'flex', alignItems: 'center', gap: 10 },
+    barLabel: { fontSize: 13, color: theme.text, fontWeight: 500, width: 40, flexShrink: 0, textAlign: 'right' },
+    barTrack: { flex: 1, height: 14, background: 'rgba(192,82,30,0.1)', borderRadius: 8, overflow: 'hidden' },
+    barFill:  { height: '100%', background: theme.rust, borderRadius: 8, transition: 'width 0.6s ease', minWidth: 4 },
+    barCount: { fontSize: 12, color: theme.textSubtle, width: 24, textAlign: 'left', flexShrink: 0 },
+
+    legendList:  { display: 'flex', flexDirection: 'column', gap: 7, flex: 1 },
+    legendRow:   { display: 'flex', alignItems: 'center', gap: 8 },
+    legendDot:   { width: 10, height: 10, borderRadius: '50%', flexShrink: 0 },
+    legendGenre: { fontSize: 13, color: theme.text, flex: 1 },
+    legendCount: { fontSize: 12, color: theme.textSubtle, fontWeight: 600 },
+
+    highlightGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginTop: 8 },
+    highlightTile: { background: theme.rustLight, border: `1px solid rgba(192,82,30,0.12)`, borderRadius: 12, padding: '16px 14px' },
+    highlightIcon:  { fontSize: 22, marginBottom: 6 },
+    highlightLabel: { fontSize: 10, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, fontWeight: 600 },
+    highlightValue: { fontSize: 14, fontWeight: 700, color: theme.text, lineHeight: 1.35 },
+    highlightSub:   { fontSize: 12, color: theme.rust, marginTop: 3 },
+
+    empty:   { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '80px 0', color: theme.textSubtle, fontSize: 15 },
+  }
+
   return (
     <div style={s.page}>
       <NavBar session={session} />
@@ -119,17 +155,17 @@ export default function Stats({ session }) {
           <div style={s.empty}>
             <span style={{ fontSize: 48 }}>📊</span>
             <div>No books in your collection yet.</div>
-            <div style={{ fontSize: 13, color: '#8a7f72' }}>Add some books to start tracking your stats!</div>
+            <div style={{ fontSize: 13, color: theme.textSubtle }}>Add some books to start tracking your stats!</div>
           </div>
         ) : (
           <>
             {/* ── TOP STAT CARDS ── */}
             <div style={s.cardRow}>
               {[
-                { label: 'Books in Collection', value: totalBooks,   icon: '📚', color: INK  },
-                { label: 'Books Read',           value: booksRead,   icon: '✓',  color: SAGE },
-                { label: 'Pages Read',           value: totalPages > 0 ? totalPages.toLocaleString() : '—', icon: '📄', color: RUST },
-                { label: 'Avg Rating',           value: avgRating ? `★ ${avgRating}` : '—', icon: '⭐', color: GOLD },
+                { label: 'Books in Collection', value: totalBooks,   icon: '📚', color: theme.text  },
+                { label: 'Books Read',           value: booksRead,   icon: '✓',  color: theme.sage },
+                { label: 'Pages Read',           value: totalPages > 0 ? totalPages.toLocaleString() : '—', icon: '📄', color: theme.rust },
+                { label: 'Avg Rating',           value: avgRating ? `★ ${avgRating}` : '—', icon: '⭐', color: theme.gold },
               ].map(({ label, value, icon, color }) => (
                 <div key={label} style={s.statCard}>
                   <div style={{ ...s.statVal, color }}>{icon} {value}</div>
@@ -171,7 +207,7 @@ export default function Stats({ session }) {
                   <div style={s.chartEmpty}>No read books yet.</div>
                 ) : (
                   <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
-                    <DonutChart slices={genreSlices} />
+                    <DonutChart slices={genreSlices} theme={theme} />
                     <div style={s.legendList}>
                       {genreSlices.map(([genre, count], i) => (
                         <div key={genre} style={s.legendRow}>
@@ -196,6 +232,8 @@ export default function Stats({ session }) {
                   label="Most-Read Author"
                   value={topAuthor ? topAuthor[0] : '—'}
                   sub={topAuthor ? `${topAuthor[1]} book${topAuthor[1] !== 1 ? 's' : ''}` : undefined}
+                  theme={theme}
+                  s={s}
                 />
 
                 <HighlightTile
@@ -203,6 +241,8 @@ export default function Stats({ session }) {
                   label="Longest Book Read"
                   value={longestEntry ? longestEntry.books?.title : '—'}
                   sub={longestEntry?.books?.pages ? `${longestEntry.books.pages.toLocaleString()} pages` : undefined}
+                  theme={theme}
+                  s={s}
                 />
 
                 <HighlightTile
@@ -210,6 +250,8 @@ export default function Stats({ session }) {
                   label="Best Month"
                   value={topMonthLabel ? topMonthLabel.label : '—'}
                   sub={topMonthLabel ? `${topMonthLabel.count} book${topMonthLabel.count !== 1 ? 's' : ''} finished` : undefined}
+                  theme={theme}
+                  s={s}
                 />
 
                 <HighlightTile
@@ -217,6 +259,8 @@ export default function Stats({ session }) {
                   label="Reading Streak"
                   value={streak > 0 ? `${streak} month${streak !== 1 ? 's' : ''}` : '—'}
                   sub={streak > 0 ? 'consecutive months' : 'Start reading this month!'}
+                  theme={theme}
+                  s={s}
                 />
 
               </div>
@@ -229,7 +273,7 @@ export default function Stats({ session }) {
 }
 
 // ── DONUT CHART (SVG, no library) ──
-function DonutChart({ slices }) {
+function DonutChart({ slices, theme }) {
   const total = slices.reduce((s, [, c]) => s + c, 0)
   if (total === 0) return null
 
@@ -274,13 +318,13 @@ function DonutChart({ slices }) {
   return (
     <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} style={{ flexShrink: 0 }}>
       {paths.map(({ d, color, genre }) => (
-        <path key={genre} d={d} fill={color} stroke="#fdfaf4" strokeWidth="1.5" />
+        <path key={genre} d={d} fill={color} stroke={theme.bg} strokeWidth="1.5" />
       ))}
-      <text x={CX} y={CY - 5} textAnchor="middle" fill={INK}
+      <text x={CX} y={CY - 5} textAnchor="middle" fill={theme.text}
         style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Georgia, serif' }}>
         {total}
       </text>
-      <text x={CX} y={CY + 11} textAnchor="middle" fill="#8a7f72"
+      <text x={CX} y={CY + 11} textAnchor="middle" fill={theme.textSubtle}
         style={{ fontSize: 8, fontFamily: "'DM Sans', sans-serif" }}>
         books
       </text>
@@ -289,7 +333,7 @@ function DonutChart({ slices }) {
 }
 
 // ── HIGHLIGHT TILE ──
-function HighlightTile({ icon, label, value, sub }) {
+function HighlightTile({ icon, label, value, sub, s }) {
   return (
     <div style={s.highlightTile}>
       <div style={s.highlightIcon}>{icon}</div>
@@ -315,46 +359,4 @@ function LoadingSkeleton() {
       <div className="sk" style={{ height: 180 }} />
     </>
   )
-}
-
-// ── STYLES ──
-const s = {
-  page:    { minHeight: '100vh', background: CREAM, fontFamily: "'DM Sans', sans-serif" },
-  content: { maxWidth: 960, margin: '0 auto', padding: '32px 32px 60px' },
-
-  pageHeading:   { marginBottom: 28 },
-  h1:            { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 28, fontWeight: 700, color: INK, margin: 0, marginBottom: 4 },
-  pageSubtitle:  { fontSize: 14, color: '#8a7f72' },
-
-  cardRow:   { display: 'flex', gap: 14, marginBottom: 24, flexWrap: 'wrap' },
-  statCard:  { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, padding: '18px 22px', flex: 1, minWidth: 160 },
-  statVal:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 26, fontWeight: 700, marginBottom: 4 },
-  statLabel: { fontSize: 11, color: '#8a7f72', textTransform: 'uppercase', letterSpacing: 1 },
-
-  twoCol:    { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 },
-
-  chartCard:  { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, padding: '22px 24px' },
-  chartTitle: { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 17, fontWeight: 700, color: INK, marginBottom: 4 },
-  chartEmpty: { fontSize: 13, color: '#8a7f72', padding: '20px 0' },
-
-  barRow:   { display: 'flex', alignItems: 'center', gap: 10 },
-  barLabel: { fontSize: 13, color: INK, fontWeight: 500, width: 40, flexShrink: 0, textAlign: 'right' },
-  barTrack: { flex: 1, height: 14, background: 'rgba(192,82,30,0.1)', borderRadius: 8, overflow: 'hidden' },
-  barFill:  { height: '100%', background: RUST, borderRadius: 8, transition: 'width 0.6s ease', minWidth: 4 },
-  barCount: { fontSize: 12, color: '#8a7f72', width: 24, textAlign: 'left', flexShrink: 0 },
-
-  legendList:  { display: 'flex', flexDirection: 'column', gap: 7, flex: 1 },
-  legendRow:   { display: 'flex', alignItems: 'center', gap: 8 },
-  legendDot:   { width: 10, height: 10, borderRadius: '50%', flexShrink: 0 },
-  legendGenre: { fontSize: 13, color: INK, flex: 1 },
-  legendCount: { fontSize: 12, color: '#8a7f72', fontWeight: 600 },
-
-  highlightGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginTop: 8 },
-  highlightTile: { background: 'rgba(192,82,30,0.04)', border: '1px solid rgba(192,82,30,0.12)', borderRadius: 12, padding: '16px 14px' },
-  highlightIcon:  { fontSize: 22, marginBottom: 6 },
-  highlightLabel: { fontSize: 10, color: '#8a7f72', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, fontWeight: 600 },
-  highlightValue: { fontSize: 14, fontWeight: 700, color: INK, lineHeight: 1.35 },
-  highlightSub:   { fontSize: 12, color: RUST, marginTop: 3 },
-
-  empty:   { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '80px 0', color: '#8a7f72', fontSize: 15 },
 }

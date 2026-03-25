@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
 import EditProfileModal from '../components/EditProfileModal'
+import { useTheme } from '../contexts/ThemeContext'
 
 const STATUS_COLORS = {
   owned:   { bg: 'rgba(138,127,114,0.15)', color: '#8a7f72' },
@@ -31,6 +32,7 @@ function computeBadges(collectionData, friendCount) {
 export default function Profile({ session }) {
   const { username } = useParams()
   const navigate = useNavigate()
+  const { theme } = useTheme()
   const [profile, setProfile]             = useState(null)
   const [books, setBooks]                 = useState([])
   const [loading, setLoading]             = useState(true)
@@ -54,6 +56,8 @@ export default function Profile({ session }) {
   const [friendCount, setFriendCount]     = useState(0)
 
   const isOwnProfile = session?.user?.id === profile?.id
+
+  const s = makeStyles(theme)
 
   useEffect(() => { fetchProfile() }, [username])
 
@@ -351,7 +355,7 @@ export default function Profile({ session }) {
               <button style={s.heroSignOutBtn} onClick={() => supabase.auth.signOut()}>Sign out</button>
             </div>
           ) : (
-            session && <div style={{ flexShrink: 0 }}><FriendButton session={session} profile={profile} /></div>
+            session && <div style={{ flexShrink: 0 }}><FriendButton session={session} profile={profile} theme={theme} /></div>
           )}
         </div>
       </div>
@@ -399,10 +403,10 @@ export default function Profile({ session }) {
           {/* Currently Reading */}
           {reading.length > 0 && (
             <section style={s.section}>
-              <ShelfHeader label="Currently Reading" count={reading.length} accent="#c0521e" />
+              <ShelfHeader label="Currently Reading" count={reading.length} accent="#c0521e" theme={theme} />
               <div style={s.shelf}>
                 {reading.map(entry => (
-                  <ShelfCard key={entry.id} entry={entry}
+                  <ShelfCard key={entry.id} entry={entry} theme={theme}
                     onSelect={session ? () => setSelectedBook(entry.books.id) : undefined}
                     canBorrow={isFriend && !isOwnProfile && entry.read_status === 'owned'}
                     onBorrow={() => setBorrowTarget(entry)} />
@@ -414,10 +418,10 @@ export default function Profile({ session }) {
           {/* Read */}
           {read.length > 0 && (
             <section style={s.section}>
-              <ShelfHeader label="Read" count={read.length} accent="#5a7a5a" />
+              <ShelfHeader label="Read" count={read.length} accent="#5a7a5a" theme={theme} />
               <div style={s.shelf}>
                 {read.map(entry => (
-                  <ShelfCard key={entry.id} entry={entry}
+                  <ShelfCard key={entry.id} entry={entry} theme={theme}
                     onSelect={session ? () => setSelectedBook(entry.books.id) : undefined}
                     canBorrow={false} onBorrow={() => {}} />
                 ))}
@@ -428,10 +432,10 @@ export default function Profile({ session }) {
           {/* Want to Read */}
           {want.length > 0 && (
             <section style={s.section}>
-              <ShelfHeader label="Want to Read" count={want.length} accent="#b8860b" />
+              <ShelfHeader label="Want to Read" count={want.length} accent="#b8860b" theme={theme} />
               <div style={s.shelf}>
                 {want.map(entry => (
-                  <ShelfCard key={entry.id} entry={entry}
+                  <ShelfCard key={entry.id} entry={entry} theme={theme}
                     onSelect={session ? () => setSelectedBook(entry.books.id) : undefined}
                     canBorrow={false} onBorrow={() => {}} />
                 ))}
@@ -442,10 +446,10 @@ export default function Profile({ session }) {
           {/* In Library */}
           {owned.length > 0 && (
             <section style={s.section}>
-              <ShelfHeader label="In Library" count={owned.length} accent="#8a7f72" />
+              <ShelfHeader label="In Library" count={owned.length} accent="#8a7f72" theme={theme} />
               <div style={s.shelf}>
                 {owned.map(entry => (
-                  <ShelfCard key={entry.id} entry={entry}
+                  <ShelfCard key={entry.id} entry={entry} theme={theme}
                     onSelect={session ? () => setSelectedBook(entry.books.id) : undefined}
                     canBorrow={isFriend && !isOwnProfile}
                     onBorrow={() => setBorrowTarget(entry)} />
@@ -457,10 +461,10 @@ export default function Profile({ session }) {
           {/* Reviews */}
           {reviews.length > 0 && (
             <section style={{ ...s.section, paddingBottom: 48 }}>
-              <ShelfHeader label={`Reviews by ${profile.username}`} count={reviews.length} accent="#c0521e" />
+              <ShelfHeader label={`Reviews by ${profile.username}`} count={reviews.length} accent="#c0521e" theme={theme} />
               <div style={s.reviewsList}>
                 {reviews.map(entry => (
-                  <ReviewCard key={entry.id} entry={entry}
+                  <ReviewCard key={entry.id} entry={entry} theme={theme}
                     onBookClick={session ? () => setSelectedBook(entry.books.id) : undefined} />
                 ))}
               </div>
@@ -471,12 +475,12 @@ export default function Profile({ session }) {
 
       {/* Borrow modal */}
       {borrowTarget && session && profile && (
-        <BorrowModal session={session} entry={borrowTarget} ownerId={profile.id} onClose={() => setBorrowTarget(null)} />
+        <BorrowModal session={session} entry={borrowTarget} ownerId={profile.id} theme={theme} onClose={() => setBorrowTarget(null)} />
       )}
 
       {/* Book detail overlay */}
       {selectedBook && session && (
-        <div style={{ position: 'fixed', inset: 0, background: '#f5f0e8', zIndex: 40, overflowY: 'auto', isolation: 'isolate' }}>
+        <div style={{ position: 'fixed', inset: 0, background: theme.bg, zIndex: 40, overflowY: 'auto', isolation: 'isolate' }}>
           <BookDetail bookId={selectedBook} session={session} onBack={() => setSelectedBook(null)} />
         </div>
       )}
@@ -501,19 +505,20 @@ export default function Profile({ session }) {
 }
 
 // ── SHELF HEADER ──
-function ShelfHeader({ label, count, accent }) {
+function ShelfHeader({ label, count, accent, theme }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
       <div style={{ width: 4, height: 22, borderRadius: 2, background: accent, flexShrink: 0 }} />
-      <div style={{ fontFamily: 'Georgia, serif', fontSize: 19, fontWeight: 700, color: '#1a1208' }}>{label}</div>
-      <div style={{ background: 'rgba(26,18,8,0.06)', color: '#8a7f72', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 500 }}>{count}</div>
+      <div style={{ fontFamily: 'Georgia, serif', fontSize: 19, fontWeight: 700, color: theme.text }}>{label}</div>
+      <div style={{ background: theme.bgSubtle, color: theme.textSubtle, borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 500 }}>{count}</div>
     </div>
   )
 }
 
 // ── SHELF CARD ──
-function ShelfCard({ entry, onSelect, canBorrow, onBorrow }) {
+function ShelfCard({ entry, onSelect, canBorrow, onBorrow, theme }) {
   const book  = entry.books
+  const s     = makeStyles(theme)
   const [hover, setHover] = useState(false)
 
   return (
@@ -548,8 +553,9 @@ function ShelfCard({ entry, onSelect, canBorrow, onBorrow }) {
 }
 
 // ── REVIEW CARD ──
-function ReviewCard({ entry, onBookClick }) {
+function ReviewCard({ entry, onBookClick, theme }) {
   const book = entry.books
+  const s    = makeStyles(theme)
   return (
     <div style={s.reviewCard}>
       <div style={{ ...s.reviewCover, cursor: onBookClick ? 'pointer' : 'default' }} onClick={onBookClick}>
@@ -578,7 +584,8 @@ function ReviewCard({ entry, onBookClick }) {
 }
 
 // ── FRIEND BUTTON ──
-function FriendButton({ session, profile }) {
+function FriendButton({ session, profile, theme }) {
+  const s = makeStyles(theme)
   const [friendship, setFriendship] = useState(null)
   const [loading, setLoading]       = useState(true)
   const [acting, setActing]         = useState(false)
@@ -658,7 +665,8 @@ function FriendButton({ session, profile }) {
 }
 
 // ── BORROW MODAL ──
-function BorrowModal({ session, entry, ownerId, onClose }) {
+function BorrowModal({ session, entry, ownerId, onClose, theme }) {
+  const s    = makeStyles(theme)
   const book = entry.books
   const [message, setMessage]       = useState('')
   const [dueDate, setDueDate]       = useState('')
@@ -682,17 +690,17 @@ function BorrowModal({ session, entry, ownerId, onClose }) {
       <div style={s.borrowModal} onClick={e => e.stopPropagation()}>
         {success ? (
           <div style={{ padding: '36px', textAlign: 'center' }}>
-            <div style={{ fontSize: 40, marginBottom: 12, color: '#5a7a5a' }}>✓</div>
-            <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: '#1a1208', marginBottom: 8 }}>Request sent!</div>
-            <div style={{ fontSize: 14, color: '#8a7f72', marginBottom: 24 }}>You'll be notified when they respond.</div>
+            <div style={{ fontSize: 40, marginBottom: 12, color: theme.sage }}>✓</div>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text, marginBottom: 8 }}>Request sent!</div>
+            <div style={{ fontSize: 14, color: theme.textSubtle, marginBottom: 24 }}>You'll be notified when they respond.</div>
             <button style={s.btnPrimary} onClick={onClose}>Done</button>
           </div>
         ) : (
           <div style={{ padding: '28px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
               <div>
-                <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: '#1a1208' }}>Request to Borrow</div>
-                <div style={{ fontSize: 14, color: '#8a7f72', marginTop: 4 }}>{book.title}</div>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: theme.text }}>Request to Borrow</div>
+                <div style={{ fontSize: 14, color: theme.textSubtle, marginTop: 4 }}>{book.title}</div>
               </div>
               <button style={s.closeBtn} onClick={onClose}>✕</button>
             </div>
@@ -704,7 +712,7 @@ function BorrowModal({ session, entry, ownerId, onClose }) {
               <label style={s.fieldLabel}>Return by (optional)</label>
               <input type="date" style={s.dateInput} value={dueDate} onChange={e => setDueDate(e.target.value)} min={new Date().toISOString().split('T')[0]} />
             </div>
-            {error && <div style={{ color: '#c0521e', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+            {error && <div style={{ color: theme.rust, fontSize: 13, marginBottom: 12 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 8 }}>
               <button style={s.btnPrimary} onClick={submit} disabled={submitting}>{submitting ? 'Sending…' : 'Send Request'}</button>
               <button style={s.btnGhost} onClick={onClose}>Cancel</button>
@@ -722,9 +730,9 @@ function FakeCover({ title }) {
   const color  = colors[title.charCodeAt(0) % colors.length]
   const color2 = colors[(title.charCodeAt(0) + 3) % colors.length]
   return (
-    <div style={{ ...s.fakeCover, background: `linear-gradient(135deg, ${color}, ${color2})` }}>
-      <div style={s.fakeSpine} />
-      <span style={s.fakeCoverText}>{title}</span>
+    <div style={{ width: '100%', height: '100%', borderRadius: 6, display: 'flex', alignItems: 'flex-end', padding: '8px 8px 8px 14px', position: 'relative', overflow: 'hidden', background: `linear-gradient(135deg, ${color}, ${color2})` }}>
+      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, background: 'rgba(0,0,0,0.2)' }} />
+      <span style={{ fontSize: 9, fontWeight: 500, color: 'rgba(255,255,255,0.9)', textShadow: '0 1px 2px rgba(0,0,0,0.5)', lineHeight: 1.3, position: 'relative', zIndex: 1 }}>{title}</span>
     </div>
   )
 }
@@ -737,98 +745,97 @@ function MiniCover({ title }) {
 }
 
 // ── STYLES ──
-const s = {
-  page:        { minHeight: '100vh', background: '#f5f0e8', fontFamily: "'DM Sans', sans-serif" },
-  loadingMsg:  { color: '#8a7f72', fontSize: 14, padding: '80px 0', textAlign: 'center' },
+function makeStyles(theme) {
+  return {
+    page:        { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
+    loadingMsg:  { color: theme.textSubtle, fontSize: 14, padding: '80px 0', textAlign: 'center' },
 
-  // Hero
-  hero:        { background: 'linear-gradient(160deg, #1e140a 0%, #2e1f10 60%, #3a2818 100%)', borderBottom: '1px solid rgba(255,255,255,0.06)' },
-  heroInner:   { maxWidth: 960, margin: '0 auto', padding: '36px 32px', display: 'flex', alignItems: 'flex-start', gap: 24 },
-  heroAvatar:  { width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', display: 'block', border: '3px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' },
-  heroAvatarFallback: { width: 88, height: 88, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontSize: 34, color: 'white', fontWeight: 700, border: '3px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)', flexShrink: 0 },
-  avatarEditBtn: { position: 'absolute', bottom: 2, right: 2, width: 24, height: 24, borderRadius: '50%', background: '#c0521e', border: '2px solid #1e140a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', padding: 0 },
-  heroInfo:    { flex: 1, paddingTop: 4 },
-  heroName:    { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, color: '#fdf8f0', marginBottom: 6, letterSpacing: '-0.3px' },
-  heroBio:     { fontSize: 14, color: 'rgba(253,248,240,0.65)', lineHeight: 1.55, marginBottom: 10, maxWidth: 480 },
-  heroStatRow: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 8 },
-  heroStat:    { fontSize: 13, color: 'rgba(253,248,240,0.75)' },
-  heroDot:     { fontSize: 13, color: 'rgba(253,248,240,0.3)' },
-  heroMeta:        { fontSize: 12, color: 'rgba(253,248,240,0.35)' },
-  heroFriendsLink: { fontSize: 12, color: 'rgba(253,248,240,0.5)', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  heroPrimaryBtn:  { padding: '8px 18px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  heroGhostBtn:    { padding: '7px 14px', background: 'transparent', border: '1px solid rgba(253,248,240,0.25)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: 'rgba(253,248,240,0.7)' },
-  heroSignOutBtn:  { padding: '5px 12px', background: 'transparent', border: '1px solid rgba(253,248,240,0.15)', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: 'rgba(253,248,240,0.35)' },
-  editProfileBtn: { marginTop: 10, padding: '6px 14px', background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    // Hero — always dark, hero text stays light regardless of theme
+    hero:        { background: theme.heroBg, borderBottom: '1px solid rgba(255,255,255,0.06)' },
+    heroInner:   { maxWidth: 960, margin: '0 auto', padding: '36px 32px', display: 'flex', alignItems: 'flex-start', gap: 24 },
+    heroAvatar:  { width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', display: 'block', border: '3px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' },
+    heroAvatarFallback: { width: 88, height: 88, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontSize: 34, color: 'white', fontWeight: 700, border: '3px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)', flexShrink: 0 },
+    avatarEditBtn: { position: 'absolute', bottom: 2, right: 2, width: 24, height: 24, borderRadius: '50%', background: '#c0521e', border: '2px solid #1e140a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', padding: 0 },
+    heroInfo:    { flex: 1, paddingTop: 4 },
+    heroName:    { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, color: '#fdf8f0', marginBottom: 6, letterSpacing: '-0.3px' },
+    heroBio:     { fontSize: 14, color: 'rgba(253,248,240,0.65)', lineHeight: 1.55, marginBottom: 10, maxWidth: 480 },
+    heroStatRow: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 8 },
+    heroStat:    { fontSize: 13, color: 'rgba(253,248,240,0.75)' },
+    heroDot:     { fontSize: 13, color: 'rgba(253,248,240,0.3)' },
+    heroMeta:        { fontSize: 12, color: 'rgba(253,248,240,0.35)' },
+    heroFriendsLink: { fontSize: 12, color: 'rgba(253,248,240,0.5)', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    heroPrimaryBtn:  { padding: '8px 18px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    heroGhostBtn:    { padding: '7px 14px', background: 'transparent', border: '1px solid rgba(253,248,240,0.25)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: 'rgba(253,248,240,0.7)' },
+    heroSignOutBtn:  { padding: '5px 12px', background: 'transparent', border: '1px solid rgba(253,248,240,0.15)', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: 'rgba(253,248,240,0.35)' },
+    editProfileBtn: { marginTop: 10, padding: '6px 14px', background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
 
-  // Content
-  content:     { maxWidth: 960, margin: '0 auto', padding: '36px 32px' },
-  section:     { marginBottom: 40 },
-  emptyShelf:  { color: '#8a7f72', fontSize: 14, padding: '60px 0', textAlign: 'center' },
+    // Reading goal — lives on the hero, so stays light always
+    goalSetBtn:      { background: 'transparent', border: '1px dashed rgba(253,248,240,0.3)', borderRadius: 8, padding: '6px 14px', fontSize: 12, color: 'rgba(253,248,240,0.65)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    goalInputRow:    { display: 'flex', alignItems: 'center', gap: 6 },
+    goalInput:       { width: 72, padding: '5px 10px', borderRadius: 7, border: '1px solid rgba(253,248,240,0.3)', background: 'rgba(255,255,255,0.12)', color: '#fdf8f0', fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none' },
+    goalSaveBtn:     { padding: '5px 12px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    goalCancelBtn:   { background: 'transparent', border: 'none', color: 'rgba(253,248,240,0.4)', fontSize: 14, cursor: 'pointer', padding: '4px 6px', lineHeight: 1 },
+    goalDisplay:     { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+    goalProgressWrap:{ width: 160, height: 7, background: 'rgba(245,240,232,0.15)', borderRadius: 20, overflow: 'hidden', flexShrink: 0 },
+    goalProgressFill:{ height: '100%', background: '#c0521e', borderRadius: 20, minWidth: 4, transition: 'width 0.5s ease' },
+    goalText:        { fontSize: 12, color: 'rgba(253,248,240,0.7)' },
+    goalPct:         { color: 'rgba(253,248,240,0.45)' },
+    goalEditBtn:     { background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 13, padding: '2px 4px', opacity: 0.6, lineHeight: 1 },
 
-  // Shelf
-  shelf:       { display: 'flex', gap: 18, overflowX: 'auto', paddingBottom: 12, scrollbarWidth: 'thin', scrollbarColor: '#d4c9b0 transparent' },
-  shelfCard:   { flexShrink: 0, width: 120, transition: 'transform 0.15s' },
-  shelfCardHover: { transform: 'translateY(-3px)' },
-  shelfCoverWrap: { width: 120, height: 180, borderRadius: 6, overflow: 'hidden', boxShadow: '2px 4px 12px rgba(26,18,8,0.2)' },
-  shelfCoverImg:  { width: '100%', height: '100%', objectFit: 'cover' },
-  shelfTitle:  { fontSize: 12, fontWeight: 600, color: '#1a1208', lineHeight: 1.3, marginTop: 2 },
-  shelfAuthor: { fontSize: 11, color: '#8a7f72', marginTop: 2 },
-  shelfStars:  { fontSize: 10, color: '#b8860b', letterSpacing: 0.5, marginTop: 4 },
-  fakeCover:   { width: '100%', height: '100%', borderRadius: 6, display: 'flex', alignItems: 'flex-end', padding: '8px 8px 8px 14px', position: 'relative', overflow: 'hidden' },
-  fakeSpine:   { position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, background: 'rgba(0,0,0,0.2)' },
-  fakeCoverText: { fontSize: 9, fontWeight: 500, color: 'rgba(255,255,255,0.9)', textShadow: '0 1px 2px rgba(0,0,0,0.5)', lineHeight: 1.3, position: 'relative', zIndex: 1 },
+    // Badges strip — directly below hero, still dark
+    badgesSection:      { background: 'rgba(26,18,8,0.35)', borderBottom: '1px solid rgba(255,255,255,0.05)' },
+    badgesSectionInner: { maxWidth: 960, margin: '0 auto', padding: '14px 32px' },
+    badgesHeadRow:      { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 },
+    badgesTitle:        { fontFamily: 'Georgia, serif', fontSize: 14, fontWeight: 700, color: 'rgba(253,248,240,0.75)' },
+    badgesEarned:       { fontSize: 11, color: 'rgba(253,248,240,0.35)', background: 'rgba(255,255,255,0.06)', padding: '2px 9px', borderRadius: 20 },
+    badgeRow:           { display: 'flex', flexWrap: 'wrap', gap: 8 },
+    badgeChip:          { display: 'flex', alignItems: 'center', padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: 'default' },
+    badgeChipEarned:    { background: theme.bgSubtle, color: theme.text, border: `1px solid ${theme.border}` },
+    badgeChipLocked:    { background: 'rgba(255,255,255,0.05)', color: '#6a6258', border: '1px solid rgba(255,255,255,0.06)' },
 
-  // Reviews
-  reviewsList: { display: 'flex', flexDirection: 'column', gap: 20 },
-  reviewCard:  { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, padding: '20px 22px', display: 'flex', gap: 18 },
-  reviewCover: { width: 56, height: 84, flexShrink: 0, borderRadius: 5, overflow: 'hidden', background: '#e8dfc8' },
-  reviewBody:  { flex: 1 },
-  reviewBookTitle:  { fontSize: 15, fontWeight: 700, color: '#1a1208', lineHeight: 1.3 },
-  reviewBookAuthor: { fontSize: 13, color: '#8a7f72' },
-  reviewStars: { fontSize: 13, color: '#b8860b', letterSpacing: 1, margin: '6px 0' },
-  reviewQuote: { fontSize: 14, color: '#3a3028', lineHeight: 1.65, fontStyle: 'italic', borderLeft: '3px solid #e8dfc8', paddingLeft: 12, marginTop: 4 },
-  reviewDate:  { fontSize: 12, color: '#b0a898', marginTop: 10 },
+    // Content
+    content:     { maxWidth: 960, margin: '0 auto', padding: '36px 32px' },
+    section:     { marginBottom: 40 },
+    emptyShelf:  { color: theme.textSubtle, fontSize: 14, padding: '60px 0', textAlign: 'center' },
 
-  // Not found / private
-  notFoundBox:   { maxWidth: 400, margin: '80px auto', textAlign: 'center', padding: '0 32px' },
-  notFoundTitle: { fontFamily: 'Georgia, serif', fontSize: 20, color: '#1a1208', marginBottom: 8 },
-  notFoundSub:   { color: '#8a7f72', marginBottom: 24, fontSize: 14 },
-  privateBox:    { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, padding: '60px 32px', textAlign: 'center' },
-  privateTitle:  { fontFamily: 'Georgia, serif', fontSize: 18, color: '#1a1208', marginBottom: 8 },
-  privateSub:    { color: '#8a7f72', fontSize: 14 },
+    // Shelf
+    shelf:       { display: 'flex', gap: 18, overflowX: 'auto', paddingBottom: 12, scrollbarWidth: 'thin', scrollbarColor: `${theme.border} transparent` },
+    shelfCard:   { flexShrink: 0, width: 120, transition: 'transform 0.15s' },
+    shelfCardHover: { transform: 'translateY(-3px)' },
+    shelfCoverWrap: { width: 120, height: 180, borderRadius: 6, overflow: 'hidden', boxShadow: theme.shadowCard },
+    shelfCoverImg:  { width: '100%', height: '100%', objectFit: 'cover' },
+    shelfTitle:  { fontSize: 12, fontWeight: 600, color: theme.text, lineHeight: 1.3, marginTop: 2 },
+    shelfAuthor: { fontSize: 11, color: theme.textSubtle, marginTop: 2 },
+    shelfStars:  { fontSize: 10, color: theme.gold, letterSpacing: 0.5, marginTop: 4 },
 
-  // Buttons / shared
-  btnPrimary:  { padding: '8px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  btnGhost:    { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#3a3028' },
-  borrowBtn:   { display: 'block', marginTop: 8, padding: '4px 10px', fontSize: 11, background: 'transparent', border: '1px solid #5a7a5a', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#5a7a5a', fontWeight: 500 },
-  overlay:     { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  borrowModal: { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, width: 420, maxWidth: '92vw' },
-  closeBtn:    { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#8a7f72', padding: 4, flexShrink: 0 },
-  fieldLabel:  { display: 'block', fontSize: 11, fontWeight: 600, color: '#3a3028', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
-  textarea:    { width: '100%', padding: '10px 12px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
-  dateInput:   { width: '100%', padding: '9px 12px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
+    // Reviews
+    reviewsList: { display: 'flex', flexDirection: 'column', gap: 20 },
+    reviewCard:  { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '20px 22px', display: 'flex', gap: 18 },
+    reviewCover: { width: 56, height: 84, flexShrink: 0, borderRadius: 5, overflow: 'hidden', background: theme.bgSubtle },
+    reviewBody:  { flex: 1 },
+    reviewBookTitle:  { fontSize: 15, fontWeight: 700, color: theme.text, lineHeight: 1.3 },
+    reviewBookAuthor: { fontSize: 13, color: theme.textSubtle },
+    reviewStars: { fontSize: 13, color: theme.gold, letterSpacing: 1, margin: '6px 0' },
+    reviewQuote: { fontSize: 14, color: theme.text, lineHeight: 1.65, fontStyle: 'italic', borderLeft: `3px solid ${theme.bgSubtle}`, paddingLeft: 12, marginTop: 4 },
+    reviewDate:  { fontSize: 12, color: theme.textSubtle, marginTop: 10 },
 
-  // ── READING GOAL ──
-  goalSetBtn:      { background: 'transparent', border: '1px dashed rgba(253,248,240,0.3)', borderRadius: 8, padding: '6px 14px', fontSize: 12, color: 'rgba(253,248,240,0.65)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  goalInputRow:    { display: 'flex', alignItems: 'center', gap: 6 },
-  goalInput:       { width: 72, padding: '5px 10px', borderRadius: 7, border: '1px solid rgba(253,248,240,0.3)', background: 'rgba(255,255,255,0.12)', color: '#fdf8f0', fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none' },
-  goalSaveBtn:     { padding: '5px 12px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-  goalCancelBtn:   { background: 'transparent', border: 'none', color: 'rgba(253,248,240,0.4)', fontSize: 14, cursor: 'pointer', padding: '4px 6px', lineHeight: 1 },
-  goalDisplay:     { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-  goalProgressWrap:{ width: 160, height: 7, background: 'rgba(245,240,232,0.15)', borderRadius: 20, overflow: 'hidden', flexShrink: 0 },
-  goalProgressFill:{ height: '100%', background: '#c0521e', borderRadius: 20, minWidth: 4, transition: 'width 0.5s ease' },
-  goalText:        { fontSize: 12, color: 'rgba(253,248,240,0.7)' },
-  goalPct:         { color: 'rgba(253,248,240,0.45)' },
-  goalEditBtn:     { background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 13, padding: '2px 4px', opacity: 0.6, lineHeight: 1 },
+    // Not found / private
+    notFoundBox:   { maxWidth: 400, margin: '80px auto', textAlign: 'center', padding: '0 32px' },
+    notFoundTitle: { fontFamily: 'Georgia, serif', fontSize: 20, color: theme.text, marginBottom: 8 },
+    notFoundSub:   { color: theme.textSubtle, marginBottom: 24, fontSize: 14 },
+    privateBox:    { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, padding: '60px 32px', textAlign: 'center' },
+    privateTitle:  { fontFamily: 'Georgia, serif', fontSize: 18, color: theme.text, marginBottom: 8 },
+    privateSub:    { color: theme.textSubtle, fontSize: 14 },
 
-  // ── BADGES ──
-  badgesSection:      { background: 'rgba(26,18,8,0.35)', borderBottom: '1px solid rgba(255,255,255,0.05)' },
-  badgesSectionInner: { maxWidth: 960, margin: '0 auto', padding: '14px 32px' },
-  badgesHeadRow:      { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 },
-  badgesTitle:        { fontFamily: 'Georgia, serif', fontSize: 14, fontWeight: 700, color: 'rgba(253,248,240,0.75)' },
-  badgesEarned:       { fontSize: 11, color: 'rgba(253,248,240,0.35)', background: 'rgba(255,255,255,0.06)', padding: '2px 9px', borderRadius: 20 },
-  badgeRow:           { display: 'flex', flexWrap: 'wrap', gap: 8 },
-  badgeChip:          { display: 'flex', alignItems: 'center', padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: 'default' },
-  badgeChipEarned:    { background: '#1a1208', color: '#f5f0e8', border: '1px solid rgba(245,240,232,0.15)' },
-  badgeChipLocked:    { background: 'rgba(255,255,255,0.05)', color: '#6a6258', border: '1px solid rgba(255,255,255,0.06)' },
+    // Buttons / shared
+    btnPrimary:  { padding: '8px 16px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnGhost:    { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.text },
+    borrowBtn:   { display: 'block', marginTop: 8, padding: '4px 10px', fontSize: 11, background: 'transparent', border: `1px solid ${theme.sage}`, borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.sage, fontWeight: 500 },
+    overlay:     { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    borrowModal: { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 420, maxWidth: '92vw' },
+    closeBtn:    { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textSubtle, padding: 4, flexShrink: 0 },
+    fieldLabel:  { display: 'block', fontSize: 11, fontWeight: 600, color: theme.text, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+    textarea:    { width: '100%', padding: '10px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: theme.bgCard, color: theme.text, boxSizing: 'border-box' },
+    dateInput:   { width: '100%', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgCard, color: theme.text, boxSizing: 'border-box' },
+  }
 }

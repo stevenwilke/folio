@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import ManualAddModal from './ManualAddModal'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -9,6 +10,7 @@ const STATUS_LABELS = {
 }
 
 export default function SearchModal({ session, onClose, onAdded = () => {} }) {
+  const [showManual, setShowManual] = useState(false)
   const [query, setQuery]           = useState('')
   const [results, setResults]       = useState([])
   const [searching, setSearching]   = useState(false)
@@ -131,6 +133,15 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
             <div style={s.empty}>Search for a title, author, or ISBN above.</div>
           )}
 
+          {!searching && (
+            <div style={s.manualRow}>
+              <span style={s.manualText}>Can't find it?</span>
+              <button style={s.manualBtn} onClick={() => setShowManual(true)}>
+                Add manually →
+              </button>
+            </div>
+          )}
+
           {results.map(doc => {
             const coverUrl     = doc.cover_i
               ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-S.jpg`
@@ -186,6 +197,14 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
           })}
         </div>
       </div>
+
+      {showManual && (
+        <ManualAddModal
+          session={session}
+          onClose={() => setShowManual(false)}
+          onAdded={() => { setShowManual(false); onAdded() }}
+        />
+      )}
     </div>
   )
 }
@@ -211,6 +230,9 @@ const s = {
   addBtn:         { padding: '4px 8px', fontSize: 11, background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#1a1208', whiteSpace: 'nowrap' },
   addBtnLoading:  { opacity: 0.5, cursor: 'not-allowed' },
   addedConfirm:   { fontSize: 12, color: '#5a7a5a', fontWeight: 500 },
+  manualRow:      { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0 6px', borderBottom: '1px solid #e8dfc8', marginBottom: 4 },
+  manualText:     { fontSize: 12, color: '#8a7f72' },
+  manualBtn:      { fontSize: 12, fontWeight: 600, color: '#c0521e', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: "'DM Sans', sans-serif" },
   btnPrimary:     { padding: '8px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   empty:          { padding: '40px 0', textAlign: 'center', color: '#8a7f72', fontSize: 14 },
 }

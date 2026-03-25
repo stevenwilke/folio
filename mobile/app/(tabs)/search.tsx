@@ -270,11 +270,31 @@ export default function SearchScreen() {
             results.length === 0 && styles.listContentEmpty,
           ]}
           keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={
+            searched && results.length > 0 ? (
+              <TouchableOpacity
+                style={styles.manualBanner}
+                onPress={() => router.push('/manual-add' as any)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.manualBannerText}>Can't find it?</Text>
+                <Text style={styles.manualBannerLink}>Add manually →</Text>
+              </TouchableOpacity>
+            ) : null
+          }
           ListEmptyComponent={
             searched ? (
               <View style={styles.empty}>
+                <Text style={styles.emptyIcon}>📭</Text>
                 <Text style={styles.emptyTitle}>No results found</Text>
                 <Text style={styles.emptySubtitle}>Try a different search term.</Text>
+                <TouchableOpacity
+                  style={styles.manualBtn}
+                  onPress={() => router.push('/manual-add' as any)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.manualBtnText}>Add Book Manually</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <View style={styles.empty}>
@@ -416,6 +436,42 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: Colors.sage,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  manualBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  manualBannerText: {
+    fontSize: 13,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  manualBannerLink: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.rust,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  manualBtn: {
+    marginTop: 20,
+    backgroundColor: Colors.rust,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  manualBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
   empty: {

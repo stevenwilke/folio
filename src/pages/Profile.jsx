@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
+import NavBar from '../components/NavBar'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -126,7 +127,7 @@ export default function Profile({ session }) {
   if (loading) {
     return (
       <div style={s.page}>
-        <Topbar navigate={navigate} session={session} />
+        <NavBar session={session} />
         <div style={s.empty}>Loading…</div>
       </div>
     )
@@ -135,7 +136,7 @@ export default function Profile({ session }) {
   if (notFound) {
     return (
       <div style={s.page}>
-        <Topbar navigate={navigate} session={session} />
+        <NavBar session={session} />
         <div style={{ ...s.empty, paddingTop: 80 }}>
           <div style={{ fontSize: 40, marginBottom: 16 }}>📚</div>
           <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, color: '#1a1208', marginBottom: 8 }}>
@@ -156,7 +157,7 @@ export default function Profile({ session }) {
 
   return (
     <div style={s.page}>
-      <Topbar navigate={navigate} session={session} />
+      <NavBar session={session} />
 
       <div style={s.content}>
 
@@ -309,41 +310,6 @@ export default function Profile({ session }) {
           />
         </div>
       )}
-    </div>
-  )
-}
-
-// ---- TOPBAR ----
-function Topbar({ navigate, session }) {
-  const [myUsername, setMyUsername] = useState(null)
-  useEffect(() => {
-    if (!session) return
-    supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
-      .then(({ data }) => setMyUsername(data?.username || null))
-  }, [session])
-
-  return (
-    <div style={s.topbar}>
-      <div style={s.logo} onClick={() => navigate('/')} role="button" tabIndex={0}
-        onKeyDown={e => e.key === 'Enter' && navigate('/')}>
-        Folio
-      </div>
-      <div style={s.topbarRight}>
-        {session ? (
-          <>
-            <button style={s.btnGhost} onClick={() => navigate('/')}>Library</button>
-            <button style={s.btnGhost} onClick={() => navigate('/discover')}>Discover</button>
-            <button style={s.btnGhost} onClick={() => navigate('/feed')}>Feed</button>
-            <button style={s.btnGhost} onClick={() => navigate('/loans')}>Loans</button>
-            <button style={s.btnGhost} onClick={() => navigate('/marketplace')}>Marketplace</button>
-            {myUsername && (
-              <button style={s.btnActive} onClick={() => navigate(`/profile/${myUsername}`)}>My Profile</button>
-            )}
-          </>
-        ) : (
-          <button style={s.btnPrimary} onClick={() => navigate('/')}>Sign In</button>
-        )}
-      </div>
     </div>
   )
 }

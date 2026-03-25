@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
+import NavBar from '../components/NavBar'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -26,21 +27,11 @@ export default function Library({ session }) {
   const [listingTarget, setListingTarget] = useState(null)
   const [activeListings, setActiveListings] = useState({})
   const [collectionValue, setCollectionValue] = useState(null)
-  const [myUsername, setMyUsername]         = useState(null)
   const [friendRequests, setFriendRequests] = useState([])
   const [borrowNotifs, setBorrowNotifs]     = useState([])
   const [showRequests, setShowRequests]     = useState(false)
 
   useEffect(() => { fetchCollection() }, [])
-
-  useEffect(() => {
-    supabase
-      .from('profiles')
-      .select('username')
-      .eq('id', session.user.id)
-      .maybeSingle()
-      .then(({ data }) => setMyUsername(data?.username || null))
-  }, [session.user.id])
 
   useEffect(() => { fetchFriendRequests() }, [])
 
@@ -129,22 +120,9 @@ export default function Library({ session }) {
 
   return (
     <div style={s.page}>
-      {/* Topbar */}
-      <div style={s.topbar}>
-        <div style={s.logo} onClick={() => navigate('/')} role="button" tabIndex={0}>Folio</div>
-        <div style={s.topbarRight}>
-          <button style={s.navLinkActive}>Library</button>
-          <button style={s.btnGhost} onClick={() => navigate('/discover')}>Discover</button>
-          <button style={s.btnGhost} onClick={() => navigate('/feed')}>Feed</button>
-          <button style={s.btnGhost} onClick={() => navigate('/loans')}>Loans</button>
-          <button style={s.btnGhost} onClick={() => navigate('/marketplace')}>Marketplace</button>
-          {myUsername && (
-            <button style={s.btnGhost} onClick={() => navigate(`/profile/${myUsername}`)}>
-              My Profile
-            </button>
-          )}
+      <NavBar session={session} extra={
+        <>
           <button style={s.btnPrimary} onClick={() => setShowSearch(true)}>+ Add Book</button>
-          {/* Notification bell */}
           <div style={{ position: 'relative' }}>
             <button style={s.bellBtn} onClick={() => setShowRequests(v => !v)}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -167,8 +145,8 @@ export default function Library({ session }) {
             )}
           </div>
           <button style={s.btnGhost} onClick={handleSignOut}>Sign out</button>
-        </div>
-      </div>
+        </>
+      } />
 
       <div style={s.content}>
         {/* Stats */}

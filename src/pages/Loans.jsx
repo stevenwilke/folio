@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import NavBar from '../components/NavBar'
 
 export default function Loans({ session }) {
   const navigate  = useNavigate()
@@ -8,13 +9,7 @@ export default function Loans({ session }) {
   const [borrowing, setBorrowing] = useState([])
   const [loading, setLoading]   = useState(true)
   const [tab, setTab]           = useState('lending')
-  const [myUsername, setMyUsername] = useState(null)
-
-  useEffect(() => {
-    fetchLoans()
-    supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle()
-      .then(({ data }) => setMyUsername(data?.username || null))
-  }, [])
+  useEffect(() => { fetchLoans() }, [])
 
   async function fetchLoans() {
     setLoading(true)
@@ -69,22 +64,7 @@ export default function Loans({ session }) {
 
   return (
     <div style={s.page}>
-      <div style={s.topbar}>
-        <div style={s.logo} onClick={() => navigate('/')} role="button" tabIndex={0}
-          onKeyDown={e => e.key === 'Enter' && navigate('/')}>
-          Folio
-        </div>
-        <div style={s.topbarRight}>
-          <button style={s.btnGhost} onClick={() => navigate('/')}>Library</button>
-          <button style={s.btnGhost} onClick={() => navigate('/discover')}>Discover</button>
-          <button style={s.btnGhost} onClick={() => navigate('/feed')}>Feed</button>
-          <button style={s.btnActive}>Loans</button>
-          <button style={s.btnGhost} onClick={() => navigate('/marketplace')}>Marketplace</button>
-          {myUsername && (
-            <button style={s.btnGhost} onClick={() => navigate(`/profile/${myUsername}`)}>My Profile</button>
-          )}
-        </div>
-      </div>
+      <NavBar session={session} />
 
       <div style={s.content}>
         <div style={s.pageHeader}>

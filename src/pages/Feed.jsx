@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
+import NavBar from '../components/NavBar'
 
 const ACTION_TEXT = {
   read:    'finished reading',
@@ -31,20 +32,10 @@ function timeAgo(dateStr) {
 
 export default function Feed({ session }) {
   const navigate = useNavigate()
-  const [activity, setActivity]     = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [hasFriends, setHasFriends] = useState(true)
+  const [activity, setActivity]         = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [hasFriends, setHasFriends]     = useState(true)
   const [selectedBook, setSelectedBook] = useState(null)
-  const [myUsername, setMyUsername]     = useState(null)
-
-  useEffect(() => {
-    supabase
-      .from('profiles')
-      .select('username')
-      .eq('id', session.user.id)
-      .maybeSingle()
-      .then(({ data }) => setMyUsername(data?.username || null))
-  }, [session.user.id])
 
   useEffect(() => { fetchFeed() }, [])
 
@@ -91,25 +82,7 @@ export default function Feed({ session }) {
 
   return (
     <div style={s.page}>
-      {/* Topbar */}
-      <div style={s.topbar}>
-        <div style={s.logo} onClick={() => navigate('/')} role="button" tabIndex={0}
-          onKeyDown={e => e.key === 'Enter' && navigate('/')}>
-          Folio
-        </div>
-        <div style={s.topbarRight}>
-          <button style={s.btnGhost} onClick={() => navigate('/')}>Library</button>
-          <button style={s.btnGhost} onClick={() => navigate('/discover')}>Discover</button>
-          <button style={s.btnActive}>Feed</button>
-          <button style={s.btnGhost} onClick={() => navigate('/loans')}>Loans</button>
-          <button style={s.btnGhost} onClick={() => navigate('/marketplace')}>Marketplace</button>
-          {myUsername && (
-            <button style={s.btnGhost} onClick={() => navigate(`/profile/${myUsername}`)}>
-              My Profile
-            </button>
-          )}
-        </div>
-      </div>
+      <NavBar session={session} />
 
       <div style={s.content}>
         <div style={s.pageHeader}>

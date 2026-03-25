@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
+import NavBar from '../components/NavBar'
 
 const GENRES = [
   { label: 'Fiction',            slug: 'fiction',                      emoji: '📖' },
@@ -269,7 +270,6 @@ function BookRow({ books, myBookIds, onPreview, loading }) {
 
 export default function Discover({ session }) {
   const navigate = useNavigate()
-  const [myUsername,  setMyUsername]  = useState(null)
   const [myBookIds,   setMyBookIds]   = useState(new Set())
 
   const [forYou,        setForYou]        = useState([])
@@ -292,13 +292,9 @@ export default function Discover({ session }) {
 
   useEffect(() => {
     async function init() {
-      const [{ data: profile }, { data: entries }] = await Promise.all([
-        supabase.from('profiles').select('username').eq('id', session.user.id).maybeSingle(),
-        supabase.from('collection_entries')
-          .select('read_status, rating, books(title, author)')
-          .eq('user_id', session.user.id),
-      ])
-      setMyUsername(profile?.username ?? null)
+      const { data: entries } = await supabase.from('collection_entries')
+        .select('read_status, rating, books(title, author)')
+        .eq('user_id', session.user.id)
       const books = (entries ?? []).map(e => e.books).filter(Boolean)
       setMyBookIds(new Set(books.map(b => titleKey(b.title, b.author))))
       buildForYou(entries ?? [], books)
@@ -417,18 +413,7 @@ export default function Discover({ session }) {
 
   return (
     <div style={s.root}>
-      {/* Topbar */}
-      <div style={s.topbar}>
-        <div style={s.logo} onClick={() => navigate('/')} role="button" tabIndex={0}>Folio</div>
-        <div style={s.topbarRight}>
-          <button style={s.navBtn}       onClick={() => navigate('/')}>Library</button>
-          <button style={s.navBtnActive} onClick={() => navigate('/discover')}>Discover</button>
-          <button style={s.navBtn}       onClick={() => navigate('/feed')}>Feed</button>
-          <button style={s.navBtn}       onClick={() => navigate('/loans')}>Loans</button>
-          <button style={s.navBtn}       onClick={() => navigate('/marketplace')}>Marketplace</button>
-          {myUsername && <button style={s.navBtn} onClick={() => navigate(`/profile/${myUsername}`)}>My Profile</button>}
-        </div>
-      </div>
+      <NavBar session={session} />
 
       <div style={s.page}>
         {/* Header */}

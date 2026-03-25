@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { sendPushNotification } from '../lib/notifications';
 import {
   View,
   Text,
@@ -201,6 +202,14 @@ export default function FriendsScreen() {
     if (!myId) return;
     setActing(userId);
     await supabase.from('friendships').insert({ requester_id: myId, addressee_id: userId });
+    // Notify the recipient of the friend request
+    const { data: me } = await supabase.from('profiles').select('username').eq('id', myId).single();
+    sendPushNotification(
+      userId,
+      'New Friend Request',
+      `${me?.username ?? 'Someone'} sent you a friend request on Folio`,
+      { type: 'friend_request' }
+    );
     setActing(null);
     runSearch(myId);
     fetchAll(myId);

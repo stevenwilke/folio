@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { sendPushNotification } from '../../lib/notifications';
 import {
   View,
   Text,
@@ -350,12 +351,38 @@ export default function LoansScreen() {
   }
 
   async function handleAction(id: string, action: string) {
+    // Find the request so we can notify the right person
+    const req = [...lending, ...borrowing].find(r => r.id === id);
+    const bookTitle = (req as any)?.books?.title ?? 'a book';
+
     if (action === 'accept') {
       await supabase
         .from('borrow_requests')
         .update({ status: 'active', updated_at: new Date().toISOString() })
         .eq('id', id);
-    } else if (action === 'decline' || action === 'cancel') {
+      // Notify the borrower that their request was accepted
+      const borrowerId = (req as any)?.profiles?.id;
+      if (borrowerId) {
+        sendPushNotification(
+          borrowerId,
+          'Loan Request Accepted! 📚',
+          `Your request to borrow "${bookTitle}" was accepted`,
+          { type: 'loan_accepted' }
+        );
+      }
+    } else if (action === 'decline') {
+      await supabase.from('borrow_requests').delete().eq('id', id);
+      // Notify the borrower that their request was declined
+      const borrowerId = (req as any)?.profiles?.id;
+      if (borrowerId) {
+        sendPushNotification(
+          borrowerId,
+          'Loan Request Declined',
+          `Your request to borrow "${bookTitle}" was not accepted`,
+          { type: 'loan_declined' }
+        );
+      }
+    } else if (action === 'cancel') {
       await supabase.from('borrow_requests').delete().eq('id', id);
     } else if (action === 'returned') {
       await supabase

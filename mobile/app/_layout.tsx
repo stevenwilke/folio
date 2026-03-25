@@ -4,12 +4,16 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const segments = useSegments();
+
+  // Register for push notifications and handle taps
+  usePushNotifications(session);
 
   useEffect(() => {
     // Get initial session

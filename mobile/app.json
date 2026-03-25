@@ -35,6 +35,14 @@
         {
           "cameraPermission": "Folio needs camera access to scan book barcodes."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#c0521e",
+          "defaultChannel": "default"
+        }
       ]
     ],
     "scheme": "folio",

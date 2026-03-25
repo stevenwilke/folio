@@ -39,6 +39,27 @@ async function fetchSubjectBooks(slug, limit = 18) {
   } catch { return [] }
 }
 
+async function fetchNewReleases(limit = 20) {
+  const year = new Date().getFullYear()
+  for (const y of [year, year - 1]) {
+    try {
+      const r = await fetch(
+        `https://openlibrary.org/search.json?first_publish_year=${y}&sort=rating&limit=${limit}&fields=key,title,author_name,cover_i,first_publish_year`
+      )
+      const j = await r.json()
+      const results = (j.docs ?? []).filter(d => d.cover_i).map(d => ({
+        olKey:    d.key,
+        title:    d.title,
+        author:   d.author_name?.[0] ?? null,
+        coverUrl: `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg`,
+        year:     d.first_publish_year ?? null,
+      }))
+      if (results.length >= 6) return results
+    } catch { /* fall through */ }
+  }
+  return []
+}
+
 async function searchOL(query, limit = 10) {
   try {
     const r = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&fields=key,title,author_name,cover_i,first_publish_year&limit=${limit}`)
@@ -140,13 +161,16 @@ export default function Discover({ session }) {
   const [myUsername,  setMyUsername]  = useState(null)
   const [myBookIds,   setMyBookIds]   = useState(new Set())
 
-  const [forYou,      setForYou]      = useState([])
-  const [forYouLoad,  setForYouLoad]  = useState(true)
-  const [forYouLabel, setForYouLabel] = useState('Recommended for you')
+  const [forYou,        setForYou]        = useState([])
+  const [forYouLoad,    setForYouLoad]    = useState(true)
+  const [forYouLabel,   setForYouLabel]   = useState('Recommended for you')
 
-  const [friends,     setFriends]     = useState([])
-  const [friendsLoad, setFriendsLoad] = useState(true)
-  const [hasFriends,  setHasFriends]  = useState(true)
+  const [newReleases,   setNewReleases]   = useState([])
+  const [newRelLoad,    setNewRelLoad]    = useState(true)
+
+  const [friends,       setFriends]       = useState([])
+  const [friendsLoad,   setFriendsLoad]   = useState(true)
+  const [hasFriends,    setHasFriends]    = useState(true)
 
   const [activeGenre, setActiveGenre] = useState(null)
   const [genreBooks,  setGenreBooks]  = useState([])
@@ -167,6 +191,7 @@ export default function Discover({ session }) {
       setMyBookIds(new Set(books.map(b => titleKey(b.title, b.author))))
       buildForYou(entries ?? [], books)
       buildFriends()
+      buildNewReleases(new Set(books.map(b => titleKey(b.title, b.author))))
     }
     init()
   }, [session.user.id])
@@ -201,6 +226,15 @@ export default function Discover({ session }) {
       setForYou(fallback.filter(b => !ownedKeys2.has(titleKey(b.title, b.author))))
     } catch { setForYou([]) }
     finally { setForYouLoad(false) }
+  }
+
+  async function buildNewReleases(ownedKeys) {
+    setNewRelLoad(true)
+    try {
+      const books = await fetchNewReleases(24)
+      setNewReleases(books.filter(b => !ownedKeys.has(titleKey(b.title, b.author))))
+    } catch { setNewReleases([]) }
+    finally { setNewRelLoad(false) }
   }
 
   async function buildFriends() {
@@ -284,6 +318,15 @@ export default function Discover({ session }) {
             <p  style={s.secSub}>Tailored to your reading history</p>
           </div>
           <BookRow books={forYou} myBookIds={myBookIds} onSelect={setSelectedBook} onAdd={handleAdd} loading={forYouLoad} />
+        </section>
+
+        {/* New Releases */}
+        <section style={s.section}>
+          <div style={s.secHead}>
+            <h2 style={s.secTitle}>✨ New Releases</h2>
+            <p  style={s.secSub}>Fresh titles published this year</p>
+          </div>
+          <BookRow books={newReleases} myBookIds={myBookIds} onSelect={setSelectedBook} onAdd={handleAdd} loading={newRelLoad} />
         </section>
 
         {/* Friends Are Reading */}

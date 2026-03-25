@@ -59,6 +59,27 @@ async function fetchSubject(slug: string, limit = 15): Promise<DiscoverBook[]> {
   } catch { return []; }
 }
 
+async function fetchNewReleases(limit = 20): Promise<DiscoverBook[]> {
+  const year = new Date().getFullYear();
+  for (const y of [year, year - 1]) {
+    try {
+      const r = await fetch(
+        `https://openlibrary.org/search.json?first_publish_year=${y}&sort=rating&limit=${limit}&fields=key,title,author_name,cover_i,first_publish_year`
+      );
+      const j = await r.json();
+      const results = (j.docs ?? []).filter((d: any) => d.cover_i).map((d: any) => ({
+        olKey:    d.key,
+        title:    d.title,
+        author:   d.author_name?.[0] ?? null,
+        coverUrl: `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg`,
+        year:     d.first_publish_year ?? null,
+      }));
+      if (results.length >= 6) return results;
+    } catch { /* fall through */ }
+  }
+  return [];
+}
+
 async function searchOL(query: string, limit = 8): Promise<DiscoverBook[]> {
   try {
     const r = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&fields=key,title,author_name,cover_i,first_publish_year&limit=${limit}`);
@@ -156,12 +177,14 @@ function HorizontalSection({ title, subtitle, books, myKeys, onAdd, loading }: {
 
 export default function DiscoverScreen() {
   const [myKeys,      setMyKeys]      = useState(new Set<string>());
-  const [forYou,      setForYou]      = useState<DiscoverBook[]>([]);
-  const [forYouTitle, setForYouTitle] = useState('Recommended for You');
-  const [forYouLoad,  setForYouLoad]  = useState(true);
-  const [friends,     setFriends]     = useState<DiscoverBook[]>([]);
-  const [friendsLoad, setFriendsLoad] = useState(true);
-  const [hasFriends,  setHasFriends]  = useState(true);
+  const [forYou,        setForYou]        = useState<DiscoverBook[]>([]);
+  const [forYouTitle,   setForYouTitle]   = useState('Recommended for You');
+  const [forYouLoad,    setForYouLoad]    = useState(true);
+  const [newReleases,   setNewReleases]   = useState<DiscoverBook[]>([]);
+  const [newRelLoad,    setNewRelLoad]    = useState(true);
+  const [friends,       setFriends]       = useState<DiscoverBook[]>([]);
+  const [friendsLoad,   setFriendsLoad]   = useState(true);
+  const [hasFriends,    setHasFriends]    = useState(true);
   const [activeGenre, setActiveGenre] = useState<typeof GENRES[0] | null>(null);
   const [genreBooks,  setGenreBooks]  = useState<DiscoverBook[]>([]);
   const [genreLoad,   setGenreLoad]   = useState(false);
@@ -183,6 +206,7 @@ export default function DiscoverScreen() {
 
     buildForYou(entries ?? [], books, keys, user.id);
     buildFriends(user.id, keys);
+    buildNewReleases(keys);
   }
 
   async function buildForYou(entries: any[], books: any[], ownedKeys: Set<string>, userId: string) {
@@ -213,6 +237,15 @@ export default function DiscoverScreen() {
       setForYou(fallback.filter(b => !ownedKeys.has(titleKey(b.title, b.author))));
     } catch { setForYou([]); }
     finally { setForYouLoad(false); }
+  }
+
+  async function buildNewReleases(ownedKeys: Set<string>) {
+    setNewRelLoad(true);
+    try {
+      const books = await fetchNewReleases(24);
+      setNewReleases(books.filter(b => !ownedKeys.has(titleKey(b.title, b.author))));
+    } catch { setNewReleases([]); }
+    finally { setNewRelLoad(false); }
   }
 
   async function buildFriends(userId: string, ownedKeys: Set<string>) {
@@ -275,6 +308,13 @@ export default function DiscoverScreen() {
         title={forYouTitle}
         subtitle="Tailored to your reading history"
         books={forYou} myKeys={myKeys} onAdd={handleAdd} loading={forYouLoad}
+      />
+
+      {/* New Releases */}
+      <HorizontalSection
+        title="✨ New Releases"
+        subtitle="Fresh titles published this year"
+        books={newReleases} myKeys={myKeys} onAdd={handleAdd} loading={newRelLoad}
       />
 
       {/* Friends Reading */}

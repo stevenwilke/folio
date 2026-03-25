@@ -61,10 +61,10 @@ async function fetchSubject(slug: string, limit = 15): Promise<DiscoverBook[]> {
 
 async function fetchNewReleases(limit = 20): Promise<DiscoverBook[]> {
   const year = new Date().getFullYear();
-  for (const y of [year, year - 1]) {
+  for (const y of [year, year - 1, year - 2]) {
     try {
       const r = await fetch(
-        `https://openlibrary.org/search.json?first_publish_year=${y}&sort=rating&limit=${limit}&fields=key,title,author_name,cover_i,first_publish_year`
+        `https://openlibrary.org/search.json?q=publish_year:${y}&sort=rating&limit=${limit}&fields=key,title,author_name,cover_i,first_publish_year`
       );
       const j = await r.json();
       const results = (j.docs ?? []).filter((d: any) => d.cover_i).map((d: any) => ({
@@ -74,10 +74,21 @@ async function fetchNewReleases(limit = 20): Promise<DiscoverBook[]> {
         coverUrl: `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg`,
         year:     d.first_publish_year ?? null,
       }));
-      if (results.length >= 6) return results;
+      if (results.length >= 4) return results;
     } catch { /* fall through */ }
   }
-  return [];
+  // Final fallback: weekly trending
+  try {
+    const r = await fetch(`https://openlibrary.org/trending/weekly.json?limit=${limit}`);
+    const j = await r.json();
+    return (j.works ?? []).filter((w: any) => w.cover_id).map((w: any) => ({
+      olKey:    w.key,
+      title:    w.title,
+      author:   w.authors?.[0]?.name ?? null,
+      coverUrl: `https://covers.openlibrary.org/b/id/${w.cover_id}-M.jpg`,
+      year:     w.first_publish_year ?? null,
+    }));
+  } catch { return []; }
 }
 
 async function searchOL(query: string, limit = 8): Promise<DiscoverBook[]> {

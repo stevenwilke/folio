@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
+import { getCoverUrl } from '../lib/coverUrl'
 
 const ACTION_TEXT = {
   read:    'finished reading',
@@ -74,7 +75,7 @@ export default function Feed({ session }) {
     // Step 3: get their recent activity
     const { data: entries } = await supabase
       .from('collection_entries')
-      .select('id, user_id, read_status, user_rating, review_text, added_at, books(id, title, author, cover_image_url)')
+      .select('id, user_id, read_status, user_rating, review_text, added_at, books(id, title, author, cover_image_url, isbn_13, isbn_10)')
       .in('user_id', friendIds)
       .order('added_at', { ascending: false })
       .limit(50)
@@ -197,10 +198,12 @@ function ActivityCard({ item, onBookClick, onProfileClick, theme }) {
 
       {/* Book cover */}
       <div style={s.coverWrap}>
-        {book.cover_image_url
-          ? <img src={book.cover_image_url} alt={book.title} style={s.coverImg} />
-          : <FakeCover title={book.title} />
-        }
+        {(() => {
+          const url = getCoverUrl(book)
+          return url
+            ? <img src={url} alt={book.title} style={s.coverImg} onError={e => e.target.style.display='none'} />
+            : <FakeCover title={book.title} />
+        })()}
       </div>
     </div>
   )

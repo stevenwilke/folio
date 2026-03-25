@@ -5,6 +5,7 @@ import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
 import EditProfileModal from '../components/EditProfileModal'
 import { useTheme } from '../contexts/ThemeContext'
+import { getCoverUrl } from '../lib/coverUrl'
 
 const STATUS_COLORS = {
   owned:   { bg: 'rgba(138,127,114,0.15)', color: '#8a7f72' },
@@ -109,7 +110,7 @@ export default function Profile({ session }) {
 
     const { data: entries } = await supabase
       .from('collection_entries')
-      .select('id, read_status, user_rating, review_text, added_at, updated_at, books(id, title, author, cover_image_url, genre, published_year, pages)')
+      .select('id, read_status, user_rating, review_text, added_at, updated_at, books(id, title, author, cover_image_url, isbn_13, isbn_10, genre, published_year, pages)')
       .eq('user_id', prof.id)
       .order('added_at', { ascending: false })
 
@@ -529,10 +530,12 @@ function ShelfCard({ entry, onSelect, canBorrow, onBorrow, theme }) {
       onMouseLeave={() => setHover(false)}
     >
       <div style={s.shelfCoverWrap}>
-        {book.cover_image_url
-          ? <img src={book.cover_image_url} alt={book.title} style={s.shelfCoverImg} />
-          : <FakeCover title={book.title} />
-        }
+        {(() => {
+          const url = getCoverUrl(book)
+          return url
+            ? <img src={url} alt={book.title} style={s.shelfCoverImg} onError={e => e.target.style.display='none'} />
+            : <FakeCover title={book.title} />
+        })()}
       </div>
       <div style={{ marginTop: 9 }}>
         <div style={s.shelfTitle}>{book.title}</div>
@@ -559,10 +562,12 @@ function ReviewCard({ entry, onBookClick, theme }) {
   return (
     <div style={s.reviewCard}>
       <div style={{ ...s.reviewCover, cursor: onBookClick ? 'pointer' : 'default' }} onClick={onBookClick}>
-        {book.cover_image_url
-          ? <img src={book.cover_image_url} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }} />
-          : <MiniCover title={book.title} />
-        }
+        {(() => {
+          const url = getCoverUrl(book)
+          return url
+            ? <img src={url} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }} onError={e => e.target.style.display='none'} />
+            : <MiniCover title={book.title} />
+        })()}
       </div>
       <div style={s.reviewBody}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4 }}>

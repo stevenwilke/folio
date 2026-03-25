@@ -6,6 +6,7 @@ import NavBar from '../components/NavBar'
 import SearchModal from '../components/SearchModal'
 import GoodreadsImportModal from '../components/GoodreadsImportModal'
 import { useTheme } from '../contexts/ThemeContext'
+import { getCoverUrl } from '../lib/coverUrl'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -75,7 +76,7 @@ export default function Library({ session }) {
       .from('collection_entries')
       .select(`
         id, read_status, user_rating, added_at,
-        books ( id, title, author, cover_image_url, genre, published_year )
+        books ( id, title, author, cover_image_url, isbn_13, isbn_10, genre, published_year )
       `)
       .eq('user_id', session.user.id)
       .order('added_at', { ascending: false })
@@ -507,10 +508,12 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
       )}
 
       <div style={{ ...s.coverWrap, position: 'relative' }}>
-        {book.cover_image_url
-          ? <img src={book.cover_image_url} alt={book.title} style={s.coverImg} />
-          : <FakeCover title={book.title} />
-        }
+        {(() => {
+          const url = getCoverUrl(book)
+          return url
+            ? <img src={url} alt={book.title} style={s.coverImg} onError={e => e.target.style.display='none'} />
+            : <FakeCover title={book.title} />
+        })()}
         {listing && (
           <div style={s.forSaleBadge}>${Number(listing.price).toFixed(2)}</div>
         )}

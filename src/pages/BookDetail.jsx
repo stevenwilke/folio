@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
+import { getCoverUrl } from '../lib/coverUrl'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -438,10 +439,12 @@ export default function BookDetail({ bookId, session, onBack }) {
         {/* Hero */}
         <div style={s.hero}>
           <div style={s.coverWrap}>
-            {book.cover_image_url
-              ? <img src={book.cover_image_url} alt={book.title} style={s.coverImg} />
-              : <FakeCover title={book.title} />
-            }
+            {(() => {
+              const url = getCoverUrl(book)
+              return url
+                ? <img src={url} alt={book.title} style={s.coverImg} onError={e => e.target.style.display='none'} />
+                : <FakeCover title={book.title} />
+            })()}
           </div>
 
           <div style={s.heroInfo}>

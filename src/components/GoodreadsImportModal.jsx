@@ -74,6 +74,20 @@ function parseCSVLine(line) {
   return result
 }
 
+async function fetchCoverUrl(isbn13, isbn10) {
+  // Try isbn13 first, then isbn10
+  const candidates = [isbn13, isbn10].filter(Boolean)
+  for (const isbn of candidates) {
+    try {
+      // Open Library cover exists check — a HEAD request tells us if cover exists
+      const url = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false`
+      const res = await fetch(url, { method: 'HEAD' })
+      if (res.ok) return `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`
+    } catch { /* skip */ }
+  }
+  return null
+}
+
 export default function GoodreadsImportModal({ session, onClose, onImported }) {
   const { theme } = useTheme()
   const fileRef   = useRef(null)
@@ -126,11 +140,13 @@ export default function GoodreadsImportModal({ session, onClose, onImported }) {
           if (data) bookId = data.id
         }
         if (!bookId) {
+          const coverUrl = await fetchCoverUrl(b.isbn13, b.isbn10)
           const { data: newBook } = await supabase.from('books').insert({
             title: b.title, author: b.author,
             isbn_13: b.isbn13, isbn_10: b.isbn10,
             pages: b.pages, published_year: b.year,
             format: b.format,
+            cover_image_url: coverUrl,
           }).select('id').single()
           if (newBook) bookId = newBook.id
         }

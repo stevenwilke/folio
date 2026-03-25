@@ -79,8 +79,9 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [saved, setSaved]               = useState(false)
   const [listing, setListing]           = useState(null)
   const [showListingModal, setShowListingModal] = useState(false)
-  const [valuation, setValuation]       = useState(null)   // null = loading, false = not found, object = data
+  const [valuation, setValuation]       = useState(null)
   const [valuationLoading, setValuationLoading] = useState(true)
+  const [friendStats, setFriendStats]   = useState(null)   // null = loading, [] = none
 
   useEffect(() => {
     fetchBook()
@@ -88,7 +89,24 @@ export default function BookDetail({ bookId, session, onBack }) {
     fetchReviews()
     fetchCommunityRating()
     fetchListing()
+    fetchFriendStats()
   }, [bookId])
+
+  async function fetchFriendStats() {
+    setFriendStats(null)
+    const { data: fs } = await supabase
+      .from('friendships').select('requester_id, addressee_id')
+      .eq('status', 'accepted')
+      .or(`requester_id.eq.${session.user.id},addressee_id.eq.${session.user.id}`)
+    const friendIds = (fs || []).map(f => f.requester_id === session.user.id ? f.addressee_id : f.requester_id)
+    if (!friendIds.length) { setFriendStats([]); return }
+    const { data } = await supabase
+      .from('collection_entries')
+      .select('user_rating, read_status, profiles(username)')
+      .eq('book_id', bookId)
+      .in('user_id', friendIds)
+    setFriendStats(data || [])
+  }
 
   async function fetchBook() {
     const { data } = await supabase
@@ -351,6 +369,9 @@ export default function BookDetail({ bookId, session, onBack }) {
                 <span style={s.communityRatingCount}>No ratings yet — be the first!</span>
               </div>
             )}
+
+            {/* Friend stats */}
+            <FriendStatsRow stats={friendStats} />
 
             <div style={s.metaRow}>
               {book.published_year && <span style={s.metaPill}>{book.published_year}</span>}
@@ -690,6 +711,33 @@ function ListingModal({ session, book, onClose, onSuccess }) {
 }
 
 // ---- FAKE COVER ----
+function FriendStatsRow({ stats }) {
+  if (stats === null) return <div style={fs.row}><span style={fs.muted}>Checking friends…</span></div>
+  if (!stats.length) return <div style={fs.row}><span style={fs.muted}>👥 No friends have read this yet</span></div>
+  const withRating = stats.filter(s => s.user_rating)
+  const avg = withRating.length
+    ? (withRating.reduce((sum, s) => sum + s.user_rating, 0) / withRating.length).toFixed(1)
+    : null
+  const names = stats.map(s => s.profiles?.username).filter(Boolean)
+  const display = names.length === 1 ? names[0]
+    : names.length === 2 ? `${names[0]} and ${names[1]}`
+    : `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length - 2 > 1 ? 's' : ''}`
+  return (
+    <div style={fs.row}>
+      <span style={fs.icon}>👥</span>
+      <span style={fs.text}><strong>{display}</strong> {stats.length === 1 ? 'has' : 'have'} read this</span>
+      {avg && <span style={fs.avg}> · avg ★{avg}</span>}
+    </div>
+  )
+}
+const fs = {
+  row:  { display: 'flex', alignItems: 'center', gap: 4, margin: '8px 0', fontSize: 13, flexWrap: 'wrap' },
+  icon: { fontSize: 15 },
+  text: { color: '#3a3028' },
+  avg:  { color: '#b8860b', fontWeight: 600 },
+  muted:{ color: '#8a7f72', fontStyle: 'italic' },
+}
+
 function FakeCover({ title }) {
   const colors = ['#7b4f3a','#4a6b8a','#5a7a5a','#2c3e50','#8b2500','#b8860b','#3d5a5a','#c0521e']
   const color  = colors[title.charCodeAt(0) % colors.length]

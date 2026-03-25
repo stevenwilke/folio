@@ -44,12 +44,38 @@ const STATUS_OPTIONS: { key: ReadStatus; label: string }[] = [
   { key: 'want', label: 'Want to Read' },
 ];
 
+function MobileFriendStats({ stats }: { stats: any[] | null }) {
+  if (stats === null) return <Text style={mfs.muted}>Checking friends…</Text>;
+  if (!stats.length) return <Text style={mfs.muted}>👥 No friends have read this yet</Text>;
+  const withRating = stats.filter((s: any) => s.user_rating);
+  const avg = withRating.length
+    ? (withRating.reduce((sum: number, s: any) => sum + s.user_rating, 0) / withRating.length).toFixed(1) : null;
+  const names = stats.map((s: any) => s.profiles?.username).filter(Boolean);
+  const display = names.length === 1 ? names[0]
+    : names.length === 2 ? `${names[0]} and ${names[1]}`
+    : `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length - 2 > 1 ? 's' : ''}`;
+  return (
+    <View style={mfs.row}>
+      <Text style={mfs.base}>👥 <Text style={mfs.bold}>{display}</Text> {stats.length === 1 ? 'has' : 'have'} read this</Text>
+      {avg ? <Text style={mfs.avg}> · avg ★{avg}</Text> : null}
+    </View>
+  );
+}
+const mfs = StyleSheet.create({
+  row:  { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 6 },
+  base: { fontSize: 12, color: '#3a3028', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  bold: { fontWeight: '700' },
+  avg:  { fontSize: 12, color: '#b8860b', fontWeight: '600', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  muted:{ fontSize: 12, color: '#8a7f72', fontStyle: 'italic', marginTop: 6, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+});
+
 export default function BookDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { width } = useWindowDimensions();
   const [book, setBook] = useState<Book | null>(null);
   const [entry, setEntry] = useState<CollectionEntry | null>(null);
   const [communityRating, setCommunityRating] = useState<number | null>(null);
+  const [friendStats, setFriendStats] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -81,6 +107,19 @@ export default function BookDetailScreen() {
 
     if (bookData) setBook(bookData);
     if (entryData) setEntry(entryData);
+
+    // Friend stats
+    setFriendStats(null);
+    const { data: fs } = await supabase.from('friendships').select('requester_id, addressee_id')
+      .eq('status', 'accepted').or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+    const friendIds = (fs || []).map((f: any) => f.requester_id === user.id ? f.addressee_id : f.requester_id);
+    if (friendIds.length) {
+      const { data: friendEntries } = await supabase.from('collection_entries')
+        .select('user_rating, profiles(username)').eq('book_id', id).in('user_id', friendIds);
+      setFriendStats(friendEntries || []);
+    } else {
+      setFriendStats([]);
+    }
 
     if (ratingsData && ratingsData.length > 0) {
       const sum = ratingsData.reduce(
@@ -284,6 +323,9 @@ export default function BookDetailScreen() {
                 </Text>
               </View>
             ) : null}
+
+            {/* Friend stats */}
+            <MobileFriendStats stats={friendStats} />
           </View>
         </View>
 

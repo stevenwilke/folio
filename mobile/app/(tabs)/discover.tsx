@@ -146,9 +146,10 @@ function BookPreviewModal({ book, myKeys, onAdd, onViewDetail, onClose }: {
   onViewDetail: () => void;
   onClose: () => void;
 }) {
-  const [desc,   setDesc]   = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [added,  setAdded]  = useState<ReadStatus | null>(null);
+  const [desc,        setDesc]        = useState<string | null>(null);
+  const [adding,      setAdding]      = useState(false);
+  const [added,       setAdded]       = useState<ReadStatus | null>(null);
+  const [friendStats, setFriendStats] = useState<any[] | null>(null);
   const have = myKeys.has(titleKey(book.title, book.author));
 
   useEffect(() => {
@@ -164,6 +165,25 @@ function BookPreviewModal({ book, myKeys, onAdd, onViewDetail, onClose }: {
       })
       .catch(() => {});
   }, [book.olKey]);
+
+  useEffect(() => {
+    setFriendStats(null);
+    async function loadFriendStats() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setFriendStats([]); return; }
+      const { data: bookRow } = await supabase.from('books').select('id').eq('title', book.title).limit(1);
+      const bookId = (bookRow as any)?.[0]?.id;
+      if (!bookId) { setFriendStats([]); return; }
+      const { data: fs } = await supabase.from('friendships').select('requester_id, addressee_id')
+        .eq('status', 'accepted').or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+      const ids = (fs || []).map((f: any) => f.requester_id === user.id ? f.addressee_id : f.requester_id);
+      if (!ids.length) { setFriendStats([]); return; }
+      const { data } = await supabase.from('collection_entries')
+        .select('user_rating, profiles(username)').eq('book_id', bookId).in('user_id', ids);
+      setFriendStats((data as any[]) || []);
+    }
+    loadFriendStats();
+  }, [book.title]);
 
   async function handleAdd(status: ReadStatus) {
     if (adding || added || have) return;
@@ -189,6 +209,7 @@ function BookPreviewModal({ book, myKeys, onAdd, onViewDetail, onClose }: {
               {book.author && <Text style={styles.modalAuthor}>by {book.author}</Text>}
               {book.year   && <Text style={styles.modalYear}>{book.year}</Text>}
               {desc && <Text style={styles.modalDesc} numberOfLines={5}>{desc}</Text>}
+              <MobileFriendStats stats={friendStats} />
             </View>
           </View>
 

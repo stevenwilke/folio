@@ -133,11 +133,32 @@ function DiscoverCard({ book, onPreview, myBookIds }) {
   )
 }
 
+// ---- FRIEND STATS (reused in preview + detail) ----
+function PreviewFriendStats({ stats }) {
+  if (stats === null) return <div style={{ fontSize: 12, color: '#8a7f72', marginTop: 8, fontStyle: 'italic' }}>Checking friends…</div>
+  if (!stats.length) return <div style={{ fontSize: 12, color: '#8a7f72', marginTop: 8 }}>👥 No friends have read this yet</div>
+  const withRating = stats.filter(s => s.user_rating)
+  const avg = withRating.length
+    ? (withRating.reduce((sum, s) => sum + s.user_rating, 0) / withRating.length).toFixed(1) : null
+  const names = stats.map(s => s.profiles?.username).filter(Boolean)
+  const display = names.length === 1 ? names[0]
+    : names.length === 2 ? `${names[0]} and ${names[1]}`
+    : `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length - 2 > 1 ? 's' : ''}`
+  return (
+    <div style={{ fontSize: 12, color: '#3a3028', marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+      <span>👥</span>
+      <span><strong>{display}</strong> {stats.length === 1 ? 'has' : 'have'} read this</span>
+      {avg && <span style={{ color: '#b8860b', fontWeight: 600 }}>· avg ★{avg}</span>}
+    </div>
+  )
+}
+
 // ---- QUICK PREVIEW MODAL ----
-function QuickPreview({ book, myBookIds, onAdd, onViewDetail, onClose }) {
-  const [desc,   setDesc]   = useState(null)
-  const [adding, setAdding] = useState(false)
-  const [added,  setAdded]  = useState(null)
+function QuickPreview({ book, myBookIds, onAdd, onViewDetail, onClose, session }) {
+  const [desc,        setDesc]        = useState(null)
+  const [adding,      setAdding]      = useState(false)
+  const [added,       setAdded]       = useState(null)
+  const [friendStats, setFriendStats] = useState(null)
   const have = myBookIds.has(titleKey(book.title, book.author))
 
   useEffect(() => {
@@ -153,6 +174,25 @@ function QuickPreview({ book, myBookIds, onAdd, onViewDetail, onClose }) {
       })
       .catch(() => {})
   }, [book.olKey])
+
+  useEffect(() => {
+    if (!session) return
+    setFriendStats(null)
+    async function load() {
+      // Look up book ID by title
+      const { data: bookRow } = await supabase.from('books').select('id').eq('title', book.title).limit(1)
+      const bookId = bookRow?.[0]?.id
+      if (!bookId) { setFriendStats([]); return }
+      const { data: fs } = await supabase.from('friendships').select('requester_id, addressee_id')
+        .eq('status', 'accepted').or(`requester_id.eq.${session.user.id},addressee_id.eq.${session.user.id}`)
+      const ids = (fs || []).map(f => f.requester_id === session.user.id ? f.addressee_id : f.requester_id)
+      if (!ids.length) { setFriendStats([]); return }
+      const { data } = await supabase.from('collection_entries')
+        .select('user_rating, profiles(username)').eq('book_id', bookId).in('user_id', ids)
+      setFriendStats(data || [])
+    }
+    load()
+  }, [book.title, session])
 
   async function handleAdd(status, e) {
     e.stopPropagation()
@@ -177,6 +217,8 @@ function QuickPreview({ book, myBookIds, onAdd, onViewDetail, onClose }) {
             {book.author && <div style={s.previewAuthor}>by {book.author}</div>}
             {book.year   && <div style={s.previewYear}>{book.year}</div>}
             {desc && <div style={s.previewDesc}>{desc}</div>}
+          {/* Friend stats */}
+          <PreviewFriendStats stats={friendStats} />
           </div>
         </div>
 
@@ -465,6 +507,7 @@ export default function Discover({ session }) {
           onAdd={handleAdd}
           onViewDetail={() => handleBookClick(previewBook)}
           onClose={() => setPreviewBook(null)}
+          session={session}
         />
       )}
 

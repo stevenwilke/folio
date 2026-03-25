@@ -13,7 +13,7 @@ import {
   RefreshControl,
   TextInput,
 } from 'react-native';
-import { useLocalSearchParams, Stack } from 'expo-router';
+import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
@@ -73,6 +73,7 @@ const mfs = StyleSheet.create({
 export default function BookDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { width } = useWindowDimensions();
+  const router = useRouter();
   const [book, setBook] = useState<Book | null>(null);
   const [entry, setEntry] = useState<CollectionEntry | null>(null);
   const [communityRating, setCommunityRating] = useState<number | null>(null);
@@ -269,6 +270,31 @@ export default function BookDetailScreen() {
     await supabase.from('collection_entries')
       .update({ current_page: page > 0 ? page : null })
       .eq('id', entry.id);
+  }
+
+  async function removeFromCollection() {
+    if (!entry || !book) return;
+    Alert.alert(
+      'Remove book?',
+      `Remove "${book.title}" from your collection?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+            await supabase
+              .from('collection_entries')
+              .delete()
+              .eq('id', entry.id)
+              .eq('user_id', user.id);
+            router.back();
+          },
+        },
+      ]
+    );
   }
 
   if (loading) {
@@ -497,6 +523,18 @@ export default function BookDetailScreen() {
             </Text>
           </View>
         ) : null}
+
+        {/* Remove from collection */}
+        {entry ? (
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={styles.removeBtn}
+              onPress={removeFromCollection}
+            >
+              <Text style={styles.removeBtnText}>Remove from collection</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </ScrollView>
     </>
   );
@@ -682,4 +720,18 @@ const styles = StyleSheet.create({
   pageInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   pageInput: { width: 72, backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6, fontSize: 13, color: Colors.ink, textAlign: 'center', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
   pageOf: { fontSize: 13, color: Colors.muted, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  removeBtn: {
+    borderWidth: 1.5,
+    borderColor: '#c0392b',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  removeBtnText: {
+    color: '#c0392b',
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
 });

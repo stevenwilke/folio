@@ -30,10 +30,18 @@ export default function Library({ session }) {
   const [listingTarget, setListingTarget] = useState(null)
   const [activeListings, setActiveListings] = useState({})
   const [collectionValue, setCollectionValue] = useState(null)
+  const [selectMode, setSelectMode]     = useState(false)
+  const [selectedIds, setSelectedIds]   = useState(new Set())
+  const [bulkStatus, setBulkStatus]     = useState('')
+  const [bulkWorking, setBulkWorking]   = useState(false)
   useEffect(() => {
     fetchCollection()
     window.addEventListener('folio:bookAdded', fetchCollection)
-    return () => window.removeEventListener('folio:bookAdded', fetchCollection)
+    window.addEventListener('folio:bookRemoved', fetchCollection)
+    return () => {
+      window.removeEventListener('folio:bookAdded', fetchCollection)
+      window.removeEventListener('folio:bookRemoved', fetchCollection)
+    }
   }, [])
 
   async function fetchActiveListings() {
@@ -100,6 +108,53 @@ export default function Library({ session }) {
     want:    books.filter(b => b.read_status === 'want').length,
   }
 
+  function toggleSelectMode() {
+    setSelectMode(v => !v)
+    setSelectedIds(new Set())
+    setBulkStatus('')
+  }
+
+  function toggleSelect(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function applyBulkStatus() {
+    if (!bulkStatus || selectedIds.size === 0) return
+    setBulkWorking(true)
+    await supabase
+      .from('collection_entries')
+      .update({ read_status: bulkStatus })
+      .in('id', [...selectedIds])
+      .eq('user_id', session.user.id)
+    setBulkWorking(false)
+    setSelectMode(false)
+    setSelectedIds(new Set())
+    setBulkStatus('')
+    fetchCollection()
+  }
+
+  async function applyBulkRemove() {
+    if (selectedIds.size === 0) return
+    const confirmed = window.confirm(`Remove ${selectedIds.size} book${selectedIds.size > 1 ? 's' : ''} from your library?`)
+    if (!confirmed) return
+    setBulkWorking(true)
+    await supabase
+      .from('collection_entries')
+      .delete()
+      .in('id', [...selectedIds])
+      .eq('user_id', session.user.id)
+    setBulkWorking(false)
+    setSelectMode(false)
+    setSelectedIds(new Set())
+    setBulkStatus('')
+    fetchCollection()
+  }
+
   return (
     <div style={s.page}>
       <NavBar session={session} />
@@ -133,8 +188,8 @@ export default function Library({ session }) {
           ))}
         </div>
 
-        {/* Sort pills */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+        {/* Sort pills + Select toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, color: '#8a7f72', fontWeight: 500 }}>Sort:</span>
           {[
             { key: 'added',  label: 'Date Added' },
@@ -149,6 +204,14 @@ export default function Library({ session }) {
               {opt.label}
             </button>
           ))}
+          <div style={{ marginLeft: 'auto' }}>
+            <button
+              style={selectMode ? s.filterActive : { ...s.filterInactive, borderColor: '#b8860b', color: '#b8860b' }}
+              onClick={toggleSelectMode}
+            >
+              {selectMode ? '✕ Cancel Select' : '✓ Select'}
+            </button>
+          </div>
         </div>
 
         {/* Import button */}
@@ -190,8 +253,13 @@ export default function Library({ session }) {
                 entry={entry}
                 listing={activeListings[entry.books.id] || null}
                 onUpdate={fetchCollection}
-                onSelect={() => setSelectedBook(entry.books.id)}
+                onSelect={() => {
+                  if (selectMode) toggleSelect(entry.id)
+                  else setSelectedBook(entry.books.id)
+                }}
                 onListForSale={() => setListingTarget(entry)}
+                selectMode={selectMode}
+                isSelected={selectedIds.has(entry.id)}
               />
             ))}
           </div>
@@ -225,12 +293,50 @@ export default function Library({ session }) {
           />
         </div>
       )}
+
+      {/* Bulk action floating bar */}
+      {selectMode && (
+        <div style={s.bulkBar}>
+          <span style={s.bulkCount}>
+            {selectedIds.size} {selectedIds.size === 1 ? 'book' : 'books'} selected
+          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <select
+              style={s.bulkSelect}
+              value={bulkStatus}
+              onChange={e => setBulkStatus(e.target.value)}
+            >
+              <option value="">Change status…</option>
+              {Object.entries(STATUS_LABELS).map(([val, label]) => (
+                <option key={val} value={val}>{label}</option>
+              ))}
+            </select>
+            <button
+              style={{ ...s.bulkBtn, opacity: (!bulkStatus || selectedIds.size === 0 || bulkWorking) ? 0.5 : 1 }}
+              onClick={applyBulkStatus}
+              disabled={!bulkStatus || selectedIds.size === 0 || bulkWorking}
+            >
+              Apply →
+            </button>
+            <button
+              style={{ ...s.bulkBtn, ...s.bulkBtnDanger, opacity: (selectedIds.size === 0 || bulkWorking) ? 0.5 : 1 }}
+              onClick={applyBulkRemove}
+              disabled={selectedIds.size === 0 || bulkWorking}
+            >
+              Remove selected
+            </button>
+            <button style={s.bulkBtnCancel} onClick={toggleSelectMode}>
+              ✕ Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 // ---- BOOK CARD ----
-function BookCard({ entry, listing, onUpdate, onSelect, onListForSale }) {
+function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMode, isSelected }) {
   const book   = entry.books
   const status = entry.read_status
   const [menuOpen, setMenuOpen] = useState(false)
@@ -253,11 +359,52 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale }) {
 
   return (
     <div
-      style={{ ...s.card, ...(hover ? s.cardHover : {}) }}
+      style={{
+        ...s.card,
+        ...(hover && !selectMode ? s.cardHover : {}),
+        ...(isSelected ? s.cardSelected : {}),
+        position: 'relative',
+      }}
       onClick={onSelect}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
+      {/* Select mode checkbox */}
+      {selectMode && (
+        <div style={{
+          position: 'absolute', top: 6, left: 6, zIndex: 10,
+          width: 22, height: 22, borderRadius: '50%',
+          background: isSelected ? '#c0521e' : 'rgba(255,255,255,0.85)',
+          border: `2px solid ${isSelected ? '#c0521e' : '#d4c9b0'}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', backdropFilter: 'blur(4px)',
+          transition: 'all 0.15s',
+        }}>
+          {isSelected && <span style={{ color: 'white', fontSize: 12, fontWeight: 700, lineHeight: 1 }}>✓</span>}
+        </div>
+      )}
+
+      {/* Hover ✕ remove button (top-right, non-select mode) */}
+      {!selectMode && hover && (
+        <div
+          style={{
+            position: 'absolute', top: 6, right: 6, zIndex: 10,
+            width: 22, height: 22, borderRadius: '50%',
+            background: 'rgba(255,255,255,0.9)', border: '1px solid #d4c9b0',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', fontSize: 11, color: '#c0521e', fontWeight: 700,
+            backdropFilter: 'blur(4px)',
+          }}
+          onClick={e => {
+            e.stopPropagation()
+            if (window.confirm(`Remove "${book.title}" from your library?`)) removeBook()
+          }}
+          title="Remove from library"
+        >
+          ✕
+        </div>
+      )}
+
       <div style={{ ...s.coverWrap, position: 'relative' }}>
         {book.cover_image_url
           ? <img src={book.cover_image_url} alt={book.title} style={s.coverImg} />
@@ -267,38 +414,40 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale }) {
           <div style={s.forSaleBadge}>${Number(listing.price).toFixed(2)}</div>
         )}
         {/* Status badge overlaid at bottom of cover */}
-        <div style={{ position: 'absolute', bottom: 6, left: 6, zIndex: 2 }} onClick={e => { e.stopPropagation(); setMenuOpen(!menuOpen) }}>
-          <span style={{ ...s.badge, ...STATUS_COLORS[status], cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
-            {STATUS_LABELS[status]} ▾
-          </span>
-          {menuOpen && (
-            <div style={s.menu}>
-              {Object.entries(STATUS_LABELS).map(([val, label]) => (
-                <div key={val} style={{
-                  ...s.menuItem,
-                  fontWeight: val === status ? 600 : 400,
-                  color: val === status ? '#1a1208' : '#3a3028',
-                }} onClick={e => { e.stopPropagation(); changeStatus(val) }}>
-                  {val === status ? '✓ ' : ''}{label}
-                </div>
-              ))}
-              {entry.read_status === 'owned' && (
+        {!selectMode && (
+          <div style={{ position: 'absolute', bottom: 6, left: 6, zIndex: 2 }} onClick={e => { e.stopPropagation(); setMenuOpen(!menuOpen) }}>
+            <span style={{ ...s.badge, ...STATUS_COLORS[status], cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
+              {STATUS_LABELS[status]} ▾
+            </span>
+            {menuOpen && (
+              <div style={s.menu}>
+                {Object.entries(STATUS_LABELS).map(([val, label]) => (
+                  <div key={val} style={{
+                    ...s.menuItem,
+                    fontWeight: val === status ? 600 : 400,
+                    color: val === status ? '#1a1208' : '#3a3028',
+                  }} onClick={e => { e.stopPropagation(); changeStatus(val) }}>
+                    {val === status ? '✓ ' : ''}{label}
+                  </div>
+                ))}
+                {entry.read_status === 'owned' && (
+                  <div
+                    style={{ ...s.menuItem, color: '#5a7a5a', borderTop: '1px solid #e8dfc8', marginTop: 4 }}
+                    onClick={e => { e.stopPropagation(); setMenuOpen(false); onListForSale() }}
+                  >
+                    List for sale
+                  </div>
+                )}
                 <div
-                  style={{ ...s.menuItem, color: '#5a7a5a', borderTop: '1px solid #e8dfc8', marginTop: 4 }}
-                  onClick={e => { e.stopPropagation(); setMenuOpen(false); onListForSale() }}
+                  style={{ ...s.menuItem, borderTop: '1px solid #e8dfc8', color: '#c0521e', marginTop: 4 }}
+                  onClick={e => { e.stopPropagation(); removeBook() }}
                 >
-                  List for sale
+                  Remove from library
                 </div>
-              )}
-              <div
-                style={{ ...s.menuItem, borderTop: '1px solid #e8dfc8', color: '#c0521e', marginTop: 4 }}
-                onClick={e => { e.stopPropagation(); removeBook() }}
-              >
-                Remove from library
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
       <div style={{ marginTop: 8 }}>
         <div style={s.bookTitle}>{book.title}</div>
@@ -495,6 +644,13 @@ const s = {
   reqDecline:     { padding: '5px 12px', background: 'transparent', color: '#8a7f72', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
 
   forSaleBadge:   { position: 'absolute', bottom: 6, right: 6, background: '#5a7a5a', color: 'white', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, letterSpacing: 0.3 },
+  cardSelected:   { outline: '2px solid #c0521e', borderRadius: 6 },
+  bulkBar:        { position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, background: 'white', borderTop: '1px solid #d4c9b0', boxShadow: '0 -4px 20px rgba(26,18,8,0.1)', padding: '14px 32px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' },
+  bulkCount:      { fontSize: 14, fontWeight: 600, color: '#1a1208', marginRight: 4 },
+  bulkSelect:     { padding: '7px 10px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", background: 'white', color: '#1a1208', cursor: 'pointer', outline: 'none' },
+  bulkBtn:        { padding: '7px 16px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+  bulkBtnDanger:  { background: 'white', color: '#c0392b', border: '1px solid #f5c6c6' },
+  bulkBtnCancel:  { padding: '7px 14px', background: 'none', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#8a7f72' },
   fieldGroup:     { marginBottom: 18 },
   fieldLabel:     { display: 'block', fontSize: 11, fontWeight: 600, color: '#3a3028', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
   priceInputWrap: { display: 'flex', alignItems: 'center', border: '1px solid #d4c9b0', borderRadius: 8, overflow: 'hidden', background: 'white', width: 140 },

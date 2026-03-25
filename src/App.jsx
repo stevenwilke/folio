@@ -9,6 +9,10 @@ import Loans from './pages/Loans'
 import Marketplace from './pages/Marketplace'
 import Discover from './pages/Discover'
 import Friends from './pages/Friends'
+import Stats from './pages/Stats'
+import Shelves from './pages/Shelves'
+import Polls from './pages/Polls'
+import BookClubs from './pages/BookClubs'
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -59,6 +63,22 @@ export default function App() {
         <Route
           path="/friends"
           element={session ? <Friends session={session} /> : <Navigate to="/" replace />}
+        />
+        <Route
+          path="/stats"
+          element={session ? <Stats session={session} /> : <Navigate to="/" replace />}
+        />
+        <Route
+          path="/shelves"
+          element={session ? <Shelves session={session} /> : <Navigate to="/" replace />}
+        />
+        <Route
+          path="/polls"
+          element={session ? <Polls session={session} /> : <Navigate to="/" replace />}
+        />
+        <Route
+          path="/clubs"
+          element={session ? <BookClubs session={session} /> : <Navigate to="/" replace />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

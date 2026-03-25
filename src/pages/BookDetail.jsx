@@ -83,6 +83,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [valuationLoading, setValuationLoading] = useState(true)
   const [friendStats, setFriendStats]   = useState(null)   // null = loading, [] = none
   const [currentPage, setCurrentPage]   = useState(0)
+  const [removeConfirm, setRemoveConfirm] = useState(false)
 
   useEffect(() => {
     fetchBook()
@@ -268,9 +269,18 @@ export default function BookDetail({ bookId, session, onBack }) {
 
   async function removeFromLibrary() {
     if (!entry) return
-    await supabase.from('collection_entries').delete().eq('id', entry.id)
-    setEntry(null)
-    onBack()
+    if (!removeConfirm) {
+      setRemoveConfirm(true)
+      setTimeout(() => setRemoveConfirm(false), 3000)
+      return
+    }
+    await supabase
+      .from('collection_entries')
+      .delete()
+      .eq('id', entry.id)
+      .eq('user_id', session.user.id)
+    window.dispatchEvent(new CustomEvent('folio:bookRemoved'))
+    window.location.href = '/'
   }
 
   async function saveHeroRating(n) {
@@ -454,10 +464,22 @@ export default function BookDetail({ bookId, session, onBack }) {
                   {status === val ? '✓ ' : ''}{label}
                 </button>
               ))}
-              {entry && (
-                <button style={s.removeBtn} onClick={removeFromLibrary}>Remove</button>
-              )}
             </div>
+
+            {/* Remove from collection */}
+            {entry && (
+              <div style={{ marginTop: 10 }}>
+                <button
+                  style={{
+                    ...s.removeFromCollectionBtn,
+                    ...(removeConfirm ? s.removeFromCollectionBtnConfirm : {}),
+                  }}
+                  onClick={removeFromLibrary}
+                >
+                  {removeConfirm ? 'Are you sure? Click to confirm' : 'Remove from collection'}
+                </button>
+              </div>
+            )}
 
             {/* For sale row */}
             {entry?.read_status === 'owned' && (
@@ -826,6 +848,8 @@ const s = {
   statusRow:           { display: 'flex', gap: 8, marginTop: 20, flexWrap: 'wrap' },
   statusBtn:           { padding: '7px 14px', borderRadius: 8, border: '1px solid #d4c9b0', background: 'transparent', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#1a1208', transition: 'all 0.15s' },
   removeBtn:           { padding: '7px 14px', borderRadius: 8, border: '1px solid #d4c9b0', background: 'transparent', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0521e' },
+  removeFromCollectionBtn:        { padding: '6px 14px', borderRadius: 8, border: '1px solid #f5c6c6', background: 'transparent', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0392b', transition: 'all 0.15s' },
+  removeFromCollectionBtnConfirm: { borderColor: '#c0392b', background: 'rgba(192,57,43,0.07)', fontWeight: 500 },
   tabs:                { display: 'flex', borderBottom: '1px solid #d4c9b0', marginBottom: 24 },
   tab:                 { padding: '10px 20px', fontSize: 14, cursor: 'pointer', color: '#8a7f72', borderBottom: '2px solid transparent', marginBottom: -1, transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6 },
   tabActive:           { color: '#c0521e', borderBottom: '2px solid #c0521e', fontWeight: 500 },

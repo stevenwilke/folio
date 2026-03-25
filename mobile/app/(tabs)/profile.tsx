@@ -193,6 +193,11 @@ export default function ProfileScreen() {
         <Text style={styles.friendsBtnArrow}>›</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity style={styles.editProfileBtn} onPress={() => router.push('/stats' as any)}>
+        <Text style={styles.editProfileBtnText}>📊  My Stats</Text>
+        <Text style={styles.friendsBtnArrow}>›</Text>
+      </TouchableOpacity>
+
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>My Collection</Text>
       </View>

@@ -12,6 +12,22 @@ const STATUS_COLORS = {
   want:    { bg: 'rgba(184,134,11,0.12)',  color: '#b8860b' },
 }
 
+// ── BADGE DEFINITIONS ──
+const BADGE_DEFS = [
+  { id: 'bookworm',     emoji: '📚', name: 'Bookworm',        desc: 'Read 10+ books',                  check: (col, fc) => col.filter(e => e.read_status === 'read').length >= 10 },
+  { id: 'devoted',      emoji: '📖', name: 'Devoted Reader',  desc: 'Read 50+ books',                  check: (col, fc) => col.filter(e => e.read_status === 'read').length >= 50 },
+  { id: 'century',      emoji: '🏆', name: 'Century Club',    desc: 'Read 100+ books',                 check: (col, fc) => col.filter(e => e.read_status === 'read').length >= 100 },
+  { id: 'explorer',     emoji: '🎭', name: 'Genre Explorer',  desc: 'Read books in 5+ genres',         check: (col, fc) => { const gs = new Set(col.filter(e => e.read_status === 'read').map(e => e.books?.genre).filter(Boolean)); return gs.size >= 5 } },
+  { id: 'critic',       emoji: '⭐', name: 'Critic',          desc: 'Written 10+ reviews',             check: (col, fc) => col.filter(e => e.review_text).length >= 10 },
+  { id: 'social',       emoji: '🤝', name: 'Social Butterfly',desc: 'Has 10+ friends',                 check: (col, fc) => fc >= 10 },
+  { id: 'deepdiver',    emoji: '🔍', name: 'Deep Diver',      desc: 'Read a book over 500 pages',      check: (col, fc) => col.some(e => e.read_status === 'read' && (e.books?.pages || 0) > 500) },
+  { id: 'completionist',emoji: '🌟', name: 'Completionist',   desc: 'Books in all 4 statuses',         check: (col, fc) => { const ss = new Set(col.map(e => e.read_status)); return ['owned','reading','read','want'].every(s => ss.has(s)) } },
+]
+
+function computeBadges(collectionData, friendCount) {
+  return BADGE_DEFS.map(b => ({ ...b, earned: b.check(collectionData, friendCount) }))
+}
+
 export default function Profile({ session }) {
   const { username } = useParams()
   const navigate = useNavigate()
@@ -25,6 +41,17 @@ export default function Profile({ session }) {
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [showEditProfile, setShowEditProfile] = useState(false)
   const fileInputRef = useRef(null)
+
+  // ── GOAL STATE ──
+  const [goal, setGoal]                   = useState(null)
+  const [booksReadThisYear, setBooksReadThisYear] = useState(0)
+  const [showGoalInput, setShowGoalInput] = useState(false)
+  const [goalInputVal, setGoalInputVal]   = useState('')
+  const [savingGoal, setSavingGoal]       = useState(false)
+
+  // ── BADGES STATE ──
+  const [badges, setBadges]               = useState([])
+  const [friendCount, setFriendCount]     = useState(0)
 
   const isOwnProfile = session?.user?.id === profile?.id
 
@@ -78,12 +105,64 @@ export default function Profile({ session }) {
 
     const { data: entries } = await supabase
       .from('collection_entries')
-      .select('id, read_status, user_rating, review_text, added_at, books(id, title, author, cover_image_url, genre, published_year)')
+      .select('id, read_status, user_rating, review_text, added_at, updated_at, books(id, title, author, cover_image_url, genre, published_year, pages)')
       .eq('user_id', prof.id)
       .order('added_at', { ascending: false })
 
     setBooks(entries || [])
+
+    // ── FRIEND COUNT (for badges) ──
+    const { count: fc } = await supabase
+      .from('friendships')
+      .select('id', { count: 'exact', head: true })
+      .or(`requester_id.eq.${prof.id},addressee_id.eq.${prof.id}`)
+      .eq('status', 'accepted')
+    const friendCountVal = fc || 0
+    setFriendCount(friendCountVal)
+
+    // ── BADGES ──
+    setBadges(computeBadges(entries || [], friendCountVal))
+
+    // ── GOAL (own profile only) ──
+    if (isOwn) {
+      fetchGoal(prof.id, entries || [])
+    }
+
     setLoading(false)
+  }
+
+  async function fetchGoal(userId, entriesData) {
+    const currentYear = new Date().getFullYear()
+    const { data: goalData } = await supabase
+      .from('reading_goals')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('year', currentYear)
+      .maybeSingle()
+    setGoal(goalData || null)
+
+    // Count books read this year
+    const startOfYear = new Date(currentYear, 0, 1).toISOString()
+    const readThisYear = (entriesData || []).filter(e =>
+      e.read_status === 'read' && e.updated_at >= startOfYear
+    ).length
+    setBooksReadThisYear(readThisYear)
+  }
+
+  async function saveGoal() {
+    const target = parseInt(goalInputVal, 10)
+    if (!target || target < 1) return
+    setSavingGoal(true)
+    const currentYear = new Date().getFullYear()
+    const { data } = await supabase
+      .from('reading_goals')
+      .upsert({ user_id: session.user.id, year: currentYear, target_books: target }, { onConflict: 'user_id,year' })
+      .select()
+      .single()
+    setGoal(data)
+    setShowGoalInput(false)
+    setGoalInputVal('')
+    setSavingGoal(false)
   }
 
   // Derived shelves
@@ -182,8 +261,73 @@ export default function Profile({ session }) {
               </div>
             )}
 
+            {/* ── READING GOAL (own profile only) ── */}
+            {isOwnProfile && (
+              <div style={{ marginTop: 14 }}>
+                {!goal && !showGoalInput && (
+                  <button style={s.goalSetBtn} onClick={() => setShowGoalInput(true)}>
+                    📖 Set {new Date().getFullYear()} reading goal →
+                  </button>
+                )}
+                {!goal && showGoalInput && (
+                  <div style={s.goalInputRow}>
+                    <input
+                      type="number"
+                      min="1"
+                      max="999"
+                      placeholder="e.g. 24"
+                      value={goalInputVal}
+                      onChange={e => setGoalInputVal(e.target.value)}
+                      style={s.goalInput}
+                      onKeyDown={e => e.key === 'Enter' && saveGoal()}
+                      autoFocus
+                    />
+                    <button style={s.goalSaveBtn} onClick={saveGoal} disabled={savingGoal}>
+                      {savingGoal ? '…' : 'Save'}
+                    </button>
+                    <button style={s.goalCancelBtn} onClick={() => { setShowGoalInput(false); setGoalInputVal('') }}>✕</button>
+                  </div>
+                )}
+                {goal && (
+                  <div style={s.goalDisplay}>
+                    <div style={s.goalProgressWrap}>
+                      <div style={{
+                        ...s.goalProgressFill,
+                        width: `${Math.min(100, Math.round((booksReadThisYear / goal.target_books) * 100))}%`
+                      }} />
+                    </div>
+                    <div style={s.goalText}>
+                      {booksReadThisYear} of {goal.target_books} books read in {goal.year}
+                      <span style={s.goalPct}> · {Math.min(100, Math.round((booksReadThisYear / goal.target_books) * 100))}%</span>
+                    </div>
+                    {showGoalInput ? (
+                      <div style={{ ...s.goalInputRow, marginTop: 6 }}>
+                        <input
+                          type="number"
+                          min="1"
+                          max="999"
+                          placeholder={String(goal.target_books)}
+                          value={goalInputVal}
+                          onChange={e => setGoalInputVal(e.target.value)}
+                          style={s.goalInput}
+                          onKeyDown={e => e.key === 'Enter' && saveGoal()}
+                          autoFocus
+                        />
+                        <button style={s.goalSaveBtn} onClick={saveGoal} disabled={savingGoal}>
+                          {savingGoal ? '…' : 'Save'}
+                        </button>
+                        <button style={s.goalCancelBtn} onClick={() => { setShowGoalInput(false); setGoalInputVal('') }}>✕</button>
+                      </div>
+                    ) : (
+                      <button style={s.goalEditBtn} onClick={() => { setGoalInputVal(String(goal.target_books)); setShowGoalInput(true) }} title="Edit goal">✏️</button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {joinDate && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
                 <div style={s.heroMeta}>Member since {joinDate}</div>
                 {isOwnProfile && (
                   <button style={s.heroFriendsLink} onClick={() => navigate('/friends')}>
@@ -211,6 +355,28 @@ export default function Profile({ session }) {
           )}
         </div>
       </div>
+
+      {/* ── BADGES ── */}
+      {badges.length > 0 && (
+        <div style={s.badgesSection}>
+          <div style={s.badgesSectionInner}>
+            <div style={s.badgesHeadRow}>
+              <span style={s.badgesTitle}>🏅 Badges</span>
+              <span style={s.badgesEarned}>
+                {badges.filter(b => b.earned).length} earned
+              </span>
+            </div>
+            <div style={s.badgeRow}>
+              {badges.map(b => (
+                <div key={b.id} style={{ ...s.badgeChip, ...(b.earned ? s.badgeChipEarned : s.badgeChipLocked) }} title={b.desc}>
+                  <span style={{ marginRight: 5 }}>{b.earned ? b.emoji : '🔒'}</span>
+                  <span>{b.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── CONTENT ── */}
       {isPrivate ? (
@@ -641,4 +807,28 @@ const s = {
   fieldLabel:  { display: 'block', fontSize: 11, fontWeight: 600, color: '#3a3028', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
   textarea:    { width: '100%', padding: '10px 12px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
   dateInput:   { width: '100%', padding: '9px 12px', border: '1px solid #d4c9b0', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208', boxSizing: 'border-box' },
+
+  // ── READING GOAL ──
+  goalSetBtn:      { background: 'transparent', border: '1px dashed rgba(253,248,240,0.3)', borderRadius: 8, padding: '6px 14px', fontSize: 12, color: 'rgba(253,248,240,0.65)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+  goalInputRow:    { display: 'flex', alignItems: 'center', gap: 6 },
+  goalInput:       { width: 72, padding: '5px 10px', borderRadius: 7, border: '1px solid rgba(253,248,240,0.3)', background: 'rgba(255,255,255,0.12)', color: '#fdf8f0', fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none' },
+  goalSaveBtn:     { padding: '5px 12px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+  goalCancelBtn:   { background: 'transparent', border: 'none', color: 'rgba(253,248,240,0.4)', fontSize: 14, cursor: 'pointer', padding: '4px 6px', lineHeight: 1 },
+  goalDisplay:     { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  goalProgressWrap:{ width: 160, height: 7, background: 'rgba(245,240,232,0.15)', borderRadius: 20, overflow: 'hidden', flexShrink: 0 },
+  goalProgressFill:{ height: '100%', background: '#c0521e', borderRadius: 20, minWidth: 4, transition: 'width 0.5s ease' },
+  goalText:        { fontSize: 12, color: 'rgba(253,248,240,0.7)' },
+  goalPct:         { color: 'rgba(253,248,240,0.45)' },
+  goalEditBtn:     { background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 13, padding: '2px 4px', opacity: 0.6, lineHeight: 1 },
+
+  // ── BADGES ──
+  badgesSection:      { background: 'rgba(26,18,8,0.35)', borderBottom: '1px solid rgba(255,255,255,0.05)' },
+  badgesSectionInner: { maxWidth: 960, margin: '0 auto', padding: '14px 32px' },
+  badgesHeadRow:      { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 },
+  badgesTitle:        { fontFamily: 'Georgia, serif', fontSize: 14, fontWeight: 700, color: 'rgba(253,248,240,0.75)' },
+  badgesEarned:       { fontSize: 11, color: 'rgba(253,248,240,0.35)', background: 'rgba(255,255,255,0.06)', padding: '2px 9px', borderRadius: 20 },
+  badgeRow:           { display: 'flex', flexWrap: 'wrap', gap: 8 },
+  badgeChip:          { display: 'flex', alignItems: 'center', padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: 'default' },
+  badgeChipEarned:    { background: '#1a1208', color: '#f5f0e8', border: '1px solid rgba(245,240,232,0.15)' },
+  badgeChipLocked:    { background: 'rgba(255,255,255,0.05)', color: '#6a6258', border: '1px solid rgba(255,255,255,0.06)' },
 }

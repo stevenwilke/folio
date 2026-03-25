@@ -38,6 +38,18 @@ const TABS: TabConfig[] = [
     activeIcon: 'radio',
   },
   {
+    name: 'loans',
+    title: 'Loans',
+    icon: 'book-outline',
+    activeIcon: 'book',
+  },
+  {
+    name: 'marketplace',
+    title: 'Market',
+    icon: 'storefront-outline',
+    activeIcon: 'storefront',
+  },
+  {
     name: 'profile',
     title: 'Profile',
     icon: 'person-outline',

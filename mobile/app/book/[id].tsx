@@ -11,6 +11,7 @@ import {
   Alert,
   useWindowDimensions,
   RefreshControl,
+  TextInput,
 } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -79,6 +80,10 @@ export default function BookDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [reviewText, setReviewText] = useState('');
+  const [savingReview, setSavingReview] = useState(false);
+  const [reviewSaved, setReviewSaved] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
 
   const coverWidth = Math.min(width * 0.4, 180);
   const coverHeight = Math.round(coverWidth * 1.5);
@@ -107,6 +112,8 @@ export default function BookDetailScreen() {
 
     if (bookData) setBook(bookData);
     if (entryData) setEntry(entryData);
+    if (entryData?.review_text) setReviewText(entryData.review_text);
+    if (entryData?.current_page) setCurrentPage(entryData.current_page);
 
     // Friend stats
     setFriendStats(null);
@@ -235,6 +242,33 @@ export default function BookDetailScreen() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveReview() {
+    if (!entry) return;
+    setSavingReview(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      await supabase.from('collection_entries')
+        .update({ review_text: reviewText.trim() || null })
+        .eq('id', entry.id);
+      setReviewSaved(true);
+      setTimeout(() => setReviewSaved(false), 3000);
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Could not save review.');
+    } finally {
+      setSavingReview(false);
+    }
+  }
+
+  async function saveProgress(pageStr: string) {
+    const page = Math.max(0, parseInt(pageStr) || 0);
+    setCurrentPage(page);
+    if (!entry) return;
+    await supabase.from('collection_entries')
+      .update({ current_page: page > 0 ? page : null })
+      .eq('id', entry.id);
   }
 
   if (loading) {
@@ -388,6 +422,63 @@ export default function BookDetailScreen() {
             )}
           </View>
         </View>
+
+        {/* Review text */}
+        {entry && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Your Review</Text>
+            <TextInput
+              style={[styles.reviewInput]}
+              value={reviewText}
+              onChangeText={setReviewText}
+              placeholder="What did you think of this book? (optional)"
+              placeholderTextColor={Colors.muted}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+            <TouchableOpacity
+              style={[styles.saveReviewBtn, savingReview && { opacity: 0.6 }]}
+              onPress={saveReview}
+              disabled={savingReview}
+            >
+              {savingReview
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Text style={styles.saveReviewBtnText}>{reviewSaved ? '✓ Saved!' : 'Save Review'}</Text>
+              }
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Reading progress — only shown when currently reading + book has page count */}
+        {entry?.read_status === 'reading' && (book as any).pages ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Reading Progress</Text>
+            <View style={styles.progressRow}>
+              <View style={styles.progressBarBg}>
+                <View style={[styles.progressBarFill, {
+                  width: `${Math.min(100, Math.round((currentPage / ((book as any).pages)) * 100))}%` as any
+                }]} />
+              </View>
+              <Text style={styles.progressPct}>
+                {currentPage > 0
+                  ? `${Math.min(100, Math.round((currentPage / ((book as any).pages)) * 100))}%`
+                  : '0%'}
+              </Text>
+            </View>
+            <View style={styles.pageInputRow}>
+              <TextInput
+                style={styles.pageInput}
+                value={currentPage > 0 ? String(currentPage) : ''}
+                onChangeText={saveProgress}
+                keyboardType="numeric"
+                placeholder="0"
+                placeholderTextColor={Colors.muted}
+              />
+              <Text style={styles.pageOf}>of {(book as any).pages} pages</Text>
+            </View>
+          </View>
+        ) : null}
 
         {/* Description */}
         {book.description ? (
@@ -559,4 +650,36 @@ const styles = StyleSheet.create({
   metaValue: {
     color: Colors.ink,
   },
+  reviewInput: {
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: Colors.ink,
+    minHeight: 100,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+    marginBottom: 10,
+  },
+  saveReviewBtn: {
+    backgroundColor: Colors.rust,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  saveReviewBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  progressBarBg: { flex: 1, height: 6, backgroundColor: Colors.border, borderRadius: 3, overflow: 'hidden' },
+  progressBarFill: { height: '100%', backgroundColor: Colors.rust, borderRadius: 3 },
+  progressPct: { fontSize: 13, fontWeight: '600', color: Colors.rust, minWidth: 36, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  pageInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  pageInput: { width: 72, backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6, fontSize: 13, color: Colors.ink, textAlign: 'center', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  pageOf: { fontSize: 13, color: Colors.muted, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
 });

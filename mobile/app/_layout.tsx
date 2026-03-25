@@ -74,6 +74,7 @@ export default function RootLayout() {
         <Stack.Screen name="scan" options={{ headerShown: false }} />
         <Stack.Screen name="book/[id]" options={{ title: '' }} />
         <Stack.Screen name="friends" options={{ title: 'Friends', headerShown: true }} />
+        <Stack.Screen name="edit-profile" options={{ title: 'Edit Profile', headerShown: true }} />
         <Stack.Screen name="manual-add" options={{ title: 'Add Book Manually', headerShown: true }} />
       </Stack>
     </AuthGate>

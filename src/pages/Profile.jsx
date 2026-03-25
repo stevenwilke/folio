@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
+import EditProfileModal from '../components/EditProfileModal'
 
 const STATUS_COLORS = {
   owned:   { bg: 'rgba(138,127,114,0.15)', color: '#8a7f72' },
@@ -22,6 +23,7 @@ export default function Profile({ session }) {
   const [isFriend, setIsFriend]           = useState(false)
   const [borrowTarget, setBorrowTarget]   = useState(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [showEditProfile, setShowEditProfile] = useState(false)
   const fileInputRef = useRef(null)
 
   const isOwnProfile = session?.user?.id === profile?.id
@@ -190,6 +192,12 @@ export default function Profile({ session }) {
                 )}
               </div>
             )}
+
+            {isOwnProfile && (
+              <button style={s.editProfileBtn} onClick={() => setShowEditProfile(true)}>
+                ✏️ Edit Profile
+              </button>
+            )}
           </div>
 
           {/* Action */}
@@ -305,6 +313,22 @@ export default function Profile({ session }) {
         <div style={{ position: 'fixed', inset: 0, background: '#f5f0e8', zIndex: 40, overflowY: 'auto', isolation: 'isolate' }}>
           <BookDetail bookId={selectedBook} session={session} onBack={() => setSelectedBook(null)} />
         </div>
+      )}
+
+      {showEditProfile && (
+        <EditProfileModal
+          session={session}
+          profile={profile}
+          onClose={() => setShowEditProfile(false)}
+          onSaved={(updated) => {
+            setProfile(updated)
+            setShowEditProfile(false)
+            // If username changed, update the URL
+            if (updated.username !== profile.username) {
+              navigate(`/profile/${updated.username}`, { replace: true })
+            }
+          }}
+        />
       )}
     </div>
   )
@@ -568,6 +592,7 @@ const s = {
   heroPrimaryBtn:  { padding: '8px 18px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   heroGhostBtn:    { padding: '7px 14px', background: 'transparent', border: '1px solid rgba(253,248,240,0.25)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: 'rgba(253,248,240,0.7)' },
   heroSignOutBtn:  { padding: '5px 12px', background: 'transparent', border: '1px solid rgba(253,248,240,0.15)', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: 'rgba(253,248,240,0.35)' },
+  editProfileBtn: { marginTop: 10, padding: '6px 14px', background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
 
   // Content
   content:     { maxWidth: 960, margin: '0 auto', padding: '36px 32px' },

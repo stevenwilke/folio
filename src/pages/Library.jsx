@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
 import SearchModal from '../components/SearchModal'
+import GoodreadsImportModal from '../components/GoodreadsImportModal'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -23,6 +24,8 @@ export default function Library({ session }) {
   const [books, setBooks]             = useState([])
   const [loading, setLoading]         = useState(true)
   const [filter, setFilter]           = useState('all')
+  const [sort, setSort]               = useState('added')
+  const [showImport, setShowImport]   = useState(false)
   const [selectedBook, setSelectedBook] = useState(null)
   const [listingTarget, setListingTarget] = useState(null)
   const [activeListings, setActiveListings] = useState({})
@@ -79,6 +82,17 @@ export default function Library({ session }) {
 
   const filtered = filter === 'all' ? books : books.filter(e => e.read_status === filter)
 
+  function sortEntries(arr) {
+    switch (sort) {
+      case 'title':  return [...arr].sort((a, b) => a.books.title.localeCompare(b.books.title))
+      case 'author': return [...arr].sort((a, b) => (a.books.author||'').localeCompare(b.books.author||''))
+      case 'rating': return [...arr].sort((a, b) => (b.user_rating||0) - (a.user_rating||0))
+      case 'year':   return [...arr].sort((a, b) => (b.books.published_year||0) - (a.books.published_year||0))
+      default:       return arr  // 'added' - already sorted by added_at desc
+    }
+  }
+  const sorted = sortEntries(filtered)
+
   const stats = {
     total:   books.length,
     read:    books.filter(b => b.read_status === 'read').length,
@@ -119,6 +133,31 @@ export default function Library({ session }) {
           ))}
         </div>
 
+        {/* Sort pills */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+          <span style={{ fontSize: 12, color: '#8a7f72', fontWeight: 500 }}>Sort:</span>
+          {[
+            { key: 'added',  label: 'Date Added' },
+            { key: 'title',  label: 'Title' },
+            { key: 'author', label: 'Author' },
+            { key: 'rating', label: 'Rating' },
+            { key: 'year',   label: 'Year' },
+          ].map(opt => (
+            <button key={opt.key}
+              style={sort === opt.key ? s.filterActive : s.filterInactive}
+              onClick={() => setSort(opt.key)}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Import button */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <button style={{ ...s.filterInactive, color: '#5a7a5a', borderColor: '#5a7a5a' }} onClick={() => setShowImport(true)}>
+            📥 Import from Goodreads
+          </button>
+        </div>
+
         {/* Book grid */}
         {loading ? (
           <>
@@ -145,7 +184,7 @@ export default function Library({ session }) {
           </div>
         ) : (
           <div style={s.grid}>
-            {filtered.map(entry => (
+            {sorted.map(entry => (
               <BookCard
                 key={entry.id}
                 entry={entry}
@@ -157,6 +196,13 @@ export default function Library({ session }) {
             ))}
           </div>
         )}
+      {showImport && (
+        <GoodreadsImportModal
+          session={session}
+          onClose={() => setShowImport(false)}
+          onImported={() => { setShowImport(false); fetchCollection() }}
+        />
+      )}
       </div>
 
       {/* List for sale modal */}

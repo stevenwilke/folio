@@ -82,6 +82,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [valuation, setValuation]       = useState(null)
   const [valuationLoading, setValuationLoading] = useState(true)
   const [friendStats, setFriendStats]   = useState(null)   // null = loading, [] = none
+  const [currentPage, setCurrentPage]   = useState(0)
 
   useEffect(() => {
     fetchBook()
@@ -143,6 +144,7 @@ export default function BookDetail({ bookId, session, onBack }) {
       setEntry(data)
       setRating(data.user_rating || 0)
       setReviewText(data.review_text || '')
+      setCurrentPage(data.current_page || 0)
     }
   }
 
@@ -282,6 +284,17 @@ export default function BookDetail({ bookId, session, onBack }) {
       .eq('user_id', session.user.id)
     // Refresh community rating after user rates
     fetchCommunityRating()
+  }
+
+  async function saveProgress(page) {
+    if (!entry) return
+    const p = Math.max(0, parseInt(page) || 0)
+    setCurrentPage(p)
+    await supabase
+      .from('collection_entries')
+      .update({ current_page: p > 0 ? p : null })
+      .eq('id', entry.id)
+      .eq('user_id', session.user.id)
   }
 
   async function saveReview() {
@@ -463,6 +476,38 @@ export default function BookDetail({ bookId, session, onBack }) {
                     List for Sale
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* Reading progress */}
+            {entry?.read_status === 'reading' && book.pages && (
+              <div style={{ marginTop: 16 }}>
+                <div style={s.ratingLabel}>Reading Progress</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={s.progressBarBg}>
+                    <div style={{
+                      ...s.progressBarFill,
+                      width: `${Math.min(100, Math.round((currentPage / book.pages) * 100))}%`
+                    }} />
+                  </div>
+                  <span style={s.progressPct}>
+                    {currentPage > 0
+                      ? `${Math.min(100, Math.round((currentPage / book.pages) * 100))}%`
+                      : '0%'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                  <input
+                    type="number"
+                    min="0"
+                    max={book.pages}
+                    value={currentPage || ''}
+                    onChange={e => saveProgress(e.target.value)}
+                    placeholder="0"
+                    style={s.pageInput}
+                  />
+                  <span style={{ fontSize: 13, color: '#8a7f72' }}>of {book.pages} pages</span>
+                </div>
               </div>
             )}
           </div>
@@ -809,6 +854,10 @@ const s = {
   listForSaleBtn:  { padding: '7px 16px', background: 'transparent', border: '1px solid #5a7a5a', borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#5a7a5a' },
   forSaleTag:      { fontSize: 13, fontWeight: 600, color: '#5a7a5a', background: 'rgba(90,122,90,0.1)', padding: '4px 12px', borderRadius: 20 },
   removeListingBtn:{ padding: '4px 10px', background: 'transparent', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#8a7f72' },
+  progressBarBg:   { flex: 1, height: 6, background: '#e8dfc8', borderRadius: 3, overflow: 'hidden' },
+  progressBarFill: { height: '100%', background: '#c0521e', borderRadius: 3, transition: 'width 0.3s' },
+  progressPct:     { fontSize: 13, fontWeight: 600, color: '#c0521e', minWidth: 36 },
+  pageInput:       { width: 72, padding: '5px 9px', border: '1px solid #d4c9b0', borderRadius: 6, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: 'white', color: '#1a1208', textAlign: 'center' },
   modalOverlay:    { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' },
   modalBox:        { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, width: 420, maxWidth: '92vw' },
   modalCloseBtn:   { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#8a7f72', padding: 4, flexShrink: 0 },

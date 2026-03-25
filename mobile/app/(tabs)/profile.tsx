@@ -188,6 +188,11 @@ export default function ProfileScreen() {
         <Text style={styles.friendsBtnArrow}>›</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity style={styles.editProfileBtn} onPress={() => router.push('/edit-profile' as any)}>
+        <Text style={styles.editProfileBtnText}>✏️  Edit Profile</Text>
+        <Text style={styles.friendsBtnArrow}>›</Text>
+      </TouchableOpacity>
+
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>My Collection</Text>
       </View>
@@ -323,6 +328,24 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: Colors.muted,
     lineHeight: 22,
+  },
+  editProfileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  editProfileBtnText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.ink,
   },
   sectionHeader: {
     paddingHorizontal: 16,

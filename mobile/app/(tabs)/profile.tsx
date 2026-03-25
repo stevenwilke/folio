@@ -182,6 +182,12 @@ export default function ProfileScreen() {
         ))}
       </View>
 
+      {/* Friends button */}
+      <TouchableOpacity style={styles.friendsBtn} onPress={() => router.push('/friends' as any)}>
+        <Text style={styles.friendsBtnText}>👥  My Friends</Text>
+        <Text style={styles.friendsBtnArrow}>›</Text>
+      </TouchableOpacity>
+
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>My Collection</Text>
       </View>
@@ -294,6 +300,29 @@ const styles = StyleSheet.create({
     color: Colors.muted,
     marginTop: 2,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  friendsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  friendsBtnText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.ink,
+  },
+  friendsBtnArrow: {
+    fontSize: 20,
+    color: Colors.muted,
+    lineHeight: 22,
   },
   sectionHeader: {
     paddingHorizontal: 16,

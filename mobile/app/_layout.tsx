@@ -73,6 +73,7 @@ export default function RootLayout() {
         <Stack.Screen name="auth" options={{ headerShown: false }} />
         <Stack.Screen name="scan" options={{ headerShown: false }} />
         <Stack.Screen name="book/[id]" options={{ title: '' }} />
+        <Stack.Screen name="friends" options={{ title: 'Friends', headerShown: true }} />
       </Stack>
     </AuthGate>
   );

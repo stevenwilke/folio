@@ -81,6 +81,9 @@ export default function RootLayout() {
         <Stack.Screen name="friends" options={{ title: 'Friends', headerShown: true }} />
         <Stack.Screen name="edit-profile" options={{ title: 'Edit Profile', headerShown: true }} />
         <Stack.Screen name="manual-add" options={{ title: 'Add Book Manually', headerShown: true }} />
+        <Stack.Screen name="shelves" options={{ title: 'My Shelves', headerShown: true }} />
+        <Stack.Screen name="polls" options={{ title: 'Reading Polls', headerShown: true }} />
+        <Stack.Screen name="clubs" options={{ title: 'Book Clubs', headerShown: true }} />
       </Stack>
     </AuthGate>
   );

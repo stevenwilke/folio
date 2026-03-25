@@ -198,6 +198,21 @@ export default function ProfileScreen() {
         <Text style={styles.friendsBtnArrow}>›</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity style={styles.editProfileBtn} onPress={() => router.push('/shelves' as any)}>
+        <Text style={styles.editProfileBtnText}>📚  My Shelves</Text>
+        <Text style={styles.friendsBtnArrow}>›</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.editProfileBtn} onPress={() => router.push('/polls' as any)}>
+        <Text style={styles.editProfileBtnText}>🗳️  Reading Polls</Text>
+        <Text style={styles.friendsBtnArrow}>›</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.editProfileBtn} onPress={() => router.push('/clubs' as any)}>
+        <Text style={styles.editProfileBtnText}>💬  Book Clubs</Text>
+        <Text style={styles.friendsBtnArrow}>›</Text>
+      </TouchableOpacity>
+
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>My Collection</Text>
       </View>

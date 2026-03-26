@@ -16,6 +16,7 @@ import Polls from './pages/Polls'
 import BookClubs from './pages/BookClubs'
 import Author from './pages/Author'
 import Onboarding from './pages/Onboarding'
+import Landing from './pages/Landing'
 import BottomTabBar from './components/BottomTabBar'
 import { useIsMobile } from './hooks/useIsMobile'
 
@@ -28,7 +29,7 @@ function AppRoutes({ session }) {
         <Routes>
           <Route
             path="/"
-            element={session ? <Library session={session} /> : <Auth />}
+            element={session ? <Library session={session} /> : <Landing />}
           />
           <Route
             path="/profile/:username"

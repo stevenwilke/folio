@@ -304,28 +304,54 @@ export default function Library({ session }) {
           ))}
         </div>
 
-        {/* Sort pills + Select toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center' }}>
-          <span style={{ fontSize: 12, color: theme.textSubtle, fontWeight: 500 }}>Sort:</span>
-          {[
-            { key: 'added',  label: 'Date Added' },
-            { key: 'title',  label: 'Title' },
-            { key: 'author', label: 'Author' },
-            { key: 'rating', label: 'Rating' },
-            { key: 'year',   label: 'Year' },
-          ].map(opt => (
-            <button key={opt.key}
-              style={sort === opt.key ? s.filterActive : s.filterInactive}
-              onClick={() => setSort(opt.key)}>
-              {opt.label}
-            </button>
-          ))}
-          <div style={{ marginLeft: 'auto' }}>
+        {/* Sort + Select toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+          {isMobile ? (
+            /* Mobile: compact dropdown */
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+              <span style={{ fontSize: 12, color: theme.textSubtle, fontWeight: 500, flexShrink: 0 }}>Sort:</span>
+              <select
+                value={sort}
+                onChange={e => setSort(e.target.value)}
+                style={{
+                  flex: 1, padding: '7px 10px', border: `1px solid ${theme.border}`,
+                  borderRadius: 8, fontSize: 13, background: theme.bgCard,
+                  color: theme.text, fontFamily: "'DM Sans', sans-serif",
+                  outline: 'none', cursor: 'pointer',
+                }}
+              >
+                <option value="added">Date Added</option>
+                <option value="title">Title</option>
+                <option value="author">Author</option>
+                <option value="rating">Rating</option>
+                <option value="year">Year</option>
+              </select>
+            </div>
+          ) : (
+            /* Desktop: pills */
+            <>
+              <span style={{ fontSize: 12, color: theme.textSubtle, fontWeight: 500 }}>Sort:</span>
+              {[
+                { key: 'added',  label: 'Date Added' },
+                { key: 'title',  label: 'Title' },
+                { key: 'author', label: 'Author' },
+                { key: 'rating', label: 'Rating' },
+                { key: 'year',   label: 'Year' },
+              ].map(opt => (
+                <button key={opt.key}
+                  style={sort === opt.key ? s.filterActive : s.filterInactive}
+                  onClick={() => setSort(opt.key)}>
+                  {opt.label}
+                </button>
+              ))}
+            </>
+          )}
+          <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
             <button
               style={selectMode ? s.filterActive : { ...s.filterInactive, borderColor: theme.gold, color: theme.gold }}
               onClick={toggleSelectMode}
             >
-              {selectMode ? '✕ Cancel Select' : '✓ Select'}
+              {selectMode ? '✕ Cancel' : '✓ Select'}
             </button>
           </div>
         </div>

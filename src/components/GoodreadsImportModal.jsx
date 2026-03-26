@@ -90,15 +90,19 @@ async function fetchCoverUrl(isbn13, isbn10) {
 
 export default function GoodreadsImportModal({ session, onClose, onImported }) {
   const { theme } = useTheme()
-  const fileRef   = useRef(null)
-  const [books,    setBooks]    = useState([])
-  const [step,     setStep]     = useState('upload')  // upload | preview | importing | done
-  const [progress, setProgress] = useState({ done: 0, total: 0 })
-  const [error,    setError]    = useState(null)
+  const fileRef    = useRef(null)
+  const [books,     setBooks]     = useState([])
+  const [step,      setStep]      = useState('upload')  // upload | preview | importing | done
+  const [progress,  setProgress]  = useState({ done: 0, total: 0 })
+  const [error,     setError]     = useState(null)
+  const [isDragging, setIsDragging] = useState(false)
 
-  function handleFile(e) {
-    const file = e.target.files?.[0]
+  function processFile(file) {
     if (!file) return
+    if (!file.name.endsWith('.csv') && file.type !== 'text/csv') {
+      setError('Please upload a CSV file (.csv)')
+      return
+    }
     const reader = new FileReader()
     reader.onload = (ev) => {
       try {
@@ -112,6 +116,28 @@ export default function GoodreadsImportModal({ session, onClose, onImported }) {
       }
     }
     reader.readAsText(file)
+  }
+
+  function handleFile(e) {
+    processFile(e.target.files?.[0])
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    setIsDragging(false)
+    processFile(e.dataTransfer.files?.[0])
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  function handleDragLeave(e) {
+    // Only clear if leaving the drop zone entirely (not a child element)
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsDragging(false)
+    }
   }
 
   async function startImport() {
@@ -188,10 +214,23 @@ export default function GoodreadsImportModal({ session, onClose, onImported }) {
                 <div style={s.step}><span style={s.stepNum}>2</span> Download the CSV file</div>
                 <div style={s.step}><span style={s.stepNum}>3</span> Upload it below</div>
               </div>
-              <div style={s.uploadArea} onClick={() => fileRef.current?.click()}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>📄</div>
-                <div style={{ fontWeight: 600, color: theme.text, fontSize: 14 }}>Click to select your Goodreads CSV</div>
-                <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 4 }}>goodreads_library_export.csv</div>
+              <div
+                style={{ ...s.uploadArea, ...(isDragging ? s.uploadAreaDragging : {}) }}
+                onClick={() => fileRef.current?.click()}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+              >
+                <div style={{ fontSize: 36, marginBottom: 10 }}>{isDragging ? '📂' : '📄'}</div>
+                <div style={{ fontWeight: 600, color: theme.text, fontSize: 14 }}>
+                  {isDragging ? 'Drop your CSV here' : 'Drag & drop your Goodreads CSV'}
+                </div>
+                <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 6 }}>
+                  or <span style={{ color: theme.rust, fontWeight: 600 }}>click to browse</span>
+                </div>
+                <div style={{ fontSize: 11, color: theme.textSubtle, marginTop: 4 }}>
+                  goodreads_library_export.csv
+                </div>
               </div>
               <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={handleFile} />
               {error && <div style={s.errorMsg}>{error}</div>}
@@ -282,7 +321,8 @@ function makeStyles(theme) {
     instructions:     { marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 10 },
     step:             { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: theme.textMuted },
     stepNum:          { width: 24, height: 24, borderRadius: '50%', background: theme.rust, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 },
-    uploadArea:       { border: `2px dashed ${theme.border}`, borderRadius: 12, padding: '32px 24px', textAlign: 'center', cursor: 'pointer', background: theme.bgCard, transition: 'border-color 0.15s' },
+    uploadArea:       { border: `2px dashed ${theme.border}`, borderRadius: 12, padding: '36px 24px', textAlign: 'center', cursor: 'pointer', background: theme.bgSubtle, transition: 'all 0.15s' },
+    uploadAreaDragging: { border: `2px dashed ${theme.rust}`, background: theme.rustLight, transform: 'scale(1.01)' },
     errorMsg:         { fontSize: 13, color: theme.rust, marginTop: 12 },
     previewHeader:    { fontSize: 14, color: theme.textMuted, marginBottom: 16 },
     previewList:      { border: `1px solid ${theme.borderLight}`, borderRadius: 8, overflow: 'hidden', marginBottom: 20 },

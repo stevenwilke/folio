@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 export default function Shelves({ session }) {
   const { theme } = useTheme()
+  const isMobile = useIsMobile()
   const [shelves, setShelves]         = useState([])
   const [loading, setLoading]         = useState(true)
   const [showCreate, setShowCreate]   = useState(false)
@@ -33,15 +35,15 @@ export default function Shelves({ session }) {
 
   const s = {
     page:          { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
-    content:       { padding: '28px 32px', maxWidth: 1000, margin: '0 auto' },
+    content:       { padding: isMobile ? '16px' : '28px 32px', maxWidth: 1000, margin: '0 auto' },
 
     pageHeader:    { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 },
-    pageTitle:     { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 30, fontWeight: 700, color: theme.text, margin: 0 },
+    pageTitle:     { fontFamily: "'Playfair Display', Georgia, serif", fontSize: isMobile ? 22 : 30, fontWeight: 700, color: theme.text, margin: 0 },
 
     empty:         { color: theme.textSubtle, fontSize: 14, padding: '32px 0' },
     emptyState:    { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '64px 0', textAlign: 'center' },
 
-    grid:          { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 },
+    grid:          { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: isMobile ? 14 : 20 },
 
     btnPrimary:    { padding: '8px 18px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     btnGhost:      { padding: '8px 14px', background: 'none', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.text },

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 function timeAgo(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -460,6 +461,7 @@ function CreatePollModal({ session, onClose, onCreated }) {
 // ---- MAIN PAGE ----
 export default function Polls({ session }) {
   const { theme } = useTheme()
+  const isMobile = useIsMobile()
   const [tab, setTab] = useState('active') // 'active' | 'mine' | 'past'
   const [polls, setPolls] = useState([])
   const [loading, setLoading] = useState(true)
@@ -535,9 +537,9 @@ export default function Polls({ session }) {
 
   const s = {
     page:         { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
-    content:      { maxWidth: 600, margin: '0 auto', padding: '32px 24px' },
+    content:      { maxWidth: 600, margin: '0 auto', padding: isMobile ? '16px' : '32px 24px' },
 
-    pageHeader:   { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 },
+    pageHeader:   { display: 'flex', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'space-between', marginBottom: 28, gap: 12 },
     pageTitle:    { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 28, fontWeight: 700, color: theme.text, marginBottom: 4 },
     pageSubtitle: { fontSize: 14, color: theme.textSubtle },
 

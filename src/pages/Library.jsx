@@ -7,6 +7,7 @@ import SearchModal from '../components/SearchModal'
 import GoodreadsImportModal from '../components/GoodreadsImportModal'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -24,6 +25,7 @@ const STATUS_COLORS = {
 export default function Library({ session }) {
   const navigate = useNavigate()
   const { theme } = useTheme()
+  const isMobile = useIsMobile()
   const [books, setBooks]             = useState([])
   const [loading, setLoading]         = useState(true)
   const [filter, setFilter]           = useState('all')
@@ -171,15 +173,15 @@ export default function Library({ session }) {
     topbar:         { position: 'sticky', top: 0, zIndex: 10, background: theme.bg, backdropFilter: 'blur(8px)', borderBottom: `1px solid ${theme.border}`, padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
     logo:           { fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, color: theme.text, cursor: 'pointer' },
     topbarRight:    { display: 'flex', gap: 10, alignItems: 'center' },
-    content:        { padding: '28px 32px' },
-    statsRow:       { display: 'flex', gap: 14, marginBottom: 28 },
+    content:        { padding: isMobile ? '16px' : '28px 32px' },
+    statsRow:       { display: 'flex', gap: isMobile ? 8 : 14, marginBottom: 28, flexWrap: isMobile ? 'wrap' : 'nowrap' },
     statCard:       { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '18px 22px', flex: 1, transition: 'box-shadow 0.15s' },
     statVal:        { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700 },
     statLabel:      { fontSize: 11, color: theme.textSubtle, marginTop: 4, textTransform: 'uppercase', letterSpacing: 1 },
-    filterRow:      { display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' },
+    filterRow:      { display: 'flex', gap: isMobile ? 6 : 8, marginBottom: 24, flexWrap: 'wrap' },
     filterActive:   { padding: '7px 16px', borderRadius: 8, border: 'none', background: theme.rust, color: 'white', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     filterInactive: { padding: '7px 16px', borderRadius: 8, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.text, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-    grid:           { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: 24 },
+    grid:           { display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(auto-fill, minmax(148px, 1fr))', gap: isMobile ? 12 : 24 },
     card:           { cursor: 'pointer', transition: 'transform 0.18s, box-shadow 0.18s' },
     cardHover:      { transform: 'translateY(-4px)' },
     coverWrap:      { width: '100%', aspectRatio: '2/3' },
@@ -284,7 +286,7 @@ export default function Library({ session }) {
         </div>
 
         {/* Sort pills + Select toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center' }}>
           <span style={{ fontSize: 12, color: theme.textSubtle, fontWeight: 500 }}>Sort:</span>
           {[
             { key: 'added',  label: 'Date Added' },

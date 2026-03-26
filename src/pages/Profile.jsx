@@ -6,6 +6,7 @@ import NavBar from '../components/NavBar'
 import EditProfileModal from '../components/EditProfileModal'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const STATUS_COLORS = {
   owned:   { bg: 'rgba(138,127,114,0.15)', color: '#8a7f72' },
@@ -34,6 +35,7 @@ export default function Profile({ session }) {
   const { username } = useParams()
   const navigate = useNavigate()
   const { theme } = useTheme()
+  const isMobile = useIsMobile()
   const [profile, setProfile]             = useState(null)
   const [books, setBooks]                 = useState([])
   const [loading, setLoading]             = useState(true)
@@ -63,7 +65,7 @@ export default function Profile({ session }) {
 
   const isOwnProfile = session?.user?.id === profile?.id
 
-  const s = makeStyles(theme, accentColor)
+  const s = makeStyles(theme, accentColor, isMobile)
 
   useEffect(() => { fetchProfile() }, [username])
 
@@ -969,21 +971,21 @@ function MiniCover({ title }) {
 }
 
 // ── STYLES ──
-function makeStyles(theme, accentColor = '#c0521e') {
+function makeStyles(theme, accentColor = '#c0521e', isMobile = false) {
   return {
     page:        { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
     loadingMsg:  { color: theme.textSubtle, fontSize: 14, padding: '80px 0', textAlign: 'center' },
 
     // Hero — always dark, hero text stays light regardless of theme
     hero:        { background: theme.heroBg, borderBottom: '1px solid rgba(255,255,255,0.06)', position: 'relative', overflow: 'hidden' },
-    heroInner:   { maxWidth: 960, margin: '0 auto', padding: '36px 32px', display: 'flex', alignItems: 'flex-start', gap: 24 },
+    heroInner:   { maxWidth: 960, margin: '0 auto', padding: isMobile ? '24px 16px' : '36px 32px', display: 'flex', alignItems: isMobile ? 'center' : 'flex-start', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 16 : 24, textAlign: isMobile ? 'center' : 'left' },
     heroAvatar:  { width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', display: 'block', border: '3px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' },
     heroAvatarFallback: { width: 88, height: 88, borderRadius: '50%', background: `linear-gradient(135deg, ${accentColor}, #b8860b)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontSize: 34, color: 'white', fontWeight: 700, border: '3px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)', flexShrink: 0 },
     avatarEditBtn: { position: 'absolute', bottom: 2, right: 2, width: 24, height: 24, borderRadius: '50%', background: accentColor, border: '2px solid #1e140a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', padding: 0 },
     heroInfo:    { flex: 1, paddingTop: 4 },
     heroName:    { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, color: '#fdf8f0', marginBottom: 6, letterSpacing: '-0.3px' },
     heroBio:     { fontSize: 14, color: 'rgba(253,248,240,0.65)', lineHeight: 1.55, marginBottom: 10, maxWidth: 480 },
-    heroStatRow: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 8 },
+    heroStatRow: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 8, justifyContent: isMobile ? 'center' : 'flex-start' },
     heroStat:    { fontSize: 13, color: 'rgba(253,248,240,0.75)' },
     heroDot:     { fontSize: 13, color: 'rgba(253,248,240,0.3)' },
     heroMeta:        { fontSize: 12, color: 'rgba(253,248,240,0.35)' },
@@ -1008,7 +1010,7 @@ function makeStyles(theme, accentColor = '#c0521e') {
 
     // Badges strip — directly below hero, still dark
     badgesSection:      { background: 'rgba(26,18,8,0.35)', borderBottom: '1px solid rgba(255,255,255,0.05)' },
-    badgesSectionInner: { maxWidth: 960, margin: '0 auto', padding: '14px 32px' },
+    badgesSectionInner: { maxWidth: 960, margin: '0 auto', padding: isMobile ? '12px 16px' : '14px 32px' },
     badgesHeadRow:      { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 },
     badgesTitle:        { fontFamily: 'Georgia, serif', fontSize: 14, fontWeight: 700, color: 'rgba(253,248,240,0.75)' },
     badgesEarned:       { fontSize: 11, color: 'rgba(253,248,240,0.35)', background: 'rgba(255,255,255,0.06)', padding: '2px 9px', borderRadius: 20 },
@@ -1018,7 +1020,7 @@ function makeStyles(theme, accentColor = '#c0521e') {
     badgeChipLocked:    { background: 'rgba(255,255,255,0.05)', color: '#6a6258', border: '1px solid rgba(255,255,255,0.06)' },
 
     // Content
-    content:     { maxWidth: 960, margin: '0 auto', padding: '36px 32px' },
+    content:     { maxWidth: 960, margin: '0 auto', padding: isMobile ? '16px' : '36px 32px' },
     section:     { marginBottom: 40 },
     emptyShelf:  { color: theme.textSubtle, fontSize: 14, padding: '60px 0', textAlign: 'center' },
 

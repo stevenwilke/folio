@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import SearchModal from './SearchModal'
 import { useTheme } from '../contexts/ThemeContext'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const NAV_ITEMS = [
   { label: 'Library',     path: '/' },
@@ -22,18 +23,23 @@ let _cachedId       = null
 let _cachedProfile  = null  // { username, avatar_url }
 
 export default function NavBar({ session, extra }) {
-  const navigate  = useNavigate()
-  const location  = useLocation()
+  const navigate    = useNavigate()
+  const location    = useLocation()
   const dropdownRef = useRef(null)
   const { theme, isDark, toggleTheme } = useTheme()
+  const isMobile    = useIsMobile()
 
   const [profile, setProfile] = useState(
     session?.user?.id === _cachedId ? _cachedProfile : null
   )
   const [showSearch,   setShowSearch]   = useState(false)
   const [showBell,     setShowBell]     = useState(false)
+  const [showMenu,     setShowMenu]     = useState(false)
   const [friendReqs,   setFriendReqs]   = useState([])
   const [borrowNotifs, setBorrowNotifs] = useState([])
+
+  // Close mobile menu when route changes
+  useEffect(() => { setShowMenu(false) }, [location.pathname])
 
   // Fetch + cache profile (username + avatar)
   useEffect(() => {
@@ -102,75 +108,159 @@ export default function NavBar({ session, extra }) {
     return path.startsWith(item.path)
   }
 
+  function handleNavClick(itemPath) {
+    setShowMenu(false)
+    navigate(itemPath)
+  }
+
   return (
     <>
-      <div style={{ ...s.topbar, background: theme.navBg }}>
+      <div style={{ ...s.topbar, background: theme.navBg, padding: isMobile ? '12px 16px' : '12px 32px' }}>
+        {/* Logo */}
         <div style={{ ...s.logo, color: theme.navText }} onClick={() => navigate('/')} role="button" tabIndex={0}
           onKeyDown={e => e.key === 'Enter' && navigate('/')}>
           Ex Libris
         </div>
 
-        <div style={s.right}>
+        {isMobile ? (
+          /* ── MOBILE TOPBAR ── */
+          <div style={s.right}>
+            {/* Notification bell */}
+            <div style={{ position: 'relative' }} ref={dropdownRef}>
+              <button style={{ ...s.bellBtn, color: theme.navText, borderColor: theme.border }} onClick={() => setShowBell(v => !v)}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+                {bellCount > 0 && <span style={s.bellBadge}>{bellCount}</span>}
+              </button>
+              {showBell && (
+                <NotificationsDropdown
+                  friendReqs={friendReqs}
+                  borrowNotifs={borrowNotifs}
+                  onRespondFriend={respondToFriend}
+                  onViewLoans={() => { setShowBell(false); navigate('/loans') }}
+                  onNavigate={username => { setShowBell(false); navigate(`/profile/${username}`) }}
+                  onClose={() => setShowBell(false)}
+                />
+              )}
+            </div>
+
+            {/* Avatar */}
+            {profile?.username && (
+              <button
+                style={{ ...s.avatarBtn, ...(path.startsWith('/profile') ? s.avatarBtnActive : {}) }}
+                onClick={() => navigate(`/profile/${profile.username}`)}
+                title={`My Profile (${profile.username})`}
+              >
+                {profile.avatar_url
+                  ? <img src={profile.avatar_url} alt={profile.username} style={s.avatarImg} />
+                  : <span style={s.avatarInitial}>{profile.username.charAt(0).toUpperCase()}</span>
+                }
+              </button>
+            )}
+
+            {/* Hamburger */}
+            <button
+              style={s.hamburger}
+              onClick={() => setShowMenu(v => !v)}
+              aria-label={showMenu ? 'Close menu' : 'Open menu'}
+            >
+              {showMenu ? '✕' : '☰'}
+            </button>
+          </div>
+        ) : (
+          /* ── DESKTOP TOPBAR ── */
+          <div style={s.right}>
+            {NAV_ITEMS.map(item => (
+              <button key={item.path}
+                style={isActive(item)
+                  ? { ...s.active, color: theme.rust, background: `rgba(${isDark ? '212,105,58' : '192,82,30'},0.15)` }
+                  : { ...s.ghost, color: theme.navText }}
+                onClick={() => navigate(item.path)}>
+                {item.label}
+              </button>
+            ))}
+
+            <button style={s.addBtn} onClick={() => setShowSearch(true)}>+ Add Book</button>
+
+            {/* Dark mode toggle */}
+            <button
+              onClick={toggleTheme}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer', padding: '0 6px' }}
+            >
+              {isDark ? '☀️' : '🌙'}
+            </button>
+
+            {/* Slot for page-specific extras */}
+            {extra}
+
+            {/* Notification bell */}
+            <div style={{ position: 'relative' }} ref={dropdownRef}>
+              <button style={{ ...s.bellBtn, color: theme.navText, borderColor: theme.border }} onClick={() => setShowBell(v => !v)}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+                {bellCount > 0 && <span style={s.bellBadge}>{bellCount}</span>}
+              </button>
+              {showBell && (
+                <NotificationsDropdown
+                  friendReqs={friendReqs}
+                  borrowNotifs={borrowNotifs}
+                  onRespondFriend={respondToFriend}
+                  onViewLoans={() => { setShowBell(false); navigate('/loans') }}
+                  onNavigate={username => { setShowBell(false); navigate(`/profile/${username}`) }}
+                  onClose={() => setShowBell(false)}
+                />
+              )}
+            </div>
+
+            {/* Avatar — furthest right, navigates to profile */}
+            {profile?.username && (
+              <button
+                style={{ ...s.avatarBtn, ...(path.startsWith('/profile') ? s.avatarBtnActive : {}) }}
+                onClick={() => navigate(`/profile/${profile.username}`)}
+                title={`My Profile (${profile.username})`}
+              >
+                {profile.avatar_url
+                  ? <img src={profile.avatar_url} alt={profile.username} style={s.avatarImg} />
+                  : <span style={s.avatarInitial}>{profile.username.charAt(0).toUpperCase()}</span>
+                }
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── MOBILE DROPDOWN MENU ── */}
+      {isMobile && showMenu && (
+        <div style={{ ...s.mobileMenu, background: theme.navBg, borderBottom: `1px solid ${theme.border}` }}>
           {NAV_ITEMS.map(item => (
             <button key={item.path}
               style={isActive(item)
-                ? { ...s.active, color: theme.rust, background: `rgba(${isDark ? '212,105,58' : '192,82,30'},0.15)` }
-                : { ...s.ghost, color: theme.navText }}
-              onClick={() => navigate(item.path)}>
+                ? { ...s.mobileNavItem, color: theme.rust, background: `rgba(${isDark ? '212,105,58' : '192,82,30'},0.1)`, fontWeight: 600 }
+                : { ...s.mobileNavItem, color: theme.navText }}
+              onClick={() => handleNavClick(item.path)}>
               {item.label}
             </button>
           ))}
 
-          <button style={s.addBtn} onClick={() => setShowSearch(true)}>+ Add Book</button>
+          <div style={s.mobileMenuDivider} />
 
-          {/* Dark mode toggle */}
-          <button
-            onClick={toggleTheme}
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer', padding: '0 6px' }}
-          >
-            {isDark ? '☀️' : '🌙'}
+          <button style={{ ...s.mobileAddBtn }} onClick={() => { setShowMenu(false); setShowSearch(true) }}>
+            + Add Book
           </button>
 
-          {/* Slot for page-specific extras */}
-          {extra}
-
-          {/* Notification bell */}
-          <div style={{ position: 'relative' }} ref={dropdownRef}>
-            <button style={{ ...s.bellBtn, color: theme.navText, borderColor: theme.border }} onClick={() => setShowBell(v => !v)}>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-              </svg>
-              {bellCount > 0 && <span style={s.bellBadge}>{bellCount}</span>}
-            </button>
-            {showBell && (
-              <NotificationsDropdown
-                friendReqs={friendReqs}
-                borrowNotifs={borrowNotifs}
-                onRespondFriend={respondToFriend}
-                onViewLoans={() => { setShowBell(false); navigate('/loans') }}
-                onNavigate={username => { setShowBell(false); navigate(`/profile/${username}`) }}
-                onClose={() => setShowBell(false)}
-              />
-            )}
-          </div>
-
-          {/* Avatar — furthest right, navigates to profile */}
-          {profile?.username && (
-            <button
-              style={{ ...s.avatarBtn, ...(path.startsWith('/profile') ? s.avatarBtnActive : {}) }}
-              onClick={() => navigate(`/profile/${profile.username}`)}
-              title={`My Profile (${profile.username})`}
-            >
-              {profile.avatar_url
-                ? <img src={profile.avatar_url} alt={profile.username} style={s.avatarImg} />
-                : <span style={s.avatarInitial}>{profile.username.charAt(0).toUpperCase()}</span>
-              }
-            </button>
-          )}
+          <button
+            onClick={() => { setShowMenu(false); toggleTheme() }}
+            style={s.mobileThemeBtn}
+          >
+            {isDark ? '☀️ Light mode' : '🌙 Dark mode'}
+          </button>
         </div>
-      </div>
+      )}
 
       {showSearch && (
         <SearchModal
@@ -239,7 +329,7 @@ const s = {
   topbar: {
     position: 'sticky', top: 0, zIndex: 10,
     background: 'rgba(245,240,232,0.95)', backdropFilter: 'blur(8px)',
-    borderBottom: '1px solid #d4c9b0', padding: '12px 32px',
+    borderBottom: '1px solid #d4c9b0',
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
   },
   logo: {
@@ -261,6 +351,39 @@ const s = {
     padding: '6px 14px', background: '#c0521e', color: 'white', border: 'none',
     borderRadius: 7, fontSize: 13, fontWeight: 500, cursor: 'pointer',
     fontFamily: "'DM Sans', sans-serif", marginLeft: 6,
+  },
+
+  // Hamburger button
+  hamburger: {
+    background: 'none', border: 'none', fontSize: 20, cursor: 'pointer',
+    padding: '4px 8px', color: '#1a1208', lineHeight: 1, marginLeft: 4,
+  },
+
+  // Mobile dropdown menu
+  mobileMenu: {
+    position: 'sticky', top: 49, zIndex: 9,
+    display: 'flex', flexDirection: 'column',
+    backdropFilter: 'blur(8px)',
+  },
+  mobileNavItem: {
+    padding: '13px 20px', background: 'none', border: 'none',
+    fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+    textAlign: 'left', borderBottom: '1px solid rgba(212,201,176,0.3)',
+    transition: 'background 0.1s',
+  },
+  mobileMenuDivider: {
+    height: 1, background: 'rgba(212,201,176,0.5)', margin: '4px 0',
+  },
+  mobileAddBtn: {
+    margin: '8px 16px', padding: '10px 14px', background: '#c0521e', color: 'white',
+    border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: 'pointer',
+    fontFamily: "'DM Sans', sans-serif", textAlign: 'center',
+  },
+  mobileThemeBtn: {
+    margin: '4px 16px 12px', padding: '10px 14px', background: 'none',
+    border: '1px solid rgba(212,201,176,0.5)', borderRadius: 8, fontSize: 14,
+    cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+    color: '#3a3028', textAlign: 'left',
   },
 
   // Bell

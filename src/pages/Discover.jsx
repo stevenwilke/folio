@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const GENRES = [
   { label: 'Fiction',            slug: 'fiction',                      emoji: '📖' },
@@ -351,6 +352,7 @@ function BookRow({ books, myBookIds, onPreview, loading }) {
 export default function Discover({ session }) {
   const navigate = useNavigate()
   const { theme } = useTheme()
+  const isMobile = useIsMobile()
   const [myBookIds,   setMyBookIds]   = useState(new Set())
 
   const [forYou,        setForYou]        = useState([])
@@ -378,7 +380,7 @@ export default function Discover({ session }) {
   const [previewBook,  setPreviewBook]  = useState(null)   // OL book object for quick preview
   const [selectedBook, setSelectedBook] = useState(null)   // Supabase UUID for full detail
 
-  const s = makeStyles(theme)
+  const s = makeStyles(theme, isMobile)
 
   useEffect(() => {
     async function init() {
@@ -760,10 +762,10 @@ export default function Discover({ session }) {
   )
 }
 
-function makeStyles(theme) {
+function makeStyles(theme, isMobile = false) {
   return {
     root: { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans',sans-serif" },
-    page: { maxWidth: 1200, margin: '0 auto', padding: '36px 28px 80px' },
+    page: { maxWidth: 1200, margin: '0 auto', padding: isMobile ? '16px 16px 60px' : '36px 28px 80px' },
 
     pageHead:  { marginBottom: 40 },
     pageTitle: { fontFamily: 'Georgia,serif', fontSize: 34, fontWeight: 700, color: theme.text, margin: '0 0 6px' },
@@ -776,9 +778,9 @@ function makeStyles(theme) {
 
     row:      { display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 12, scrollbarWidth: 'thin', scrollbarColor: `${theme.border} transparent`, WebkitOverflowScrolling: 'touch' },
     rowEmpty: { color: theme.textSubtle, fontSize: 14, margin: '12px 0 0' },
-    skeleton: { flexShrink: 0, width: 148, height: 280, borderRadius: 10, background: theme.bgSubtle },
+    skeleton: { flexShrink: 0, width: isMobile ? 120 : 148, height: isMobile ? 230 : 280, borderRadius: 10, background: theme.bgSubtle },
 
-    card:     { flexShrink: 0, width: 148, background: theme.bgCard, borderRadius: 10, border: `1px solid ${theme.borderLight}`, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' },
+    card:     { flexShrink: 0, width: isMobile ? 120 : 148, background: theme.bgCard, borderRadius: 10, border: `1px solid ${theme.borderLight}`, overflow: 'hidden', cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s' },
     cardHover:{ transform: 'translateY(-3px)', boxShadow: theme.shadowCard },
     cardCover:{ position: 'relative', width: '100%', height: 210, background: theme.bgSubtle, overflow: 'hidden' },
     coverImg: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },

@@ -5,6 +5,7 @@ import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const ACTION_TEXT = {
   read:    'finished reading',
@@ -35,12 +36,13 @@ function timeAgo(dateStr) {
 export default function Feed({ session }) {
   const navigate = useNavigate()
   const { theme } = useTheme()
+  const isMobile = useIsMobile()
   const [activity, setActivity]         = useState([])
   const [loading, setLoading]           = useState(true)
   const [hasFriends, setHasFriends]     = useState(true)
   const [selectedBook, setSelectedBook] = useState(null)
 
-  const s = makeStyles(theme)
+  const s = makeStyles(theme, isMobile)
 
   useEffect(() => { fetchFeed() }, [])
 
@@ -146,7 +148,8 @@ export default function Feed({ session }) {
 
 // ---- ACTIVITY CARD ----
 function ActivityCard({ item, onBookClick, onProfileClick, theme }) {
-  const s       = makeStyles(theme)
+  const isMobile = useIsMobile()
+  const s       = makeStyles(theme, isMobile)
   const book    = item.books
   const profile = item.profile
   const action  = ACTION_TEXT[item.read_status] || 'added'
@@ -220,17 +223,17 @@ function FakeCover({ title }) {
 }
 
 // ---- STYLES ----
-function makeStyles(theme) {
+function makeStyles(theme, isMobile = false) {
   return {
     page:        { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
 
-    content:     { padding: '32px 32px', maxWidth: 680, margin: '0 auto' },
+    content:     { padding: isMobile ? '16px' : '32px 32px', maxWidth: isMobile ? '100%' : 680, margin: '0 auto' },
     pageHeader:  { marginBottom: 28 },
     pageTitle:   { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, color: theme.text, marginBottom: 6 },
     pageSubtitle:{ fontSize: 14, color: theme.textSubtle },
 
     feed:        { display: 'flex', flexDirection: 'column', gap: 2 },
-    card:        { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '18px 20px', display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 12, borderLeft: `3px solid ${theme.borderLight}` },
+    card:        { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: isMobile ? '14px 16px' : '18px 20px', display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 12, borderLeft: `3px solid ${theme.borderLight}` },
 
     avatar:      { width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 16, flexShrink: 0, cursor: 'pointer' },
     cardBody:    { flex: 1, minWidth: 0 },

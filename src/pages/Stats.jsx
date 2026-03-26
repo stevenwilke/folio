@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const CHART_COLORS = ['#c0521e', '#5a7a5a', '#b8860b', '#4a6b8a', '#7b4f3a', '#8b5e83', '#3d6b6b']
 
 export default function Stats({ session }) {
   const { theme } = useTheme()
+  const isMobile = useIsMobile()
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -100,7 +102,7 @@ export default function Stats({ session }) {
 
   const s = {
     page:    { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
-    content: { maxWidth: 960, margin: '0 auto', padding: '32px 32px 60px' },
+    content: { maxWidth: 960, margin: '0 auto', padding: isMobile ? '16px 16px 60px' : '32px 32px 60px' },
 
     pageHeading:   { marginBottom: 28 },
     h1:            { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 28, fontWeight: 700, color: theme.text, margin: 0, marginBottom: 4 },
@@ -111,7 +113,7 @@ export default function Stats({ session }) {
     statVal:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 26, fontWeight: 700, marginBottom: 4 },
     statLabel: { fontSize: 11, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 1 },
 
-    twoCol:    { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 },
+    twoCol:    { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 20, marginBottom: 20 },
 
     chartCard:  { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, padding: '22px 24px' },
     chartTitle: { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 17, fontWeight: 700, color: theme.text, marginBottom: 4 },
@@ -129,7 +131,7 @@ export default function Stats({ session }) {
     legendGenre: { fontSize: 13, color: theme.text, flex: 1 },
     legendCount: { fontSize: 12, color: theme.textSubtle, fontWeight: 600 },
 
-    highlightGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginTop: 8 },
+    highlightGrid: { display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 16, marginTop: 8 },
     highlightTile: { background: theme.rustLight, border: `1px solid rgba(192,82,30,0.12)`, borderRadius: 12, padding: '16px 14px' },
     highlightIcon:  { fontSize: 22, marginBottom: 6 },
     highlightLabel: { fontSize: 10, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, fontWeight: 600 },

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 function timeAgo(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime()
@@ -588,7 +589,8 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
 // ---- MAIN PAGE ----
 export default function BookClubs({ session }) {
   const { theme } = useTheme()
-  const s = makeStyles(theme)
+  const isMobile = useIsMobile()
+  const s = makeStyles(theme, isMobile)
   const [myClubs, setMyClubs] = useState([])
   const [discoverClubs, setDiscoverClubs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -765,12 +767,12 @@ export default function BookClubs({ session }) {
 }
 
 // ---- STYLES ----
-function makeStyles(theme) {
+function makeStyles(theme, isMobile = false) {
   return {
     page:         { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
-    content:      { maxWidth: 900, margin: '0 auto', padding: '32px 28px' },
+    content:      { maxWidth: 900, margin: '0 auto', padding: isMobile ? '16px' : '32px 28px' },
 
-    pageHeader:   { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32 },
+    pageHeader:   { display: 'flex', alignItems: isMobile ? 'center' : 'flex-start', justifyContent: 'space-between', marginBottom: 32, gap: 12 },
     pageTitle:    { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 28, fontWeight: 700, color: theme.text, marginBottom: 4 },
     pageSubtitle: { fontSize: 14, color: theme.textSubtle },
 
@@ -779,7 +781,7 @@ function makeStyles(theme) {
     sectionTitle: { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700, color: theme.text },
     countChip:    { background: 'rgba(26,18,8,0.07)', color: theme.textSubtle, borderRadius: 20, padding: '2px 9px', fontSize: 12, fontWeight: 500 },
 
-    grid:         { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 },
+    grid:         { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 },
 
     clubCard:     { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '20px 20px 18px', transition: 'box-shadow 0.15s, transform 0.15s', cursor: 'default' },
     clubCardHover:{ boxShadow: theme.shadowCard, transform: 'translateY(-2px)' },
@@ -808,7 +810,7 @@ function makeStyles(theme) {
     detailBookLabel:{ fontSize: 11, color: theme.textSubtle, marginBottom: 2 },
     detailBookTitle:{ fontSize: 14, fontWeight: 600, color: theme.text },
 
-    detailPanels: { display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24, alignItems: 'start' },
+    detailPanels: { display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 300px', gap: 24, alignItems: 'start' },
 
     discussionPanel:{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 480 },
     panelTitle:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 700, color: theme.text },

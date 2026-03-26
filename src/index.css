@@ -109,3 +109,17 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* ---- Responsive / Mobile ---- */
+@media (max-width: 767px) {
+  /* Ensure modals don't overflow */
+  [style*="position: fixed"] {
+    max-width: 100vw !important;
+  }
+  /* Horizontal scroll for chip rows */
+  .chip-scroll {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch;
+  }
+}

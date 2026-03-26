@@ -125,6 +125,9 @@ export default function NavBar({ session, extra }) {
         {isMobile ? (
           /* ── MOBILE TOPBAR ── */
           <div style={s.right}>
+            {/* Add Book button */}
+            <button style={s.addBtn} onClick={() => setShowSearch(true)}>+ Add Book</button>
+
             {/* Notification bell */}
             <div style={{ position: 'relative' }} ref={dropdownRef}>
               <button style={{ ...s.bellBtn, color: theme.navText, borderColor: theme.border }} onClick={() => setShowBell(v => !v)}>
@@ -145,20 +148,6 @@ export default function NavBar({ session, extra }) {
                 />
               )}
             </div>
-
-            {/* Avatar */}
-            {profile?.username && (
-              <button
-                style={{ ...s.avatarBtn, ...(path.startsWith('/profile') ? s.avatarBtnActive : {}) }}
-                onClick={() => navigate(`/profile/${profile.username}`)}
-                title={`My Profile (${profile.username})`}
-              >
-                {profile.avatar_url
-                  ? <img src={profile.avatar_url} alt={profile.username} style={s.avatarImg} />
-                  : <span style={s.avatarInitial}>{profile.username.charAt(0).toUpperCase()}</span>
-                }
-              </button>
-            )}
           </div>
         ) : (
           /* ── DESKTOP TOPBAR ── */

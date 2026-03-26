@@ -575,7 +575,7 @@ function FakeCover({ title }) {
   const color  = colors[title.charCodeAt(0) % colors.length]
   const color2 = colors[(title.charCodeAt(0) + 3) % colors.length]
   return (
-    <div style={{ width: '100%', height: '100%', borderRadius: 5, display: 'flex', alignItems: 'flex-end', padding: '8px 8px 8px 14px', position: 'relative', overflow: 'hidden', boxShadow: '2px 3px 10px rgba(26,18,8,0.2)', background: `linear-gradient(135deg, ${color}, ${color2})` }}>
+    <div style={{ position: 'absolute', inset: 0, borderRadius: 5, display: 'flex', alignItems: 'flex-end', padding: '8px 8px 8px 14px', overflow: 'hidden', boxShadow: '2px 3px 10px rgba(26,18,8,0.2)', background: `linear-gradient(135deg, ${color}, ${color2})` }}>
       <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, background: 'rgba(0,0,0,0.2)' }} />
       <span style={{ fontSize: 9, fontWeight: 500, color: 'rgba(255,255,255,0.9)', textShadow: '0 1px 2px rgba(0,0,0,0.5)', lineHeight: 1.3, position: 'relative', zIndex: 1 }}>{title}</span>
     </div>

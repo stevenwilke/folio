@@ -70,7 +70,7 @@ async function registerForPushNotifications(userId: string) {
   // Android needs a notification channel
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
-      name: 'Folio',
+      name: 'Ex Libris',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#c0521e',

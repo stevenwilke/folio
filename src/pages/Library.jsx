@@ -40,18 +40,18 @@ export default function Library({ session }) {
 
   // Redirect new users with empty libraries to onboarding
   useEffect(() => {
-    if (!loading && books.length === 0 && !localStorage.getItem('folio-onboarded')) {
+    if (!loading && books.length === 0 && !localStorage.getItem('exlibris-onboarded')) {
       navigate('/onboarding')
     }
   }, [loading, books])
 
   useEffect(() => {
     fetchCollection()
-    window.addEventListener('folio:bookAdded', fetchCollection)
-    window.addEventListener('folio:bookRemoved', fetchCollection)
+    window.addEventListener('exlibris:bookAdded', fetchCollection)
+    window.addEventListener('exlibris:bookRemoved', fetchCollection)
     return () => {
-      window.removeEventListener('folio:bookAdded', fetchCollection)
-      window.removeEventListener('folio:bookRemoved', fetchCollection)
+      window.removeEventListener('exlibris:bookAdded', fetchCollection)
+      window.removeEventListener('exlibris:bookRemoved', fetchCollection)
     }
   }, [])
 

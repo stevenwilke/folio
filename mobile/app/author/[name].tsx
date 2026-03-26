@@ -116,7 +116,7 @@ export default function AuthorScreen() {
       );
       const json = await res.json();
 
-      // ISBNs already in Folio — deduplicate
+      // ISBNs already in Ex Libris — deduplicate
       const folioIsbn13s = new Set(mappedFolio.map((b) => b.isbn_13).filter(Boolean));
       const folioTitles = new Set(mappedFolio.map((b) => b.title?.toLowerCase()));
 
@@ -247,7 +247,7 @@ export default function AuthorScreen() {
           {/* Stats row */}
           <Text style={styles.statsRow}>
             <Text style={styles.statValue}>{totalFolio}</Text>
-            <Text style={styles.statLabel}> in Folio</Text>
+            <Text style={styles.statLabel}> in Ex Libris</Text>
             {'  ·  '}
             <Text style={styles.statLabel}>Read by </Text>
             <Text style={styles.statValue}>{friendCount}</Text>
@@ -282,10 +282,10 @@ export default function AuthorScreen() {
             </View>
           )}
 
-          {/* In Folio section */}
+          {/* In Ex Libris section */}
           {totalFolio > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>In Folio</Text>
+              <Text style={styles.sectionTitle}>In Ex Libris</Text>
               {folioBooks.map((book) => (
                 <TouchableOpacity
                   key={book.id}

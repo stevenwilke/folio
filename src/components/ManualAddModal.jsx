@@ -135,7 +135,7 @@ export default function ManualAddModal({ session, onClose, onAdded = () => {} })
       { onConflict: 'user_id,book_id' }
     )
 
-    window.dispatchEvent(new CustomEvent('folio:bookAdded'))
+    window.dispatchEvent(new CustomEvent('exlibris:bookAdded'))
     setSaving(false)
     onAdded()
   }

@@ -72,7 +72,7 @@ export default function Onboarding({ session }) {
   }
 
   function finish() {
-    localStorage.setItem('folio-onboarded', 'true')
+    localStorage.setItem('exlibris-onboarded', 'true')
     navigate('/')
   }
 
@@ -90,8 +90,8 @@ export default function Onboarding({ session }) {
       {/* ── STEP 1: Welcome ── */}
       {step === 1 && (
         <div style={s.stepWrap}>
-          <div style={s.logo}>Folio</div>
-          <div style={s.tagline}>Welcome to Folio! Let's set up your reading life.</div>
+          <div style={s.logo}>Ex Libris</div>
+          <div style={s.tagline}>Welcome to Ex Libris! Let's set up your reading life.</div>
 
           <div style={s.featureGrid}>
             {[
@@ -198,7 +198,7 @@ export default function Onboarding({ session }) {
       {step === 3 && (
         <div style={s.stepWrap}>
           <div style={s.stepHeading}>What are you reading right now?</div>
-          <div style={s.stepSub}>Add a book to kick off your Folio library.</div>
+          <div style={s.stepSub}>Add a book to kick off your Ex Libris library.</div>
 
           <button style={s.searchTrigger} onClick={() => setShowSearch(true)}>
             <span style={{ color: theme.textSubtle, fontSize: 15 }}>Search for a book...</span>
@@ -278,7 +278,7 @@ function PopularBookCard({ book, theme, session, onAdded }) {
       await supabase
         .from('collection_entries')
         .upsert({ user_id: session.user.id, book_id: bookId, read_status: status }, { onConflict: 'user_id,book_id' })
-      window.dispatchEvent(new CustomEvent('folio:bookAdded'))
+      window.dispatchEvent(new CustomEvent('exlibris:bookAdded'))
     }
 
     setAdded(true)

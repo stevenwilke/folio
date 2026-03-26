@@ -67,7 +67,7 @@ export default function AuthScreen() {
       >
         {/* Logo / wordmark */}
         <View style={styles.header}>
-          <Text style={styles.wordmark}>Folio</Text>
+          <Text style={styles.wordmark}>Ex Libris</Text>
           <Text style={styles.tagline}>Your personal reading companion</Text>
         </View>
 

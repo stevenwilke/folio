@@ -8,18 +8,18 @@ const corsHeaders = {
 
 const EMAIL_TEMPLATES: Record<string, (data: Record<string, string>) => { subject: string; html: string }> = {
   friend_request: (data) => ({
-    subject: `${data.fromUsername} wants to be your friend on Folio`,
+    subject: `${data.fromUsername} wants to be your friend on Ex Libris`,
     html: `
       <div style="font-family: Georgia, serif; max-width: 500px; margin: 0 auto; padding: 32px; background: #f5f0e8;">
         <h1 style="color: #1a1208; font-size: 24px;">📚 Friend Request</h1>
         <p style="color: #5a4a3a; font-size: 16px; line-height: 1.6;">
-          <strong>${data.fromUsername}</strong> wants to be your friend on Folio.
+          <strong>${data.fromUsername}</strong> wants to be your friend on Ex Libris.
         </p>
         <a href="${data.appUrl}/friends" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #c0521e; color: white; text-decoration: none; border-radius: 8px; font-family: sans-serif; font-weight: 600;">
           View Friend Request
         </a>
         <p style="margin-top: 32px; color: #9a8a7a; font-size: 12px; font-family: sans-serif;">
-          You're receiving this because you have an account on Folio.
+          You're receiving this because you have an account on Ex Libris.
         </p>
       </div>
     `,
@@ -37,7 +37,7 @@ const EMAIL_TEMPLATES: Record<string, (data: Record<string, string>) => { subjec
           View Loan Request
         </a>
         <p style="margin-top: 32px; color: #9a8a7a; font-size: 12px; font-family: sans-serif;">
-          You're receiving this because you have an account on Folio.
+          You're receiving this because you have an account on Ex Libris.
         </p>
       </div>
     `,
@@ -56,14 +56,14 @@ const EMAIL_TEMPLATES: Record<string, (data: Record<string, string>) => { subjec
           View My Loans
         </a>
         <p style="margin-top: 32px; color: #9a8a7a; font-size: 12px; font-family: sans-serif;">
-          You're receiving this because you have an account on Folio.
+          You're receiving this because you have an account on Ex Libris.
         </p>
       </div>
     `,
   }),
 
   book_club_post: (data) => ({
-    subject: `New message in ${data.clubName} on Folio`,
+    subject: `New message in ${data.clubName} on Ex Libris`,
     html: `
       <div style="font-family: Georgia, serif; max-width: 500px; margin: 0 auto; padding: 32px; background: #f5f0e8;">
         <h1 style="color: #1a1208; font-size: 24px;">💬 ${data.clubName}</h1>
@@ -77,14 +77,14 @@ const EMAIL_TEMPLATES: Record<string, (data: Record<string, string>) => { subjec
           View Discussion
         </a>
         <p style="margin-top: 32px; color: #9a8a7a; font-size: 12px; font-family: sans-serif;">
-          You're receiving this because you're a member of ${data.clubName} on Folio.
+          You're receiving this because you're a member of ${data.clubName} on Ex Libris.
         </p>
       </div>
     `,
   }),
 
   reading_goal_achieved: (data) => ({
-    subject: `🎉 You reached your reading goal on Folio!`,
+    subject: `🎉 You reached your reading goal on Ex Libris!`,
     html: `
       <div style="font-family: Georgia, serif; max-width: 500px; margin: 0 auto; padding: 32px; background: #f5f0e8;">
         <h1 style="color: #1a1208; font-size: 24px;">🏆 Goal Achieved!</h1>
@@ -96,7 +96,7 @@ const EMAIL_TEMPLATES: Record<string, (data: Record<string, string>) => { subjec
           View My Stats
         </a>
         <p style="margin-top: 32px; color: #9a8a7a; font-size: 12px; font-family: sans-serif;">
-          You're receiving this because you have an account on Folio.
+          You're receiving this because you have an account on Ex Libris.
         </p>
       </div>
     `,
@@ -140,7 +140,7 @@ serve(async (req) => {
       )
     }
 
-    const appUrl = Deno.env.get('APP_URL') || 'https://folio.app'
+    const appUrl = Deno.env.get('APP_URL') || 'https://exlibris.app'
     const templateData = { ...data, appUrl }
     const { subject, html } = template(templateData)
 
@@ -159,7 +159,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Folio <noreply@folio.app>',
+        from: 'Ex Libris <noreply@exlibris.app>',
         to: user.email,
         subject,
         html,

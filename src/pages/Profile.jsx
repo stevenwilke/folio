@@ -215,7 +215,7 @@ export default function Profile({ session }) {
         <div style={s.notFoundTitle}>Profile not found</div>
         <div style={s.notFoundSub}>No user with the username "{username}" exists.</div>
         <button style={s.btnPrimary} onClick={() => navigate('/')}>
-          {session ? 'Go to My Library' : 'Go to Folio'}
+          {session ? 'Go to My Library' : 'Go to Ex Libris'}
         </button>
       </div>
     </div>

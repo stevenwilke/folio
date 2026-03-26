@@ -250,7 +250,7 @@ export default function GoodreadsImportModal({ session, onClose, onImported }) {
                 Import Complete!
               </div>
               <div style={{ fontSize: 14, color: theme.textSubtle, marginBottom: 24 }}>
-                {progress.total} books imported to your Folio library.
+                {progress.total} books imported to your Ex Libris library.
               </div>
               <button style={s.btnSave} onClick={onImported}>View My Library</button>
             </div>

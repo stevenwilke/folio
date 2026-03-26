@@ -107,7 +107,7 @@ export default function NavBar({ session, extra }) {
       <div style={{ ...s.topbar, background: theme.navBg }}>
         <div style={{ ...s.logo, color: theme.navText }} onClick={() => navigate('/')} role="button" tabIndex={0}
           onKeyDown={e => e.key === 'Enter' && navigate('/')}>
-          Folio
+          Ex Libris
         </div>
 
         <div style={s.right}>

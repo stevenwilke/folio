@@ -127,7 +127,7 @@ export default function Marketplace({ session }) {
       <div style={s.content}>
         <div style={s.pageHeader}>
           <h1 style={s.pageTitle}>Marketplace</h1>
-          <p style={s.pageSubtitle}>Buy and sell books with the Folio community</p>
+          <p style={s.pageSubtitle}>Buy and sell books with the Ex Libris community</p>
         </div>
 
         <div style={s.tabRow}>
@@ -273,7 +273,7 @@ function ExternalTab({ s, theme }) {
         External Marketplace
       </div>
       <div style={{ fontSize: 14, color: theme.textSubtle, maxWidth: 420, lineHeight: 1.7, marginBottom: 24 }}>
-        Search eBay, AbeBooks, and other platforms for books not listed on Folio.
+        Search eBay, AbeBooks, and other platforms for books not listed on Ex Libris.
         This feature is coming soon — we'll show sold prices to help you find fair deals.
       </div>
       <div style={s.comingSoonBadge}>Coming Soon</div>

@@ -207,7 +207,7 @@ export default function FriendsScreen() {
     sendPushNotification(
       userId,
       'New Friend Request',
-      `${me?.username ?? 'Someone'} sent you a friend request on Folio`,
+      `${me?.username ?? 'Someone'} sent you a friend request on Ex Libris`,
       { type: 'friend_request' }
     );
     setActing(null);

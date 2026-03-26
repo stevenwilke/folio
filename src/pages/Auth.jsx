@@ -35,7 +35,7 @@ export default function Auth() {
   return (
     <div style={styles.page}>
       <div style={styles.card}>
-        <div style={styles.logo}>Folio</div>
+        <div style={styles.logo}>Ex Libris</div>
         <div style={styles.tagline}>Your book life</div>
 
         <div style={styles.modeToggle}>

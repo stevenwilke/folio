@@ -312,7 +312,7 @@ export default function ScanScreen() {
         <View style={styles.permBox}>
           <Text style={styles.permIcon}>📷</Text>
           <Text style={styles.permTitle}>Camera Access Needed</Text>
-          <Text style={styles.permSub}>Folio needs camera access to scan book barcodes and covers.</Text>
+          <Text style={styles.permSub}>Ex Libris needs camera access to scan book barcodes and covers.</Text>
           <TouchableOpacity style={styles.primaryBtn} onPress={requestPermission}>
             <Text style={styles.primaryBtnText}>Grant Permission</Text>
           </TouchableOpacity>

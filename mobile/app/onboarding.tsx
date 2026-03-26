@@ -65,7 +65,7 @@ export default function OnboardingScreen() {
   }
 
   async function finish() {
-    await AsyncStorage.setItem('folio-onboarded', 'true');
+    await AsyncStorage.setItem('exlibris-onboarded', 'true');
     router.replace('/(tabs)');
   }
 
@@ -93,7 +93,7 @@ export default function OnboardingScreen() {
 function StepWelcome({ onNext }: { onNext: () => void }) {
   return (
     <ScrollView contentContainerStyle={styles.stepContent} showsVerticalScrollIndicator={false}>
-      <Text style={styles.logoText}>Folio</Text>
+      <Text style={styles.logoText}>Ex Libris</Text>
       <Text style={styles.headline}>Your reading life, organized.</Text>
 
       <View style={styles.featureCards}>
@@ -210,8 +210,8 @@ function StepImportFriends({
       <View style={styles.infoCard}>
         <Text style={styles.infoCardTitle}>Import from Goodreads</Text>
         <Text style={styles.infoCardBody}>
-          Export your Goodreads library as a CSV and import it on the Folio
-          web app at <Text style={styles.infoCardLink}>folioapp.io</Text> to
+          Export your Goodreads library as a CSV and import it on the Ex Libris
+          web app at <Text style={styles.infoCardLink}>exlibris.app</Text> to
           bring over your entire reading history.
         </Text>
         <View style={styles.webNote}>

@@ -118,7 +118,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
       const folioIsbn13s = new Set(folioResults.map(r => r.isbn13).filter(Boolean))
       const folioIsbn10s = new Set(folioResults.map(r => r.isbn10).filter(Boolean))
 
-      // Normalize OL results, skipping any whose ISBN already appears in Folio
+      // Normalize OL results, skipping any whose ISBN already appears in Ex Libris
       let olResults = (olJson.docs || [])
         .filter(doc => {
           const i13 = doc.isbn?.find(i => i.length === 13)
@@ -215,7 +215,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
 
     setAddedBooks(prev => ({ ...prev, [result.key]: status }))
     setAdding(null)
-    window.dispatchEvent(new CustomEvent('folio:bookAdded'))
+    window.dispatchEvent(new CustomEvent('exlibris:bookAdded'))
     onAdded()
   }
 
@@ -368,7 +368,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
                   <div style={s.resultTitleRow}>
                     <div style={s.resultTitle}>{result.title}</div>
                     {result.source === 'folio' && (
-                      <span style={s.folioBadge}>📚 In Folio</span>
+                      <span style={s.folioBadge}>📚 In Ex Libris</span>
                     )}
                   </div>
                   <div style={s.resultAuthor}>{result.author}</div>

@@ -139,8 +139,8 @@ export default function BookDetail({ bookId, session, onBack }) {
     function handleSeriesNav(e) {
       if (e.detail?.bookId) setActiveBookId(e.detail.bookId)
     }
-    window.addEventListener('folio:navigateBook', handleSeriesNav)
-    return () => window.removeEventListener('folio:navigateBook', handleSeriesNav)
+    window.addEventListener('exlibris:navigateBook', handleSeriesNav)
+    return () => window.removeEventListener('exlibris:navigateBook', handleSeriesNav)
   }, [])
 
   async function fetchFriendStats() {
@@ -380,7 +380,7 @@ export default function BookDetail({ bookId, session, onBack }) {
       .delete()
       .eq('id', entry.id)
       .eq('user_id', session.user.id)
-    window.dispatchEvent(new CustomEvent('folio:bookRemoved'))
+    window.dispatchEvent(new CustomEvent('exlibris:bookRemoved'))
     window.location.href = '/'
   }
 
@@ -593,7 +593,7 @@ export default function BookDetail({ bookId, session, onBack }) {
                 <CommunityStars avg={parseFloat(communityRating.avg_rating)} />
                 <span style={s.communityRatingNum}>{communityRating.avg_rating}</span>
                 <span style={s.communityRatingCount}>
-                  · {communityRating.rating_count} {communityRating.rating_count === 1 ? 'rating' : 'ratings'} on Folio
+                  · {communityRating.rating_count} {communityRating.rating_count === 1 ? 'rating' : 'ratings'} on Ex Libris
                 </span>
               </div>
             ) : (
@@ -796,7 +796,7 @@ export default function BookDetail({ bookId, session, onBack }) {
                       }}
                       onClick={() => {
                         if (!isCurrent) {
-                          window.dispatchEvent(new CustomEvent('folio:navigateBook', { detail: { bookId: sb.id } }))
+                          window.dispatchEvent(new CustomEvent('exlibris:navigateBook', { detail: { bookId: sb.id } }))
                         }
                       }}
                       title={sb.title}

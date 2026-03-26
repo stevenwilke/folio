@@ -84,7 +84,7 @@ export default function LibraryScreen() {
 
       // New user check: no books + not yet onboarded → show onboarding wizard
       if (data.length === 0) {
-        const onboarded = await AsyncStorage.getItem('folio-onboarded');
+        const onboarded = await AsyncStorage.getItem('exlibris-onboarded');
         if (!onboarded) {
           router.replace('/onboarding');
         }

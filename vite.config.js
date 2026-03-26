@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons.svg'],
       manifest: {
-        name: 'Folio',
-        short_name: 'Folio',
+        name: 'Ex Libris Omnium',
+        short_name: 'Ex Libris',
         description: 'Track, share, and discover books with friends',
         theme_color: '#1a1208',
         background_color: '#f5f0e8',

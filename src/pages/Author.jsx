@@ -26,8 +26,8 @@ export default function Author({ session }) {
 
   const decoded = decodeURIComponent(authorName)
 
-  const [folioBooks,   setFolioBooks]   = useState([])   // books in Folio DB by this author
-  const [olBooks,      setOlBooks]      = useState([])   // OL extras not in Folio
+  const [folioBooks,   setFolioBooks]   = useState([])   // books in Ex Libris DB by this author
+  const [olBooks,      setOlBooks]      = useState([])   // OL extras not in Ex Libris
   const [myEntries,    setMyEntries]    = useState({})   // bookId → entry
   const [friendData,   setFriendData]   = useState({})   // bookId → [{ username, status }]
   const [friendCount,  setFriendCount]  = useState(0)    // total distinct friends who have any book
@@ -57,7 +57,7 @@ export default function Author({ session }) {
     const folio = folioRes.data || []
     setFolioBooks(folio)
 
-    // Build a set of ISBNs already in Folio
+    // Build a set of ISBNs already in Ex Libris
     const folioIsbnSet = new Set()
     const folioTitleSet = new Set()
     for (const b of folio) {
@@ -180,7 +180,7 @@ export default function Author({ session }) {
       await supabase
         .from('collection_entries')
         .upsert({ user_id: session.user.id, book_id: bookId, read_status: status }, { onConflict: 'user_id,book_id' })
-      window.dispatchEvent(new CustomEvent('folio:bookAdded'))
+      window.dispatchEvent(new CustomEvent('exlibris:bookAdded'))
       loadAll()
     }
     setAddTarget(null)
@@ -211,7 +211,7 @@ export default function Author({ session }) {
           <div>
             <h1 style={s.authorName}>{decoded}</h1>
             <div style={s.authorMeta}>
-              <span>{totalFolio} book{totalFolio !== 1 ? 's' : ''} in Folio</span>
+              <span>{totalFolio} book{totalFolio !== 1 ? 's' : ''} in Ex Libris</span>
               {friendCount > 0 && (
                 <>
                   <span style={s.dot}>·</span>
@@ -222,7 +222,7 @@ export default function Author({ session }) {
           </div>
         </div>
 
-        {/* Your progress (logged in, has Folio books) */}
+        {/* Your progress (logged in, has Ex Libris books) */}
         {session && totalFolio > 0 && (
           <div style={s.progressSection}>
             <div style={s.progressLabel}>
@@ -239,10 +239,10 @@ export default function Author({ session }) {
           </div>
         )}
 
-        {/* In Folio section */}
+        {/* In Ex Libris section */}
         {folioBooks.length > 0 && (
           <section style={s.section}>
-            <h2 style={s.sectionTitle}>In Folio</h2>
+            <h2 style={s.sectionTitle}>In Ex Libris</h2>
             <div style={s.bookGrid}>
               {folioBooks.map(book => {
                 const entry   = myEntries[book.id]
@@ -260,7 +260,7 @@ export default function Author({ session }) {
                         await supabase.from('collection_entries').update({ read_status: status }).eq('id', entry.id)
                       } else {
                         await supabase.from('collection_entries').insert({ user_id: session.user.id, book_id: book.id, read_status: status })
-                        window.dispatchEvent(new CustomEvent('folio:bookAdded'))
+                        window.dispatchEvent(new CustomEvent('exlibris:bookAdded'))
                       }
                       loadAll()
                     }}

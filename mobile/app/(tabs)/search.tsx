@@ -97,7 +97,7 @@ export default function SearchScreen() {
         adding:       false,
       }));
 
-      // ISBNs already in Folio — used to dedup OL results
+      // ISBNs already in Ex Libris — used to dedup OL results
       const folioIsbn13s = new Set(folioResults.map(r => r.isbn13).filter(Boolean));
       const folioIsbn10s = new Set(folioResults.map(r => r.isbn10).filter(Boolean));
 
@@ -234,7 +234,7 @@ export default function SearchScreen() {
             </Text>
             {item.source === 'folio' && (
               <View style={styles.folioBadge}>
-                <Text style={styles.folioBadgeText}>📚 In Folio</Text>
+                <Text style={styles.folioBadgeText}>📚 In Ex Libris</Text>
               </View>
             )}
           </View>

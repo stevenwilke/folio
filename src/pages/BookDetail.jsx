@@ -77,6 +77,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [communityRating, setCommunityRating] = useState(null)
   const [loading, setLoading]           = useState(true)
   const [fetchingDesc, setFetchingDesc] = useState(false)
+  const [coverImgError, setCoverImgError] = useState(false)
   const [tab, setTab]                   = useState('about')
   const [rating, setRating]             = useState(0)
   const [hoverRating, setHoverRating]   = useState(0)
@@ -125,6 +126,7 @@ export default function BookDetail({ bookId, session, onBack }) {
     setNewJournalEntry('')
     setSeriesBooks([])
     setSeriesOwned({})
+    setCoverImgError(false)
 
     fetchBook()
     fetchEntry()
@@ -564,8 +566,8 @@ export default function BookDetail({ bookId, session, onBack }) {
           <div style={s.coverWrap}>
             {(() => {
               const url = getCoverUrl(book)
-              return url
-                ? <img src={url} alt={book.title} style={s.coverImg} onError={e => e.target.style.display='none'} />
+              return (url && !coverImgError)
+                ? <img src={url} alt={book.title} style={s.coverImg} onError={() => setCoverImgError(true)} />
                 : <FakeCover title={book.title} />
             })()}
           </div>

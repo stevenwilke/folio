@@ -458,6 +458,7 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
   const status = entry.read_status
   const [menuOpen, setMenuOpen] = useState(false)
   const [hover, setHover] = useState(false)
+  const [imgError, setImgError] = useState(false)
 
   async function changeStatus(newStatus) {
     await supabase
@@ -539,8 +540,8 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
       <div style={{ ...s.coverWrap, position: 'relative' }}>
         {(() => {
           const url = getCoverUrl(book)
-          return url
-            ? <img src={url} alt={book.title} style={s.coverImg} onError={e => e.target.style.display='none'} />
+          return (url && !imgError)
+            ? <img src={url} alt={book.title} style={s.coverImg} onError={() => setImgError(true)} />
             : <FakeCover title={book.title} />
         })()}
         {listing && (

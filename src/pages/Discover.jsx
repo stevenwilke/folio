@@ -258,6 +258,78 @@ function QuickPreview({ book, myBookIds, onAdd, onViewDetail, onClose, session }
   )
 }
 
+function TrendingCard({ book, onPreview, myBookIds }) {
+  const { theme } = useTheme()
+  const [hover, setHover] = useState(false)
+  const have = myBookIds.has(titleKey(book.title, book.author))
+  const s = makeStyles(theme)
+  return (
+    <div
+      style={{ ...s.card, ...(hover ? s.cardHover : {}), cursor: 'pointer' }}
+      onClick={() => onPreview(book)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div style={s.cardCover}>
+        {book.coverUrl
+          ? <img src={book.coverUrl} alt={book.title} style={s.coverImg} loading="lazy" />
+          : <FakeCover title={book.title} author={book.author} />}
+        {have && <div style={s.haveBadge}>In Library</div>}
+        {book.friendCount > 0 && (
+          <div style={{
+            position: 'absolute', top: 6, left: 6,
+            background: '#c0521e', color: '#fff',
+            fontSize: 10, fontWeight: 700, borderRadius: 20,
+            padding: '2px 7px', lineHeight: '14px',
+          }}>
+            {book.friendCount} {book.friendCount === 1 ? 'friend' : 'friends'}
+          </div>
+        )}
+      </div>
+      <div style={s.cardBody}>
+        <div style={s.cardTitle}>{book.title}</div>
+        {book.author && <div style={s.cardAuthor}>{book.author}</div>}
+      </div>
+    </div>
+  )
+}
+
+function AuthorCard({ book, onPreview, myBookIds }) {
+  const { theme } = useTheme()
+  const [hover, setHover] = useState(false)
+  const have = myBookIds.has(titleKey(book.title, book.author))
+  const s = makeStyles(theme)
+  return (
+    <div
+      style={{ ...s.card, ...(hover ? s.cardHover : {}), cursor: 'pointer' }}
+      onClick={() => onPreview(book)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div style={s.cardCover}>
+        {book.coverUrl
+          ? <img src={book.coverUrl} alt={book.title} style={s.coverImg} loading="lazy" />
+          : <FakeCover title={book.title} author={book.author} />}
+        {have && <div style={s.haveBadge}>In Library</div>}
+      </div>
+      <div style={s.cardBody}>
+        <div style={s.cardTitle}>{book.title}</div>
+        {book._lovedAuthor && (
+          <div style={{
+            display: 'inline-block', marginBottom: 3,
+            background: 'rgba(192,82,30,0.12)', color: '#c0521e',
+            fontSize: 10, fontWeight: 700, borderRadius: 20,
+            padding: '1px 7px',
+          }}>
+            {book._lovedAuthor}
+          </div>
+        )}
+        {book.year && <div style={s.cardYear}>{book.year}</div>}
+      </div>
+    </div>
+  )
+}
+
 function BookRow({ books, myBookIds, onPreview, loading }) {
   const { theme } = useTheme()
   const s = makeStyles(theme)
@@ -292,6 +364,13 @@ export default function Discover({ session }) {
   const [friendsLoad,   setFriendsLoad]   = useState(true)
   const [hasFriends,    setHasFriends]    = useState(true)
 
+  const [trending,      setTrending]      = useState([])
+  const [trendingLoad,  setTrendingLoad]  = useState(true)
+  const [hasTrendingFriends, setHasTrendingFriends] = useState(true)
+
+  const [fromAuthors,   setFromAuthors]   = useState([])
+  const [fromAuthLoad,  setFromAuthLoad]  = useState(true)
+
   const [activeGenre, setActiveGenre] = useState(null)
   const [genreBooks,  setGenreBooks]  = useState([])
   const [genreLoad,   setGenreLoad]   = useState(false)
@@ -311,6 +390,8 @@ export default function Discover({ session }) {
       buildForYou(entries ?? [], books)
       buildFriends()
       buildNewReleases(new Set(books.map(b => titleKey(b.title, b.author))))
+      buildTrending()
+      buildFromFavoriteAuthors(entries ?? [], new Set(books.map(b => titleKey(b.title, b.author))))
     }
     init()
   }, [session.user.id])
@@ -384,6 +465,120 @@ export default function Discover({ session }) {
     finally { setFriendsLoad(false) }
   }
 
+  async function buildTrending() {
+    setTrendingLoad(true)
+    try {
+      const { data: friends } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .or(`requester_id.eq.${session.user.id},addressee_id.eq.${session.user.id}`)
+        .eq('status', 'accepted')
+
+      const friendIds = (friends ?? []).map(f =>
+        f.requester_id === session.user.id ? f.addressee_id : f.requester_id
+      )
+
+      if (!friendIds.length) {
+        setHasTrendingFriends(false)
+        setTrendingLoad(false)
+        return
+      }
+
+      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+      const { data } = await supabase
+        .from('collection_entries')
+        .select('book_id, books(id, title, author, cover_image_url, isbn_13, isbn_10, genre), profiles(username)')
+        .in('user_id', friendIds)
+        .gte('updated_at', oneWeekAgo)
+        .order('updated_at', { ascending: false })
+        .limit(20)
+
+      // Deduplicate by book_id and count friends
+      const bookMap = {}
+      ;(data ?? []).forEach(entry => {
+        const bid = entry.book_id
+        if (!bid || !entry.books) return
+        if (!bookMap[bid]) {
+          bookMap[bid] = { ...entry.books, friendCount: 0 }
+        }
+        bookMap[bid].friendCount++
+      })
+
+      const results = Object.values(bookMap)
+        .sort((a, b) => b.friendCount - a.friendCount)
+        .slice(0, 10)
+        .map(b => ({
+          olKey:       b.id,
+          title:       b.title,
+          author:      b.author,
+          coverUrl:    b.cover_image_url,
+          friendCount: b.friendCount,
+          _isTrending: true,
+        }))
+
+      setTrending(results)
+    } catch {
+      setTrending([])
+    }
+    finally { setTrendingLoad(false) }
+  }
+
+  async function buildFromFavoriteAuthors(entries, ownedKeys) {
+    setFromAuthLoad(true)
+    try {
+      const authorCounts = {}
+      entries.forEach(e => {
+        if (e.read_status !== 'read') return
+        const a = e.books?.author
+        if (a) authorCounts[a] = (authorCounts[a] || 0) + 1
+      })
+      const topAuthors = Object.entries(authorCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([author]) => author)
+
+      if (!topAuthors.length) {
+        setFromAuthLoad(false)
+        return
+      }
+
+      const currentYear = new Date().getFullYear()
+      const cutoffYear  = currentYear - 5
+
+      const results = await Promise.all(
+        topAuthors.map(author =>
+          fetch(`https://openlibrary.org/search.json?author=${encodeURIComponent(author)}&sort=new&limit=5&fields=key,title,author_name,cover_i,first_publish_year`)
+            .then(r => r.json())
+            .then(d => (d.docs || [])
+              .filter(b => b.first_publish_year >= cutoffYear)
+              .map(b => ({
+                olKey:    b.key,
+                title:    b.title,
+                author:   b.author_name?.[0] ?? author,
+                coverUrl: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg` : null,
+                year:     b.first_publish_year ?? null,
+                _lovedAuthor: author,
+              }))
+            )
+            .catch(() => [])
+        )
+      )
+
+      const seen = new Set()
+      const flat = results.flat().filter(b => {
+        const k = titleKey(b.title, b.author)
+        if (seen.has(k) || ownedKeys.has(k)) return false
+        seen.add(k)
+        return true
+      }).slice(0, 10)
+
+      setFromAuthors(flat)
+    } catch {
+      setFromAuthors([])
+    }
+    finally { setFromAuthLoad(false) }
+  }
+
   async function handleGenre(genre) {
     if (activeGenre?.slug === genre.slug) { setActiveGenre(null); setGenreBooks([]); return }
     setActiveGenre(genre); setGenreLoad(true); setGenreBooks([])
@@ -433,6 +628,30 @@ export default function Discover({ session }) {
           <p  style={s.pageSub}>Find your next great read</p>
         </div>
 
+        {/* Trending in Your Network */}
+        <section style={s.section}>
+          <div style={s.secHead}>
+            <h2 style={s.secTitle}>🔥 Trending in Your Network</h2>
+            <p  style={s.secSub}>Books your friends picked up this week</p>
+          </div>
+          {!hasTrendingFriends
+            ? <div style={s.emptyRow}>
+                <span>👥</span>
+                <span>Add friends to see what they're reading this week!</span>
+                <button style={s.emptyBtn} onClick={() => navigate('/feed')}>Find Friends →</button>
+              </div>
+            : trendingLoad
+              ? <div style={s.row}>{[...Array(5)].map((_, i) => <div key={i} style={s.skeleton} />)}</div>
+              : trending.length === 0
+                ? <div style={s.emptyRow}><span>📚</span><span>No activity from friends this week yet.</span></div>
+                : <div style={s.row}>
+                    {trending.map((b, i) => (
+                      <TrendingCard key={b.olKey ?? i} book={b} myBookIds={myBookIds} onPreview={setPreviewBook} />
+                    ))}
+                  </div>
+          }
+        </section>
+
         {/* For You */}
         <section style={s.section}>
           <div style={s.secHead}>
@@ -441,6 +660,26 @@ export default function Discover({ session }) {
           </div>
           <BookRow books={forYou} myBookIds={myBookIds} onPreview={setPreviewBook} onAdd={handleAdd} loading={forYouLoad} />
         </section>
+
+        {/* New from Authors You Love */}
+        {(fromAuthLoad || fromAuthors.length > 0) && (
+          <section style={s.section}>
+            <div style={s.secHead}>
+              <h2 style={s.secTitle}>✍️ New from Authors You Love</h2>
+              <p  style={s.secSub}>Recent titles from your most-read authors</p>
+            </div>
+            {fromAuthLoad
+              ? <div style={s.row}>{[...Array(5)].map((_, i) => <div key={i} style={s.skeleton} />)}</div>
+              : fromAuthors.length === 0
+                ? <p style={s.rowEmpty}>Read more books to unlock author recommendations.</p>
+                : <div style={s.row}>
+                    {fromAuthors.map((b, i) => (
+                      <AuthorCard key={b.olKey ?? i} book={b} myBookIds={myBookIds} onPreview={setPreviewBook} />
+                    ))}
+                  </div>
+            }
+          </section>
+        )}
 
         {/* New Releases */}
         <section style={s.section}>

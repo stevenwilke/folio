@@ -45,6 +45,11 @@ export default function Profile({ session }) {
   const [showEditProfile, setShowEditProfile] = useState(false)
   const fileInputRef = useRef(null)
 
+  // ── CUSTOMIZATION STATE ──
+  const [accentColor,    setAccentColor]    = useState('#c0521e')
+  const [featuredBook,   setFeaturedBook]   = useState(null)
+  const [showCustomize,  setShowCustomize]  = useState(false)
+
   // ── GOAL STATE ──
   const [goal, setGoal]                   = useState(null)
   const [booksReadThisYear, setBooksReadThisYear] = useState(0)
@@ -58,7 +63,7 @@ export default function Profile({ session }) {
 
   const isOwnProfile = session?.user?.id === profile?.id
 
-  const s = makeStyles(theme)
+  const s = makeStyles(theme, accentColor)
 
   useEffect(() => { fetchProfile() }, [username])
 
@@ -88,12 +93,14 @@ export default function Profile({ session }) {
 
     const { data: prof } = await supabase
       .from('profiles')
-      .select('id, username, bio, is_public, created_at, avatar_url')
+      .select('id, username, bio, is_public, created_at, avatar_url, accent_color, featured_book_id, books!profiles_featured_book_id_fkey(id, title, author, cover_image_url)')
       .eq('username', username)
       .maybeSingle()
 
     if (!prof) { setNotFound(true); setLoading(false); return }
     setProfile(prof)
+    setAccentColor(prof.accent_color || '#c0521e')
+    setFeaturedBook(prof.books || null)
 
     const isOwn = session?.user?.id === prof.id
     if (!isOwn && session?.user?.id) {
@@ -221,7 +228,7 @@ export default function Profile({ session }) {
       <NavBar session={session} />
 
       {/* ── HERO ── */}
-      <div style={s.hero}>
+      <div style={{ ...s.hero, background: `linear-gradient(160deg, #1e140a 0%, #2e1f10 60%, ${accentColor}22 100%)` }}>
         <div style={s.heroInner}>
 
           {/* Avatar */}
@@ -343,11 +350,33 @@ export default function Profile({ session }) {
             )}
 
             {isOwnProfile && (
-              <button style={s.editProfileBtn} onClick={() => setShowEditProfile(true)}>
-                ✏️ Edit Profile
-              </button>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                <button style={s.editProfileBtn} onClick={() => setShowEditProfile(true)}>
+                  ✏️ Edit Profile
+                </button>
+                <button style={s.editProfileBtn} onClick={() => setShowCustomize(true)}>
+                  🎨 Customize
+                </button>
+              </div>
             )}
           </div>
+
+          {/* Featured book (own profile, top-right) */}
+          {isOwnProfile && featuredBook && (
+            <div
+              style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer', marginRight: 4 }}
+              onClick={() => setSelectedBook(featuredBook.id)}
+              title={featuredBook.title}
+            >
+              <span style={{ fontSize: 10, color: 'rgba(253,248,240,0.6)', letterSpacing: 0.5, textTransform: 'uppercase', fontWeight: 600 }}>Featured Read</span>
+              <div style={{ width: 60, height: 80, borderRadius: 5, overflow: 'hidden', boxShadow: `0 4px 18px ${accentColor}55, 0 2px 8px rgba(0,0,0,0.4)` }}>
+                {featuredBook.cover_image_url
+                  ? <img src={featuredBook.cover_image_url} alt={featuredBook.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  : <FakeCover title={featuredBook.title} />
+                }
+              </div>
+            </div>
+          )}
 
           {/* Action */}
           {isOwnProfile ? (
@@ -501,6 +530,196 @@ export default function Profile({ session }) {
           }}
         />
       )}
+
+      {showCustomize && (
+        <CustomizePanel
+          session={session}
+          accentColor={accentColor}
+          featuredBook={featuredBook}
+          userBooks={books}
+          onAccentChange={setAccentColor}
+          onFeaturedChange={setFeaturedBook}
+          onClose={() => setShowCustomize(false)}
+          theme={theme}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── CUSTOMIZE PANEL ──
+const ACCENT_PRESETS = [
+  { name: 'Rust',   color: '#c0521e' },
+  { name: 'Sage',   color: '#5a7a5a' },
+  { name: 'Gold',   color: '#b8860b' },
+  { name: 'Navy',   color: '#1e3a5f' },
+  { name: 'Purple', color: '#6b3fa0' },
+  { name: 'Teal',   color: '#2a7a7a' },
+  { name: 'Rose',   color: '#b04060' },
+  { name: 'Forest', color: '#2d5a27' },
+]
+
+function CustomizePanel({ session, accentColor, featuredBook, userBooks, onAccentChange, onFeaturedChange, onClose, theme }) {
+  const [localAccent,  setLocalAccent]  = useState(accentColor)
+  const [localFeatured, setLocalFeatured] = useState(featuredBook)
+  const [bookSearch,   setBookSearch]   = useState('')
+  const [saving,       setSaving]       = useState(false)
+  const [saved,        setSaved]        = useState(false)
+
+  // Filter user's collection by search query
+  const bookOptions = userBooks
+    .map(e => e.books)
+    .filter(Boolean)
+    .filter((b, idx, arr) => arr.findIndex(x => x.id === b.id) === idx) // deduplicate
+    .filter(b => {
+      if (!bookSearch.trim()) return true
+      const q = bookSearch.toLowerCase()
+      return b.title?.toLowerCase().includes(q) || b.author?.toLowerCase().includes(q)
+    })
+    .slice(0, 8)
+
+  function pickAccent(color) {
+    setLocalAccent(color)
+    onAccentChange(color)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    await supabase
+      .from('profiles')
+      .update({
+        accent_color: localAccent,
+        featured_book_id: localFeatured?.id ?? null,
+      })
+      .eq('id', session.user.id)
+    onFeaturedChange(localFeatured)
+    setSaving(false)
+    setSaved(true)
+    setTimeout(() => { setSaved(false); onClose() }, 900)
+  }
+
+  async function removeFeatured() {
+    setLocalFeatured(null)
+    setBookSearch('')
+  }
+
+  const s = makeStyles(theme, localAccent)
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.6)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      onClick={onClose}>
+      <div style={{ background: theme.bgCard, borderRadius: 18, padding: 28, maxWidth: 480, width: '100%', boxShadow: '0 20px 60px rgba(26,18,8,0.3)', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}
+        onClick={e => e.stopPropagation()}>
+
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text, marginBottom: 4 }}>Customize Profile</div>
+        <div style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 24 }}>Personalize your hero section</div>
+
+        {/* Accent color */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 12 }}>Accent Color</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {ACCENT_PRESETS.map(p => (
+              <button
+                key={p.color}
+                title={p.name}
+                onClick={() => pickAccent(p.color)}
+                style={{
+                  width: 34, height: 34, borderRadius: '50%', background: p.color,
+                  border: localAccent === p.color ? `3px solid ${theme.text}` : '3px solid transparent',
+                  cursor: 'pointer', padding: 0, outline: 'none',
+                  boxShadow: localAccent === p.color ? `0 0 0 2px ${theme.bgCard}, 0 0 0 4px ${p.color}` : 'none',
+                  transition: 'box-shadow 0.15s, border 0.15s',
+                }}
+              />
+            ))}
+          </div>
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 6, background: localAccent, border: `1px solid ${theme.border}`, flexShrink: 0 }} />
+            <span style={{ fontSize: 12, color: theme.textSubtle }}>{localAccent}</span>
+          </div>
+        </div>
+
+        {/* Featured book */}
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 }}>Featured Book</div>
+          {localFeatured ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: theme.bgSubtle, borderRadius: 10, padding: '10px 14px' }}>
+              <div style={{ width: 40, height: 56, borderRadius: 4, overflow: 'hidden', flexShrink: 0, boxShadow: `0 2px 8px ${localAccent}44` }}>
+                {localFeatured.cover_image_url
+                  ? <img src={localFeatured.cover_image_url} alt={localFeatured.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <FakeCover title={localFeatured.title} />
+                }
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{localFeatured.title}</div>
+                <div style={{ fontSize: 12, color: theme.textSubtle }}>{localFeatured.author}</div>
+              </div>
+              <button
+                onClick={removeFeatured}
+                style={{ background: 'none', border: 'none', color: theme.textSubtle, cursor: 'pointer', fontSize: 13, padding: '2px 4px', fontFamily: "'DM Sans', sans-serif" }}
+              >Remove</button>
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 10, fontStyle: 'italic' }}>No featured book set.</div>
+          )}
+
+          <input
+            type="text"
+            placeholder="Search your library..."
+            value={bookSearch}
+            onChange={e => setBookSearch(e.target.value)}
+            style={{ width: '100%', marginTop: 10, padding: '9px 12px', borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none', boxSizing: 'border-box' }}
+          />
+
+          {bookSearch.trim() && (
+            <div style={{ marginTop: 6, background: theme.bg, border: `1px solid ${theme.border}`, borderRadius: 8, maxHeight: 200, overflowY: 'auto' }}>
+              {bookOptions.length === 0
+                ? <div style={{ padding: '10px 14px', fontSize: 13, color: theme.textSubtle }}>No books found.</div>
+                : bookOptions.map(b => (
+                  <div
+                    key={b.id}
+                    onClick={() => { setLocalFeatured(b); setBookSearch('') }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', cursor: 'pointer', borderBottom: `1px solid ${theme.borderLight}` }}
+                    onMouseEnter={e => e.currentTarget.style.background = theme.bgSubtle}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div style={{ width: 28, height: 40, borderRadius: 3, overflow: 'hidden', flexShrink: 0, background: theme.bgSubtle }}>
+                      {b.cover_image_url
+                        ? <img src={b.cover_image_url} alt={b.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <MiniCover title={b.title} />
+                      }
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{b.title}</div>
+                      <div style={{ fontSize: 11, color: theme.textSubtle }}>{b.author}</div>
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{ padding: '9px 22px', background: localAccent, color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: saving ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+          >
+            {saved ? '✓ Saved!' : saving ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            onClick={onClose}
+            style={{ padding: '8px 16px', background: 'none', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, cursor: 'pointer', color: theme.textSubtle, fontFamily: "'DM Sans', sans-serif" }}
+          >Cancel</button>
+        </div>
+
+        <button
+          onClick={onClose}
+          style={{ position: 'absolute', top: 14, right: 16, background: 'none', border: 'none', fontSize: 18, color: theme.textSubtle, cursor: 'pointer', lineHeight: 1 }}
+        >✕</button>
+      </div>
     </div>
   )
 }
@@ -750,17 +969,17 @@ function MiniCover({ title }) {
 }
 
 // ── STYLES ──
-function makeStyles(theme) {
+function makeStyles(theme, accentColor = '#c0521e') {
   return {
     page:        { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
     loadingMsg:  { color: theme.textSubtle, fontSize: 14, padding: '80px 0', textAlign: 'center' },
 
     // Hero — always dark, hero text stays light regardless of theme
-    hero:        { background: theme.heroBg, borderBottom: '1px solid rgba(255,255,255,0.06)' },
+    hero:        { background: theme.heroBg, borderBottom: '1px solid rgba(255,255,255,0.06)', position: 'relative', overflow: 'hidden' },
     heroInner:   { maxWidth: 960, margin: '0 auto', padding: '36px 32px', display: 'flex', alignItems: 'flex-start', gap: 24 },
     heroAvatar:  { width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', display: 'block', border: '3px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' },
-    heroAvatarFallback: { width: 88, height: 88, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontSize: 34, color: 'white', fontWeight: 700, border: '3px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)', flexShrink: 0 },
-    avatarEditBtn: { position: 'absolute', bottom: 2, right: 2, width: 24, height: 24, borderRadius: '50%', background: '#c0521e', border: '2px solid #1e140a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', padding: 0 },
+    heroAvatarFallback: { width: 88, height: 88, borderRadius: '50%', background: `linear-gradient(135deg, ${accentColor}, #b8860b)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontSize: 34, color: 'white', fontWeight: 700, border: '3px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)', flexShrink: 0 },
+    avatarEditBtn: { position: 'absolute', bottom: 2, right: 2, width: 24, height: 24, borderRadius: '50%', background: accentColor, border: '2px solid #1e140a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', padding: 0 },
     heroInfo:    { flex: 1, paddingTop: 4 },
     heroName:    { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, color: '#fdf8f0', marginBottom: 6, letterSpacing: '-0.3px' },
     heroBio:     { fontSize: 14, color: 'rgba(253,248,240,0.65)', lineHeight: 1.55, marginBottom: 10, maxWidth: 480 },
@@ -769,7 +988,7 @@ function makeStyles(theme) {
     heroDot:     { fontSize: 13, color: 'rgba(253,248,240,0.3)' },
     heroMeta:        { fontSize: 12, color: 'rgba(253,248,240,0.35)' },
     heroFriendsLink: { fontSize: 12, color: 'rgba(253,248,240,0.5)', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-    heroPrimaryBtn:  { padding: '8px 18px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    heroPrimaryBtn:  { padding: '8px 18px', background: accentColor, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     heroGhostBtn:    { padding: '7px 14px', background: 'transparent', border: '1px solid rgba(253,248,240,0.25)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: 'rgba(253,248,240,0.7)' },
     heroSignOutBtn:  { padding: '5px 12px', background: 'transparent', border: '1px solid rgba(253,248,240,0.15)', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: 'rgba(253,248,240,0.35)' },
     editProfileBtn: { marginTop: 10, padding: '6px 14px', background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
@@ -778,11 +997,11 @@ function makeStyles(theme) {
     goalSetBtn:      { background: 'transparent', border: '1px dashed rgba(253,248,240,0.3)', borderRadius: 8, padding: '6px 14px', fontSize: 12, color: 'rgba(253,248,240,0.65)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     goalInputRow:    { display: 'flex', alignItems: 'center', gap: 6 },
     goalInput:       { width: 72, padding: '5px 10px', borderRadius: 7, border: '1px solid rgba(253,248,240,0.3)', background: 'rgba(255,255,255,0.12)', color: '#fdf8f0', fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none' },
-    goalSaveBtn:     { padding: '5px 12px', background: '#c0521e', color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    goalSaveBtn:     { padding: '5px 12px', background: accentColor, color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     goalCancelBtn:   { background: 'transparent', border: 'none', color: 'rgba(253,248,240,0.4)', fontSize: 14, cursor: 'pointer', padding: '4px 6px', lineHeight: 1 },
     goalDisplay:     { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
     goalProgressWrap:{ width: 160, height: 7, background: 'rgba(245,240,232,0.15)', borderRadius: 20, overflow: 'hidden', flexShrink: 0 },
-    goalProgressFill:{ height: '100%', background: '#c0521e', borderRadius: 20, minWidth: 4, transition: 'width 0.5s ease' },
+    goalProgressFill:{ height: '100%', background: accentColor, borderRadius: 20, minWidth: 4, transition: 'width 0.5s ease' },
     goalText:        { fontSize: 12, color: 'rgba(253,248,240,0.7)' },
     goalPct:         { color: 'rgba(253,248,240,0.45)' },
     goalEditBtn:     { background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 13, padding: '2px 4px', opacity: 0.6, lineHeight: 1 },

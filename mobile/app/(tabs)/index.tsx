@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { BookCard, ReadStatus } from '../../components/BookCard';
@@ -80,6 +81,14 @@ export default function LibraryScreen() {
 
     if (!error && data) {
       setEntries(data as unknown as CollectionEntry[]);
+
+      // New user check: no books + not yet onboarded → show onboarding wizard
+      if (data.length === 0) {
+        const onboarded = await AsyncStorage.getItem('folio-onboarded');
+        if (!onboarded) {
+          router.replace('/onboarding');
+        }
+      }
     }
   }
 

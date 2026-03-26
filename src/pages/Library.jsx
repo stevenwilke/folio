@@ -37,6 +37,14 @@ export default function Library({ session }) {
   const [selectedIds, setSelectedIds]   = useState(new Set())
   const [bulkStatus, setBulkStatus]     = useState('')
   const [bulkWorking, setBulkWorking]   = useState(false)
+
+  // Redirect new users with empty libraries to onboarding
+  useEffect(() => {
+    if (!loading && books.length === 0 && !localStorage.getItem('folio-onboarded')) {
+      navigate('/onboarding')
+    }
+  }, [loading, books])
+
   useEffect(() => {
     fetchCollection()
     window.addEventListener('folio:bookAdded', fetchCollection)

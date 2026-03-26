@@ -29,6 +29,8 @@ interface Book {
   genre: string | null;
   description: string | null;
   isbn_13: string | null;
+  series_name?: string | null;
+  series_number?: number | null;
 }
 
 interface CollectionEntry {
@@ -70,6 +72,11 @@ const mfs = StyleSheet.create({
   muted:{ fontSize: 12, color: '#8a7f72', fontStyle: 'italic', marginTop: 6, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
 });
 
+function formatJournalDate(isoString: string): string {
+  const d = new Date(isoString);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export default function BookDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { width } = useWindowDimensions();
@@ -86,8 +93,49 @@ export default function BookDetailScreen() {
   const [reviewSaved, setReviewSaved] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
 
+  // Feature 1: Reading Journal
+  const [journalEntries, setJournalEntries] = useState<{id: string, content: string, created_at: string}[]>([]);
+  const [newJournalEntry, setNewJournalEntry] = useState('');
+  const [savingJournal, setSavingJournal] = useState(false);
+
+  // Feature 2: Series Tracking
+  const [seriesBooks, setSeriesBooks] = useState<any[]>([]);
+  const [seriesOwned, setSeriesOwned] = useState<Record<string, string>>({});
+
   const coverWidth = Math.min(width * 0.4, 180);
   const coverHeight = Math.round(coverWidth * 1.5);
+
+  async function fetchJournal(bookId: string, userId: string) {
+    const { data } = await supabase
+      .from('journal_entries')
+      .select('id, content, created_at')
+      .eq('user_id', userId)
+      .eq('book_id', bookId)
+      .order('created_at', { ascending: false });
+    setJournalEntries(data || []);
+  }
+
+  async function fetchSeries(book: Book, userId: string | null) {
+    if (!book.series_name) return;
+    const { data: series } = await supabase
+      .from('books')
+      .select('id, title, series_number, cover_image_url, isbn_13, isbn_10')
+      .eq('series_name', book.series_name)
+      .order('series_number', { ascending: true });
+
+    setSeriesBooks(series || []);
+
+    if (series?.length && userId) {
+      const { data: owned } = await supabase
+        .from('collection_entries')
+        .select('book_id, read_status')
+        .eq('user_id', userId)
+        .in('book_id', series.map((b: any) => b.id));
+      const map: Record<string, string> = {};
+      owned?.forEach((o: any) => { map[o.book_id] = o.read_status; });
+      setSeriesOwned(map);
+    }
+  }
 
   async function fetchBook() {
     if (!id) return;
@@ -137,6 +185,14 @@ export default function BookDetailScreen() {
       setCommunityRating(Math.round((sum / ratingsData.length) * 10) / 10);
     } else {
       setCommunityRating(null);
+    }
+
+    // Fetch journal entries
+    await fetchJournal(id, user.id);
+
+    // Fetch series books if applicable
+    if (bookData?.series_name) {
+      await fetchSeries(bookData, user.id);
     }
   }
 
@@ -297,6 +353,48 @@ export default function BookDetailScreen() {
     );
   }
 
+  async function saveJournalEntry() {
+    if (!newJournalEntry.trim()) return;
+    if (!id) return;
+    setSavingJournal(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      const { error } = await supabase.from('journal_entries').insert({
+        user_id: user.id,
+        book_id: id,
+        content: newJournalEntry.trim(),
+      });
+      if (error) throw error;
+      setNewJournalEntry('');
+      await fetchJournal(id, user.id);
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Could not save journal entry.');
+    } finally {
+      setSavingJournal(false);
+    }
+  }
+
+  async function deleteJournalEntry(entryId: string) {
+    Alert.alert(
+      'Delete entry?',
+      'This journal entry will be permanently deleted.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+            await supabase.from('journal_entries').delete().eq('id', entryId);
+            await fetchJournal(id!, user.id);
+          },
+        },
+      ]
+    );
+  }
+
   if (loading) {
     return (
       <View style={styles.loader}>
@@ -315,6 +413,11 @@ export default function BookDetailScreen() {
 
   const currentStatus = entry?.read_status ?? null;
   const currentRating = entry?.user_rating ?? 0;
+
+  // Series progress stats
+  const totalInSeries = seriesBooks.length;
+  const readCount = seriesBooks.filter((b: any) => seriesOwned[b.id] === 'read').length;
+  const progressPct = totalInSeries > 0 ? Math.round((readCount / totalInSeries) * 100) : 0;
 
   return (
     <>
@@ -362,7 +465,12 @@ export default function BookDetailScreen() {
           <View style={styles.heroInfo}>
             <Text style={styles.bookTitle}>{book.title}</Text>
             {book.author ? (
-              <Text style={styles.bookAuthor}>{book.author}</Text>
+              <TouchableOpacity
+                onPress={() => router.push(`/author/${encodeURIComponent(book.author!)}` as any)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.bookAuthor, styles.bookAuthorLink]}>{book.author}</Text>
+              </TouchableOpacity>
             ) : null}
             {book.published_year ? (
               <Text style={styles.bookMeta}>{book.published_year}</Text>
@@ -476,6 +584,59 @@ export default function BookDetailScreen() {
           </View>
         )}
 
+        {/* Reading Journal — only shown when book is in collection */}
+        {entry && (
+          <View style={styles.journalCard}>
+            <View style={styles.journalHeader}>
+              <Text style={styles.journalTitle}>Reading Journal</Text>
+              <View style={styles.privateBadge}>
+                <Text style={styles.privateBadgeText}>Private</Text>
+              </View>
+            </View>
+
+            <TextInput
+              style={styles.journalInput}
+              value={newJournalEntry}
+              onChangeText={setNewJournalEntry}
+              placeholder="Write a dated note about your reading…"
+              placeholderTextColor={Colors.muted}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+            <TouchableOpacity
+              style={[styles.saveJournalBtn, savingJournal && { opacity: 0.6 }]}
+              onPress={saveJournalEntry}
+              disabled={savingJournal}
+            >
+              {savingJournal
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Text style={styles.saveJournalBtnText}>Save Entry</Text>
+              }
+            </TouchableOpacity>
+
+            {journalEntries.length > 0 && (
+              <View style={styles.journalEntriesList}>
+                {journalEntries.map((je) => (
+                  <View key={je.id} style={styles.journalEntry}>
+                    <View style={styles.journalEntryTopRow}>
+                      <Text style={styles.journalEntryDate}>{formatJournalDate(je.created_at)}</Text>
+                      <TouchableOpacity
+                        style={styles.journalDeleteBtn}
+                        onPress={() => deleteJournalEntry(je.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.journalDeleteBtnText}>×</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.journalEntryText}>{je.content}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Reading progress — only shown when currently reading + book has page count */}
         {entry?.read_status === 'reading' && (book as any).pages ? (
           <View style={styles.section}>
@@ -505,6 +666,101 @@ export default function BookDetailScreen() {
             </View>
           </View>
         ) : null}
+
+        {/* Series Tracking — shown above description when series_name is set */}
+        {book.series_name && seriesBooks.length > 0 && (
+          <View style={styles.seriesCard}>
+            <Text style={styles.seriesTitle}>{book.series_name}</Text>
+            <View style={styles.seriesSubRow}>
+              <Text style={styles.seriesMeta}>
+                Book {book.series_number} of {totalInSeries}
+              </Text>
+              {readCount > 0 && (
+                <Text style={styles.seriesMeta}>
+                  {'  ·  '}You&apos;ve read {readCount} of {totalInSeries}
+                </Text>
+              )}
+            </View>
+
+            {/* Progress bar */}
+            <View style={styles.seriesProgressRow}>
+              <View style={styles.seriesProgressBg}>
+                <View style={[styles.seriesProgressFill, { width: `${progressPct}%` as any }]} />
+              </View>
+              <Text style={styles.seriesProgressPct}>{progressPct}%</Text>
+            </View>
+
+            {/* Book covers scroll */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.seriesScroll}
+              contentContainerStyle={styles.seriesScrollContent}
+            >
+              {seriesBooks.map((b: any) => {
+                const isCurrent = b.id === book.id;
+                const status = seriesOwned[b.id];
+                const isRead = status === 'read';
+                const isReading = status === 'reading';
+
+                // Cover URI: book cover_image_url or Open Library fallback
+                const isbn = b.isbn_13 || b.isbn_10;
+                const coverUri = b.cover_image_url
+                  || (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg` : null);
+
+                let dotLabel = '○';
+                let dotColor: string = Colors.muted;
+                if (isCurrent) {
+                  dotLabel = '●';
+                  dotColor = Colors.rust;
+                } else if (isRead) {
+                  dotLabel = '✓';
+                  dotColor = Colors.sage;
+                } else if (isReading) {
+                  dotLabel = '📖';
+                  dotColor = Colors.gold;
+                }
+
+                let statusLabel = 'None';
+                if (isCurrent) statusLabel = 'This';
+                else if (isRead) statusLabel = 'Read';
+                else if (isReading) statusLabel = 'Reading';
+                else if (status === 'want') statusLabel = 'Want';
+                else if (status === 'owned') statusLabel = 'Owned';
+
+                return (
+                  <TouchableOpacity
+                    key={b.id}
+                    style={styles.seriesCoverItem}
+                    onPress={() => router.push(`/book/${b.id}`)}
+                    activeOpacity={0.75}
+                  >
+                    <View style={[
+                      styles.seriesCoverWrap,
+                      isCurrent && styles.seriesCoverCurrent,
+                    ]}>
+                      {coverUri ? (
+                        <Image
+                          source={{ uri: coverUri }}
+                          style={styles.seriesCoverImg}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={styles.seriesCoverPlaceholder}>
+                          <Text style={styles.seriesCoverPlaceholderText} numberOfLines={3}>
+                            {b.title}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.seriesDot, { color: dotColor }]}>{dotLabel}</Text>
+                    <Text style={styles.seriesStatusLabel}>{statusLabel}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Description */}
         {book.description ? (
@@ -593,6 +849,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.muted,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  bookAuthorLink: {
+    color: Colors.rust,
+    textDecorationLine: 'underline',
   },
   bookMeta: {
     fontSize: 12,
@@ -733,5 +993,223 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+
+  // ── Reading Journal ──────────────────────────────────────────────────────────
+  journalCard: {
+    backgroundColor: Colors.card,
+    borderRadius: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.gold,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  journalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  journalTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  privateBadge: {
+    backgroundColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  privateBadgeText: {
+    fontSize: 10,
+    color: Colors.muted,
+    fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  journalInput: {
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: Colors.ink,
+    minHeight: 90,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+    marginBottom: 10,
+  },
+  saveJournalBtn: {
+    backgroundColor: Colors.gold,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  saveJournalBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  journalEntriesList: {
+    marginTop: 12,
+    gap: 10,
+  },
+  journalEntry: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: 10,
+  },
+  journalEntryTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  journalEntryDate: {
+    fontSize: 11,
+    color: Colors.muted,
+    fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  journalDeleteBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  journalDeleteBtnText: {
+    fontSize: 18,
+    color: Colors.muted,
+    lineHeight: 20,
+  },
+  journalEntryText: {
+    fontSize: 14,
+    color: Colors.ink,
+    lineHeight: 21,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+
+  // ── Series Tracking ──────────────────────────────────────────────────────────
+  seriesCard: {
+    backgroundColor: Colors.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  seriesTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+    marginBottom: 4,
+  },
+  seriesSubRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 10,
+  },
+  seriesMeta: {
+    fontSize: 12,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  seriesProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
+  },
+  seriesProgressBg: {
+    flex: 1,
+    height: 6,
+    backgroundColor: Colors.background,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: 'hidden',
+  },
+  seriesProgressFill: {
+    height: '100%',
+    backgroundColor: Colors.sage,
+    borderRadius: 3,
+  },
+  seriesProgressPct: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.sage,
+    minWidth: 34,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  seriesScroll: {
+    marginHorizontal: -4,
+  },
+  seriesScrollContent: {
+    paddingHorizontal: 4,
+    gap: 10,
+  },
+  seriesCoverItem: {
+    alignItems: 'center',
+    width: 64,
+  },
+  seriesCoverWrap: {
+    width: 56,
+    height: 80,
+    borderRadius: 4,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  seriesCoverCurrent: {
+    borderWidth: 2,
+    borderColor: Colors.rust,
+  },
+  seriesCoverImg: {
+    width: '100%',
+    height: '100%',
+  },
+  seriesCoverPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: Colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 4,
+  },
+  seriesCoverPlaceholderText: {
+    fontSize: 8,
+    color: Colors.muted,
+    textAlign: 'center',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  seriesDot: {
+    fontSize: 13,
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  seriesStatusLabel: {
+    fontSize: 10,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+    marginTop: 1,
   },
 });

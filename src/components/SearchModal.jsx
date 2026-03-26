@@ -10,6 +10,20 @@ const STATUS_LABELS = {
   want:    'Want to Read',
 }
 
+const GENRES = [
+  'Fiction', 'Non-Fiction', 'Mystery', 'Fantasy', 'Science Fiction',
+  'Romance', 'Thriller', 'Biography', 'History', 'Self-Help',
+  'Horror', 'Literary Fiction',
+]
+
+const FORMATS = ['Hardcover', 'Paperback', 'eBook', 'Audiobook']
+
+const RATINGS = [
+  { label: '4★+', value: 4 },
+  { label: '3★+', value: 3 },
+  { label: '2★+', value: 2 },
+]
+
 // Normalize an Open Library doc into a unified result shape
 function fromOL(doc) {
   return {
@@ -46,12 +60,22 @@ function fromFolio(b) {
 
 export default function SearchModal({ session, onClose, onAdded = () => {} }) {
   const { theme } = useTheme()
-  const [showManual, setShowManual] = useState(false)
-  const [query,      setQuery]      = useState('')
-  const [results,    setResults]    = useState([])
-  const [searching,  setSearching]  = useState(false)
-  const [adding,     setAdding]     = useState(null)
-  const [addedBooks, setAddedBooks] = useState({})
+  const [showManual,    setShowManual]    = useState(false)
+  const [showFilters,   setShowFilters]   = useState(false)
+  const [query,         setQuery]         = useState('')
+  const [results,       setResults]       = useState([])
+  const [searching,     setSearching]     = useState(false)
+  const [adding,        setAdding]        = useState(null)
+  const [addedBooks,    setAddedBooks]    = useState({})
+
+  // Filter state
+  const [filterGenre,    setFilterGenre]    = useState('')
+  const [filterFormat,   setFilterFormat]   = useState('')
+  const [filterYearFrom, setFilterYearFrom] = useState('')
+  const [filterYearTo,   setFilterYearTo]   = useState('')
+  const [filterRating,   setFilterRating]   = useState(null)
+
+  const filtersActive = !!(filterGenre || filterFormat || filterYearFrom || filterYearTo || filterRating)
 
   async function search() {
     if (!query.trim()) return
@@ -74,10 +98,15 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
       folioQ = folioQ.or(`title.ilike.%${query.trim()}%,author.ilike.%${query.trim()}%`)
     }
 
+    // Apply server-side filters to Folio query
+    if (filterGenre)    folioQ = folioQ.ilike('genre', `%${filterGenre}%`)
+    if (filterYearFrom) folioQ = folioQ.gte('published_year', parseInt(filterYearFrom))
+    if (filterYearTo)   folioQ = folioQ.lte('published_year', parseInt(filterYearTo))
+
     try {
       const [olJson, { data: folioBooks }] = await Promise.all([
         fetch(
-          `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&fields=key,title,author_name,isbn,cover_i,first_publish_year,subject&limit=12`
+          `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&fields=key,title,author_name,isbn,cover_i,first_publish_year,subject&limit=20`
         ).then(r => r.json()).catch(() => ({ docs: [] })),
         folioQ,
       ])
@@ -90,7 +119,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
       const folioIsbn10s = new Set(folioResults.map(r => r.isbn10).filter(Boolean))
 
       // Normalize OL results, skipping any whose ISBN already appears in Folio
-      const olResults = (olJson.docs || [])
+      let olResults = (olJson.docs || [])
         .filter(doc => {
           const i13 = doc.isbn?.find(i => i.length === 13)
           const i10 = doc.isbn?.find(i => i.length === 10)
@@ -100,13 +129,33 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
         })
         .map(fromOL)
 
+      // Apply client-side filters to OL results
+      if (filterGenre) {
+        const g = filterGenre.toLowerCase()
+        olResults = olResults.filter(r => r.genre?.toLowerCase().includes(g))
+      }
+      if (filterYearFrom) {
+        olResults = olResults.filter(r => r.year && r.year >= parseInt(filterYearFrom))
+      }
+      if (filterYearTo) {
+        olResults = olResults.filter(r => r.year && r.year <= parseInt(filterYearTo))
+      }
+
       // Folio community results first, then Open Library
-      setResults([...folioResults, ...olResults])
+      setResults([...folioResults, ...olResults.slice(0, 12)])
     } catch {
       setResults([])
     }
 
     setSearching(false)
+  }
+
+  function clearFilters() {
+    setFilterGenre('')
+    setFilterFormat('')
+    setFilterYearFrom('')
+    setFilterYearTo('')
+    setFilterRating(null)
   }
 
   async function addBook(result, status) {
@@ -175,11 +224,13 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
   return (
     <div style={s.overlay} onClick={onClose}>
       <div style={s.modal} onClick={e => e.stopPropagation()}>
+        {/* Header */}
         <div style={s.modalHeader}>
           <div style={s.modalTitle}>Add a Book</div>
           <button style={s.closeBtn} onClick={onClose}>✕</button>
         </div>
 
+        {/* Search row */}
         <div style={s.searchRow}>
           <input
             style={s.searchInput}
@@ -189,15 +240,105 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
             onKeyDown={e => e.key === 'Enter' && search()}
             autoFocus
           />
+          <button
+            style={{ ...s.filterToggleBtn, ...(filtersActive ? s.filterToggleBtnActive : {}) }}
+            onClick={() => setShowFilters(f => !f)}
+            title="Toggle filters"
+          >
+            ⚙ Filters{filtersActive && <span style={s.filterDot} />}
+          </button>
           <button style={s.btnPrimary} onClick={search} disabled={searching}>
             {searching ? '…' : 'Search'}
           </button>
         </div>
 
+        {/* Filters panel */}
+        {showFilters && (
+          <div style={s.filtersPanel}>
+            {/* Genre chips */}
+            <div style={s.filterGroup}>
+              <div style={s.filterLabel}>Genre</div>
+              <div style={s.chipRow}>
+                {GENRES.map(g => (
+                  <button
+                    key={g}
+                    style={{ ...s.chip, ...(filterGenre === g ? s.chipActive : {}) }}
+                    onClick={() => setFilterGenre(filterGenre === g ? '' : g)}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Format chips */}
+            <div style={s.filterGroup}>
+              <div style={s.filterLabel}>Format</div>
+              <div style={s.chipRow}>
+                {FORMATS.map(f => (
+                  <button
+                    key={f}
+                    style={{ ...s.chip, ...(filterFormat === f ? s.chipActive : {}) }}
+                    onClick={() => setFilterFormat(filterFormat === f ? '' : f)}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Year range + rating row */}
+            <div style={s.filterBottomRow}>
+              <div style={s.filterGroup}>
+                <div style={s.filterLabel}>Year Published</div>
+                <div style={s.yearRow}>
+                  <input
+                    style={s.yearInput}
+                    placeholder="From"
+                    value={filterYearFrom}
+                    onChange={e => setFilterYearFrom(e.target.value.replace(/\D/g, ''))}
+                    maxLength={4}
+                  />
+                  <span style={s.yearSep}>–</span>
+                  <input
+                    style={s.yearInput}
+                    placeholder="To"
+                    value={filterYearTo}
+                    onChange={e => setFilterYearTo(e.target.value.replace(/\D/g, ''))}
+                    maxLength={4}
+                  />
+                </div>
+              </div>
+
+              <div style={s.filterGroup}>
+                <div style={s.filterLabel}>Min Rating</div>
+                <div style={s.chipRow}>
+                  {RATINGS.map(r => (
+                    <button
+                      key={r.value}
+                      style={{ ...s.chip, ...(filterRating === r.value ? s.chipActive : {}) }}
+                      onClick={() => setFilterRating(filterRating === r.value ? null : r.value)}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {filtersActive && (
+              <button style={s.clearFiltersBtn} onClick={clearFilters}>
+                Clear all filters ✕
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Results */}
         <div style={s.results}>
           {searching && <div style={s.empty}>Searching…</div>}
           {!searching && results.length === 0 && query && (
-            <div style={s.empty}>No results — try a different search.</div>
+            <div style={s.empty}>No results — try a different search or adjust filters.</div>
           )}
           {!searching && results.length === 0 && !query && (
             <div style={s.empty}>Search for a title, author, or ISBN above.</div>
@@ -232,6 +373,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
                   </div>
                   <div style={s.resultAuthor}>{result.author}</div>
                   {result.year && <div style={s.resultYear}>{result.year}</div>}
+                  {result.genre && <div style={s.resultGenre}>{result.genre}</div>}
                 </div>
 
                 <div style={s.resultActions}>
@@ -281,12 +423,31 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
 function makeStyles(theme) {
   return {
     overlay:        { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-    modal:          { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 600, maxWidth: '94vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' },
+    modal:          { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 640, maxWidth: '94vw', maxHeight: '88vh', display: 'flex', flexDirection: 'column' },
     modalHeader:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px 0' },
     modalTitle:     { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text },
     closeBtn:       { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textSubtle, padding: 4 },
-    searchRow:      { display: 'flex', gap: 10, padding: '16px 24px' },
+    searchRow:      { display: 'flex', gap: 8, padding: '16px 24px 12px' },
     searchInput:    { flex: 1, padding: '9px 14px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgSubtle, color: theme.text },
+    filterToggleBtn:{ position: 'relative', padding: '8px 12px', background: theme.bgSubtle, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, cursor: 'pointer', color: theme.textMuted, fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
+    filterToggleBtnActive: { borderColor: theme.rust, color: theme.rust },
+    filterDot:      { position: 'absolute', top: 5, right: 5, width: 6, height: 6, borderRadius: '50%', background: theme.rust },
+    btnPrimary:     { padding: '8px 18px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' },
+
+    // Filters panel
+    filtersPanel:   { padding: '0 24px 14px', borderBottom: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', gap: 12 },
+    filterGroup:    { display: 'flex', flexDirection: 'column', gap: 6 },
+    filterLabel:    { fontSize: 11, fontWeight: 600, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: '0.06em' },
+    chipRow:        { display: 'flex', flexWrap: 'wrap', gap: 6 },
+    chip:           { padding: '4px 10px', fontSize: 12, background: theme.bgSubtle, border: `1px solid ${theme.border}`, borderRadius: 20, cursor: 'pointer', color: theme.textMuted, fontFamily: "'DM Sans', sans-serif", transition: 'all 0.15s' },
+    chipActive:     { background: theme.rust, borderColor: theme.rust, color: 'white', fontWeight: 600 },
+    filterBottomRow:{ display: 'flex', gap: 24, flexWrap: 'wrap' },
+    yearRow:        { display: 'flex', alignItems: 'center', gap: 6 },
+    yearInput:      { width: 68, padding: '5px 8px', border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.bgSubtle, color: theme.text, fontFamily: "'DM Sans', sans-serif", outline: 'none' },
+    yearSep:        { color: theme.textSubtle, fontSize: 14 },
+    clearFiltersBtn:{ alignSelf: 'flex-start', fontSize: 12, color: theme.rust, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: "'DM Sans', sans-serif", fontWeight: 500 },
+
+    // Results
     results:        { overflowY: 'auto', padding: '0 24px 20px', flex: 1 },
     resultRow:      { display: 'flex', gap: 14, alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${theme.borderLight}` },
     resultCover:    { width: 36, height: 54, flexShrink: 0, borderRadius: 3, overflow: 'hidden', background: theme.border },
@@ -295,7 +456,8 @@ function makeStyles(theme) {
     resultTitle:    { fontSize: 14, fontWeight: 500, color: theme.text, lineHeight: 1.3 },
     folioBadge:     { fontSize: 10, fontWeight: 600, color: theme.sage, background: theme.sageLight, borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 },
     resultAuthor:   { fontSize: 12, color: theme.textSubtle, marginTop: 2 },
-    resultYear:     { fontSize: 11, color: theme.textSubtle, marginTop: 2 },
+    resultYear:     { fontSize: 11, color: theme.textSubtle, marginTop: 1 },
+    resultGenre:    { fontSize: 11, color: theme.textMuted, marginTop: 1, fontStyle: 'italic' },
     resultActions:  { display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0, alignItems: 'flex-end' },
     addBtnPrimary:  { padding: '6px 14px', fontSize: 12, background: theme.rust, color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, whiteSpace: 'nowrap' },
     statusShortcuts:{ display: 'flex', gap: 4 },
@@ -305,7 +467,6 @@ function makeStyles(theme) {
     manualRow:      { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0 6px', borderBottom: `1px solid ${theme.borderLight}`, marginBottom: 4 },
     manualText:     { fontSize: 12, color: theme.textSubtle },
     manualBtn:      { fontSize: 12, fontWeight: 600, color: theme.rust, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: "'DM Sans', sans-serif" },
-    btnPrimary:     { padding: '8px 16px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     empty:          { padding: '40px 0', textAlign: 'center', color: theme.textSubtle, fontSize: 14 },
   }
 }

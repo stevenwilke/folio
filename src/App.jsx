@@ -14,6 +14,8 @@ import Stats from './pages/Stats'
 import Shelves from './pages/Shelves'
 import Polls from './pages/Polls'
 import BookClubs from './pages/BookClubs'
+import Author from './pages/Author'
+import Onboarding from './pages/Onboarding'
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -81,6 +83,14 @@ export default function App() {
         <Route
           path="/clubs"
           element={session ? <BookClubs session={session} /> : <Navigate to="/" replace />}
+        />
+        <Route
+          path="/author/:authorName"
+          element={<Author session={session} />}
+        />
+        <Route
+          path="/onboarding"
+          element={session ? <Onboarding session={session} /> : <Navigate to="/" replace />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

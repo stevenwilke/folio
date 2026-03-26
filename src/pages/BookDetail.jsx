@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
@@ -67,7 +68,9 @@ function isLikelyEnglish(text) {
 }
 
 export default function BookDetail({ bookId, session, onBack }) {
-  const { theme } = useTheme()
+  const { theme }  = useTheme()
+  const navigate   = useNavigate()
+  const [activeBookId, setActiveBookId] = useState(bookId)
   const [book, setBook]                 = useState(null)
   const [entry, setEntry]               = useState(null)
   const [reviews, setReviews]           = useState([])
@@ -88,14 +91,57 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [currentPage, setCurrentPage]   = useState(0)
   const [removeConfirm, setRemoveConfirm] = useState(false)
 
+  // Journal state
+  const [journalEntries, setJournalEntries] = useState([])
+  const [newJournalEntry, setNewJournalEntry] = useState('')
+  const [savingJournal, setSavingJournal] = useState(false)
+
+  // Series state
+  const [seriesBooks, setSeriesBooks] = useState([])
+  const [seriesOwned, setSeriesOwned] = useState({}) // book_id → read_status
+
+  // When the prop bookId changes (parent navigates to a new book), sync activeBookId
+  useEffect(() => { setActiveBookId(bookId) }, [bookId])
+
   useEffect(() => {
+    // Reset all state for new book
+    setBook(null)
+    setEntry(null)
+    setReviews([])
+    setCommunityRating(null)
+    setLoading(true)
+    setTab('about')
+    setRating(0)
+    setHoverRating(0)
+    setReviewText('')
+    setSaved(false)
+    setListing(null)
+    setValuation(null)
+    setValuationLoading(true)
+    setFriendStats(null)
+    setCurrentPage(0)
+    setRemoveConfirm(false)
+    setJournalEntries([])
+    setNewJournalEntry('')
+    setSeriesBooks([])
+    setSeriesOwned({})
+
     fetchBook()
     fetchEntry()
     fetchReviews()
     fetchCommunityRating()
     fetchListing()
     fetchFriendStats()
-  }, [bookId])
+  }, [activeBookId])
+
+  // Listen for in-page series navigation
+  useEffect(() => {
+    function handleSeriesNav(e) {
+      if (e.detail?.bookId) setActiveBookId(e.detail.bookId)
+    }
+    window.addEventListener('folio:navigateBook', handleSeriesNav)
+    return () => window.removeEventListener('folio:navigateBook', handleSeriesNav)
+  }, [])
 
   async function fetchFriendStats() {
     setFriendStats(null)
@@ -108,7 +154,7 @@ export default function BookDetail({ bookId, session, onBack }) {
     const { data } = await supabase
       .from('collection_entries')
       .select('user_rating, read_status, profiles(username)')
-      .eq('book_id', bookId)
+      .eq('book_id', activeBookId)
       .in('user_id', friendIds)
     setFriendStats(data || [])
   }
@@ -117,7 +163,7 @@ export default function BookDetail({ bookId, session, onBack }) {
     const { data } = await supabase
       .from('books')
       .select('*')
-      .eq('id', bookId)
+      .eq('id', activeBookId)
       .single()
     if (data) {
       setBook(data)
@@ -132,8 +178,60 @@ export default function BookDetail({ bookId, session, onBack }) {
         setFetchingDesc(false)
       }
       loadValuation(data)
+      fetchJournal(data)
+      if (data.series_name) fetchSeries(data)
     } else {
       setLoading(false)
+    }
+  }
+
+  async function fetchJournal(bookData) {
+    if (!session || !bookData) return
+    const { data } = await supabase
+      .from('journal_entries')
+      .select('id, content, created_at')
+      .eq('user_id', session.user.id)
+      .eq('book_id', bookData.id)
+      .order('created_at', { ascending: false })
+    setJournalEntries(data || [])
+  }
+
+  async function saveJournalEntry() {
+    if (!newJournalEntry.trim() || !book) return
+    setSavingJournal(true)
+    await supabase.from('journal_entries').insert({
+      user_id: session.user.id,
+      book_id: book.id,
+      content: newJournalEntry.trim(),
+    })
+    setNewJournalEntry('')
+    await fetchJournal(book)
+    setSavingJournal(false)
+  }
+
+  async function deleteJournalEntry(id) {
+    if (!window.confirm('Delete this journal entry? This cannot be undone.')) return
+    await supabase.from('journal_entries').delete().eq('id', id).eq('user_id', session.user.id)
+    setJournalEntries(prev => prev.filter(e => e.id !== id))
+  }
+
+  async function fetchSeries(bookData) {
+    const { data: sb } = await supabase
+      .from('books')
+      .select('id, title, series_number, cover_image_url, isbn_13, isbn_10')
+      .eq('series_name', bookData.series_name)
+      .order('series_number', { ascending: true })
+    if (!sb || sb.length === 0) return
+    setSeriesBooks(sb)
+    if (session) {
+      const { data: owned } = await supabase
+        .from('collection_entries')
+        .select('book_id, read_status')
+        .eq('user_id', session.user.id)
+        .in('book_id', sb.map(b => b.id))
+      const map = {}
+      for (const row of owned || []) map[row.book_id] = row.read_status
+      setSeriesOwned(map)
     }
   }
 
@@ -141,7 +239,7 @@ export default function BookDetail({ bookId, session, onBack }) {
     const { data } = await supabase
       .from('collection_entries')
       .select('*')
-      .eq('book_id', bookId)
+      .eq('book_id', activeBookId)
       .eq('user_id', session.user.id)
       .maybeSingle()
     if (data) {
@@ -159,7 +257,7 @@ export default function BookDetail({ bookId, session, onBack }) {
         id, user_rating, review_text, added_at,
         profiles ( username )
       `)
-      .eq('book_id', bookId)
+      .eq('book_id', activeBookId)
       .not('review_text', 'is', null)
       .order('added_at', { ascending: false })
     setReviews(data || [])
@@ -169,7 +267,7 @@ export default function BookDetail({ bookId, session, onBack }) {
     const { data } = await supabase
       .from('book_ratings')
       .select('avg_rating, rating_count')
-      .eq('book_id', bookId)
+      .eq('book_id', activeBookId)
       .maybeSingle()
     if (data) setCommunityRating(data)
   }
@@ -234,7 +332,7 @@ export default function BookDetail({ bookId, session, onBack }) {
       .from('listings')
       .select('id, price, condition')
       .eq('seller_id', session.user.id)
-      .eq('book_id', bookId)
+      .eq('book_id', activeBookId)
       .eq('status', 'active')
       .maybeSingle()
     setListing(data || null)
@@ -259,7 +357,7 @@ export default function BookDetail({ bookId, session, onBack }) {
     } else {
       const { data } = await supabase
         .from('collection_entries')
-        .insert({ user_id: session.user.id, book_id: bookId, read_status: newStatus })
+        .insert({ user_id: session.user.id, book_id: activeBookId, read_status: newStatus })
         .select()
         .single()
       if (data) {
@@ -401,6 +499,31 @@ export default function BookDetail({ bookId, session, onBack }) {
     priceDollar:     { padding: '9px 10px 9px 14px', fontSize: 15, color: theme.textSubtle, background: theme.bg, borderRight: `1px solid ${theme.border}` },
     priceInput:      { flex: 1, padding: '9px 12px', border: 'none', outline: 'none', fontSize: 15, fontFamily: "'DM Sans', sans-serif", color: theme.text, background: theme.bgCard },
     modalTextarea:   { width: '100%', padding: '10px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: theme.bgCard, color: theme.text, boxSizing: 'border-box' },
+
+    // Journal
+    journalSection:  { marginTop: 32, background: theme.bgSubtle, borderRadius: '0 10px 10px 0', padding: '20px 20px 20px 20px', borderLeft: `3px solid ${theme.gold}` },
+    journalHeader:   { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+    journalTitle:    { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 17, fontWeight: 700, color: theme.text, display: 'flex', alignItems: 'center', gap: 8 },
+    journalPrivate:  { fontSize: 11, color: theme.textSubtle, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 20, padding: '2px 8px' },
+    journalTextarea: { width: '100%', padding: '10px 14px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: theme.bgCard, color: theme.text, lineHeight: 1.6, boxSizing: 'border-box' },
+    journalSaveBtn:  { marginTop: 8, padding: '7px 18px', background: theme.gold, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    journalEntry:    { marginTop: 16 },
+    journalDateSep:  { fontSize: 11, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 },
+    journalDateLine: { flex: 1, height: 1, background: theme.border },
+    journalText:     { fontSize: 14, lineHeight: 1.75, color: theme.text, margin: 0 },
+    journalDeleteBtn:{ background: 'none', border: 'none', fontSize: 11, color: theme.textSubtle, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", padding: '2px 6px', borderRadius: 4, float: 'right' },
+
+    // Series
+    seriesSection:   { background: theme.bgSubtle, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '18px 20px', marginBottom: 28 },
+    seriesHeading:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 16, fontWeight: 700, color: theme.text, marginBottom: 4 },
+    seriesMeta:      { fontSize: 13, color: theme.textSubtle, marginBottom: 12 },
+    seriesBarBg:     { height: 6, background: theme.bgCard, borderRadius: 3, overflow: 'hidden', marginBottom: 14 },
+    seriesBarFill:   { height: '100%', background: theme.sage, borderRadius: 3, transition: 'width 0.3s' },
+    seriesScroll:    { display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 4 },
+    seriesCoverWrap: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flexShrink: 0, cursor: 'pointer' },
+    seriesCoverImg:  { width: 60, height: 80, objectFit: 'cover', borderRadius: 5, boxShadow: '2px 3px 10px rgba(26,18,8,0.18)' },
+    seriesCoverFake: { width: 60, height: 80, borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'rgba(255,255,255,0.85)', padding: 4, textAlign: 'center', boxShadow: '2px 3px 10px rgba(26,18,8,0.18)' },
+    seriesStatusIcon:{ fontSize: 14 },
   }
 
   if (loading || !book) {
@@ -449,7 +572,20 @@ export default function BookDetail({ bookId, session, onBack }) {
 
           <div style={s.heroInfo}>
             <div style={s.title}>{book.title}</div>
-            <div style={s.author}>{book.author}</div>
+            <div style={s.author}>
+              {book.author
+                ? <span
+                    style={{ cursor: 'pointer', textDecoration: 'none', color: 'inherit' }}
+                    onClick={() => navigate(`/author/${encodeURIComponent(book.author)}`)}
+                    title={`See all books by ${book.author}`}
+                    onMouseEnter={e => e.currentTarget.style.color = '#c0521e'}
+                    onMouseLeave={e => e.currentTarget.style.color = 'inherit'}
+                  >
+                    {book.author}
+                  </span>
+                : null
+              }
+            </div>
 
             {/* Community rating */}
             {communityRating ? (
@@ -618,6 +754,83 @@ export default function BookDetail({ bookId, session, onBack }) {
           />
         )}
 
+        {/* Series section — shown above tabs when series_name is set */}
+        {book.series_name && seriesBooks.length > 0 && (() => {
+          const total = seriesBooks.length
+          const readCount = seriesBooks.filter(b => seriesOwned[b.id] === 'read').length
+          const pct = total > 0 ? Math.round((readCount / total) * 100) : 0
+          const currentIdx = seriesBooks.findIndex(b => b.id === book.id)
+          const bookNum = book.series_number || (currentIdx >= 0 ? currentIdx + 1 : null)
+          return (
+            <div style={s.seriesSection}>
+              <div style={s.seriesHeading}>
+                {book.series_name} series
+              </div>
+              <div style={s.seriesMeta}>
+                {bookNum && `Book ${bookNum} of ${total} · `}
+                {readCount > 0
+                  ? `You've read ${readCount} of ${total} (${pct}%)`
+                  : `${total} book${total !== 1 ? 's' : ''} in series`}
+              </div>
+              {readCount > 0 && (
+                <div style={s.seriesBarBg}>
+                  <div style={{ ...s.seriesBarFill, width: `${pct}%` }} />
+                </div>
+              )}
+              <div style={s.seriesScroll}>
+                {seriesBooks.map(sb => {
+                  const coverUrl = getCoverUrl(sb)
+                  const ownedStatus = seriesOwned[sb.id]
+                  const isCurrent = sb.id === book.id
+                  let icon = '○'
+                  let iconColor = '#8a7f72'
+                  if (isCurrent) { icon = '●'; iconColor = '#c0521e' }
+                  else if (ownedStatus === 'read') { icon = '✓'; iconColor = '#5a7a5a' }
+                  else if (ownedStatus === 'reading') { icon = '📖'; iconColor = '#b8860b' }
+                  return (
+                    <div
+                      key={sb.id}
+                      style={{
+                        ...s.seriesCoverWrap,
+                        opacity: isCurrent ? 1 : 0.85,
+                      }}
+                      onClick={() => {
+                        if (!isCurrent) {
+                          window.dispatchEvent(new CustomEvent('folio:navigateBook', { detail: { bookId: sb.id } }))
+                        }
+                      }}
+                      title={sb.title}
+                    >
+                      {coverUrl ? (
+                        <img
+                          src={coverUrl}
+                          alt={sb.title}
+                          style={{
+                            ...s.seriesCoverImg,
+                            outline: isCurrent ? `2px solid ${theme.rust}` : 'none',
+                            outlineOffset: 2,
+                          }}
+                          onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }}
+                        />
+                      ) : null}
+                      <div style={{
+                        ...s.seriesCoverFake,
+                        background: `linear-gradient(135deg, #7b4f3a, #4a6b8a)`,
+                        display: coverUrl ? 'none' : 'flex',
+                        outline: isCurrent ? `2px solid ${theme.rust}` : 'none',
+                        outlineOffset: 2,
+                      }}>
+                        {sb.title}
+                      </div>
+                      <span style={{ ...s.seriesStatusIcon, color: iconColor }}>{icon}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
+
         {/* Tabs */}
         <div style={s.tabs}>
           {['about', 'reviews', 'your review'].map(t => (
@@ -735,6 +948,51 @@ export default function BookDetail({ bookId, session, onBack }) {
                       ✓ Saved!
                     </span>
                   )}
+                </div>
+
+                {/* Reading Journal — shown in the review tab if book is in collection */}
+                <div style={{ ...s.journalSection, marginTop: 36 }}>
+                  <div style={s.journalHeader}>
+                    <div style={s.journalTitle}>
+                      Reading Journal
+                    </div>
+                    <span style={s.journalPrivate}>private</span>
+                  </div>
+                  <textarea
+                    style={s.journalTextarea}
+                    placeholder="Write a journal entry…"
+                    value={newJournalEntry}
+                    onChange={e => setNewJournalEntry(e.target.value)}
+                    rows={4}
+                  />
+                  <button
+                    style={{ ...s.journalSaveBtn, opacity: savingJournal || !newJournalEntry.trim() ? 0.6 : 1 }}
+                    onClick={saveJournalEntry}
+                    disabled={savingJournal || !newJournalEntry.trim()}
+                  >
+                    {savingJournal ? 'Saving…' : 'Save Entry'}
+                  </button>
+
+                  {journalEntries.map(je => (
+                    <div key={je.id} style={s.journalEntry}>
+                      <div style={s.journalDateSep}>
+                        <span>
+                          {new Date(je.created_at).toLocaleDateString('en-US', {
+                            month: 'short', day: 'numeric', year: 'numeric',
+                          })}
+                        </span>
+                        <div style={s.journalDateLine} />
+                      </div>
+                      <button
+                        style={s.journalDeleteBtn}
+                        onClick={() => deleteJournalEntry(je.id)}
+                        title="Delete entry"
+                      >
+                        delete
+                      </button>
+                      <p style={s.journalText}>{je.content}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

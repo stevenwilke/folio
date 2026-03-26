@@ -123,3 +123,6 @@ code {
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* Hide scrollbar on chip rows */
+.chips-scroll::-webkit-scrollbar { display: none; }

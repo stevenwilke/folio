@@ -117,7 +117,7 @@ export default function NavBar({ session, extra }) {
     <>
       <div style={{ ...s.topbar, background: theme.navBg, padding: isMobile ? '12px 16px' : '12px 32px' }}>
         {/* Logo */}
-        <div style={{ ...s.logo, color: theme.navText }} onClick={() => navigate('/')} role="button" tabIndex={0}
+        <div style={{ ...s.logo, color: theme.navText, fontSize: isMobile ? 18 : 22 }} onClick={() => navigate('/')} role="button" tabIndex={0}
           onKeyDown={e => e.key === 'Enter' && navigate('/')}>
           Ex Libris
         </div>
@@ -159,15 +159,6 @@ export default function NavBar({ session, extra }) {
                 }
               </button>
             )}
-
-            {/* Hamburger */}
-            <button
-              style={s.hamburger}
-              onClick={() => setShowMenu(v => !v)}
-              aria-label={showMenu ? 'Close menu' : 'Open menu'}
-            >
-              {showMenu ? '✕' : '☰'}
-            </button>
           </div>
         ) : (
           /* ── DESKTOP TOPBAR ── */
@@ -233,34 +224,6 @@ export default function NavBar({ session, extra }) {
           </div>
         )}
       </div>
-
-      {/* ── MOBILE DROPDOWN MENU ── */}
-      {isMobile && showMenu && (
-        <div style={{ ...s.mobileMenu, background: theme.navBg, borderBottom: `1px solid ${theme.border}` }}>
-          {NAV_ITEMS.map(item => (
-            <button key={item.path}
-              style={isActive(item)
-                ? { ...s.mobileNavItem, color: theme.rust, background: `rgba(${isDark ? '212,105,58' : '192,82,30'},0.1)`, fontWeight: 600 }
-                : { ...s.mobileNavItem, color: theme.navText }}
-              onClick={() => handleNavClick(item.path)}>
-              {item.label}
-            </button>
-          ))}
-
-          <div style={s.mobileMenuDivider} />
-
-          <button style={{ ...s.mobileAddBtn }} onClick={() => { setShowMenu(false); setShowSearch(true) }}>
-            + Add Book
-          </button>
-
-          <button
-            onClick={() => { setShowMenu(false); toggleTheme() }}
-            style={s.mobileThemeBtn}
-          >
-            {isDark ? '☀️ Light mode' : '🌙 Dark mode'}
-          </button>
-        </div>
-      )}
 
       {showSearch && (
         <SearchModal

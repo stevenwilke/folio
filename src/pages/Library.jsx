@@ -174,11 +174,11 @@ export default function Library({ session }) {
     logo:           { fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, color: theme.text, cursor: 'pointer' },
     topbarRight:    { display: 'flex', gap: 10, alignItems: 'center' },
     content:        { padding: isMobile ? '16px' : '28px 32px' },
-    statsRow:       { display: 'flex', gap: isMobile ? 8 : 14, marginBottom: 28, flexWrap: isMobile ? 'wrap' : 'nowrap' },
-    statCard:       { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '18px 22px', flex: 1, transition: 'box-shadow 0.15s' },
-    statVal:        { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700 },
-    statLabel:      { fontSize: 11, color: theme.textSubtle, marginTop: 4, textTransform: 'uppercase', letterSpacing: 1 },
-    filterRow:      { display: 'flex', gap: isMobile ? 6 : 8, marginBottom: 24, flexWrap: 'wrap' },
+    statsRow:       { display: 'flex', gap: isMobile ? 8 : 14, marginBottom: isMobile ? 16 : 28, flexWrap: isMobile ? 'nowrap' : 'nowrap' },
+    statCard:       { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: isMobile ? 10 : 14, padding: isMobile ? '12px 8px' : '18px 22px', flex: 1, transition: 'box-shadow 0.15s', textAlign: 'center' },
+    statVal:        { fontFamily: 'Georgia, serif', fontSize: isMobile ? 22 : 28, fontWeight: 700, color: theme.rust },
+    statLabel:      { fontSize: isMobile ? 10 : 11, color: theme.textSubtle, marginTop: 4, textTransform: 'uppercase', letterSpacing: isMobile ? 0.3 : 1 },
+    filterRow:      { display: 'flex', gap: isMobile ? 6 : 8, marginBottom: 24, flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' },
     filterActive:   { padding: '7px 16px', borderRadius: 8, border: 'none', background: theme.rust, color: 'white', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     filterInactive: { padding: '7px 16px', borderRadius: 8, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.text, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     grid:           { display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(auto-fill, minmax(148px, 1fr))', gap: isMobile ? 12 : 24 },
@@ -258,27 +258,46 @@ export default function Library({ session }) {
 
       <div style={s.content}>
         {/* Stats */}
-        <div style={s.statsRow}>
-          {[
-            ['Total Books', stats.total,   null,      '📚'],
-            ['Read',        stats.read,    '#5a7a5a', '✓'],
-            ['Reading',     stats.reading, '#c0521e', '📖'],
-            ['Want to Read',stats.want,    '#b8860b', '🔖'],
-            ...(collectionValue !== null
-              ? [['Est. Value', `$${collectionValue.toFixed(2)}`, '#5a7a5a', '💰']]
-              : []),
-          ].map(([label, val, color, icon]) => (
-            <div key={label} style={s.statCard}>
-              <div style={{ ...s.statVal, color: color || theme.text }}>{icon} {val}</div>
-              <div style={s.statLabel}>{label}</div>
-            </div>
-          ))}
-        </div>
+        {isMobile ? (
+          <div style={s.statsRow}>
+            {[
+              ['Total',   stats.total],
+              ['Read',    stats.read],
+              ['Reading', stats.reading],
+              ['Want',    stats.want],
+            ].map(([label, val]) => (
+              <div key={label} style={s.statCard}>
+                <div style={s.statVal}>{val}</div>
+                <div style={s.statLabel}>{label}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={s.statsRow}>
+            {[
+              ['Total Books', stats.total,   null,      '📚'],
+              ['Read',        stats.read,    '#5a7a5a', '✓'],
+              ['Reading',     stats.reading, '#c0521e', '📖'],
+              ['Want to Read',stats.want,    '#b8860b', '🔖'],
+              ...(collectionValue !== null
+                ? [['Est. Value', `$${collectionValue.toFixed(2)}`, '#5a7a5a', '💰']]
+                : []),
+            ].map(([label, val, color, icon]) => (
+              <div key={label} style={s.statCard}>
+                <div style={{ ...s.statVal, color: color || theme.text }}>{icon} {val}</div>
+                <div style={s.statLabel}>{label}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Filter pills */}
-        <div style={s.filterRow}>
+        <div style={s.filterRow} className={isMobile ? 'chips-scroll' : ''}>
           {['all', 'owned', 'read', 'reading', 'want'].map(f => (
-            <button key={f} style={filter === f ? s.filterActive : s.filterInactive}
+            <button key={f}
+              style={filter === f
+                ? { ...s.filterActive,   ...(isMobile ? { flexShrink: 0 } : {}) }
+                : { ...s.filterInactive, ...(isMobile ? { flexShrink: 0 } : {}) }}
               onClick={() => setFilter(f)}>
               {f === 'all' ? 'All Books' : STATUS_LABELS[f]}
             </button>

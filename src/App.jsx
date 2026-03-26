@@ -79,6 +79,10 @@ function AppRoutes({ session }) {
             path="/onboarding"
             element={session ? <Onboarding session={session} /> : <Navigate to="/" replace />}
           />
+          <Route
+            path="/auth"
+            element={session ? <Navigate to="/" replace /> : <Auth />}
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

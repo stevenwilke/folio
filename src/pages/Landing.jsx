@@ -127,7 +127,7 @@ export default function Landing() {
           <div style={s.subtitle}>Ex Libris Omnium</div>
           <p style={s.tagline}>Your library. Your community. Every book you've ever loved.</p>
           <div style={s.heroBtns}>
-            <Link to="/auth" style={s.btnPrimary}>Get Started — It's Free</Link>
+            <Link to="/auth?mode=signup" style={s.btnPrimary}>Get Started — It's Free</Link>
             <Link to="/auth" style={s.btnOutline}>Sign In</Link>
           </div>
           <p style={s.heroNote}>Already on Goodreads? Import your library in seconds.</p>

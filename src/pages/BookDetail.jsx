@@ -292,7 +292,8 @@ export default function BookDetail({ bookId, session, onBack }) {
       : Infinity
 
     if (cached && cacheAge < 24) {
-      setValuation(cached.avg_price ? cached : false)
+      // Use cache if at least one price field is present
+      setValuation((cached.avg_price || cached.list_price) ? cached : false)
       setValuationLoading(false)
       return
     }
@@ -315,14 +316,19 @@ export default function BookDetail({ bookId, session, onBack }) {
         )
         setValuation(false)
       } else {
+        // NOTE: Run in Supabase if list_price column doesn't exist:
+        // alter table valuations add column if not exists list_price numeric;
+        // alter table valuations add column if not exists list_price_currency text;
         const row = {
-          book_id:      bookData.id,
-          avg_price:    data.avg_price,
-          min_price:    data.min_price,
-          max_price:    data.max_price,
-          sample_count: data.sample_count,
-          currency:     data.currency || 'USD',
-          fetched_at:   new Date().toISOString(),
+          book_id:             bookData.id,
+          avg_price:           data.avg_price    ?? null,
+          min_price:           data.min_price    ?? null,
+          max_price:           data.max_price    ?? null,
+          sample_count:        data.sample_count ?? null,
+          currency:            data.currency     || 'USD',
+          list_price:          data.list_price          ?? null,
+          list_price_currency: data.list_price_currency ?? null,
+          fetched_at:          new Date().toISOString(),
         }
         await supabase.from('valuations').upsert(row, { onConflict: 'book_id' })
         setValuation(row)
@@ -483,10 +489,12 @@ export default function BookDetail({ bookId, session, onBack }) {
     textarea:            { width: '100%', padding: '10px 14px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: theme.bgCard, color: theme.text, lineHeight: 1.6 },
     saveBtn:             { padding: '8px 20px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
 
-    valuationRow:    { display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 14, flexWrap: 'wrap' },
-    valuationPrice:  { fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: theme.sage },
-    valuationSub:    { fontSize: 12, color: theme.textSubtle },
-    valuationMuted:  { fontSize: 12, color: theme.textSubtle, fontStyle: 'italic' },
+    valuationRow:        { display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 14, flexWrap: 'wrap' },
+    valuationPrice:      { fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: theme.sage },
+    valuationMarket:     { fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700, color: theme.rust },
+    valuationSub:        { fontSize: 12, color: theme.textSubtle },
+    valuationDivider:    { fontSize: 16, color: theme.textSubtle, margin: '0 4px' },
+    valuationMuted:      { fontSize: 12, color: theme.textSubtle, fontStyle: 'italic' },
 
     forSaleRow:      { display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 },
     listForSaleBtn:  { padding: '7px 16px', background: 'transparent', border: `1px solid ${theme.sage}`, borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.sage },
@@ -621,17 +629,31 @@ export default function BookDetail({ bookId, session, onBack }) {
             {/* Valuation */}
             <div style={s.valuationRow}>
               {valuationLoading ? (
-                <span style={s.valuationMuted}>Fetching market value…</span>
+                <span style={s.valuationMuted}>Fetching prices…</span>
               ) : valuation ? (
                 <>
-                  <span style={s.valuationPrice}>${Number(valuation.avg_price).toFixed(2)}</span>
-                  <span style={s.valuationSub}>
-                    est. value · ${Number(valuation.min_price).toFixed(2)}–${Number(valuation.max_price).toFixed(2)} range
-                    · {valuation.sample_count} eBay sales (90 days)
-                  </span>
+                  {valuation.list_price != null && (
+                    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+                      <span style={s.valuationPrice}>${Number(valuation.list_price).toFixed(2)}</span>
+                      <span style={s.valuationSub}>
+                        List price{valuation.list_price_currency ? ` (${valuation.list_price_currency})` : ''}
+                      </span>
+                    </span>
+                  )}
+                  {valuation.list_price != null && valuation.avg_price != null && (
+                    <span style={s.valuationDivider}>·</span>
+                  )}
+                  {valuation.avg_price != null && (
+                    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+                      <span style={s.valuationMarket}>~${Number(valuation.avg_price).toFixed(2)}</span>
+                      <span style={s.valuationSub}>
+                        avg of {valuation.sample_count} eBay sales (90 days)
+                      </span>
+                    </span>
+                  )}
                 </>
               ) : (
-                <span style={s.valuationMuted}>No market data found</span>
+                <span style={s.valuationMuted}>No pricing data found</span>
               )}
             </div>
 

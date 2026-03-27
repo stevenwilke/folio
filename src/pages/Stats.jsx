@@ -40,8 +40,9 @@ function computeStreaks(entries) {
 export default function Stats({ session }) {
   const { theme } = useTheme()
   const isMobile = useIsMobile()
-  const [entries, setEntries] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [entries,      setEntries]      = useState([])
+  const [valuations,   setValuations]   = useState([])
+  const [loading,      setLoading]      = useState(true)
 
   useEffect(() => { fetchData() }, [])
 
@@ -51,7 +52,18 @@ export default function Stats({ session }) {
       .from('collection_entries')
       .select('*, books(*)')
       .eq('user_id', session.user.id)
-    setEntries(data || [])
+    const rows = data || []
+    setEntries(rows)
+
+    // Fetch valuations for all books in collection
+    const bookIds = rows.map(e => e.book_id).filter(Boolean)
+    if (bookIds.length) {
+      const { data: vals } = await supabase
+        .from('valuations')
+        .select('book_id, list_price, avg_price')
+        .in('book_id', bookIds)
+      setValuations(vals || [])
+    }
     setLoading(false)
   }
 
@@ -65,6 +77,24 @@ export default function Stats({ session }) {
   const avgRating    = ratedEntries.length
     ? (ratedEntries.reduce((sum, e) => sum + e.user_rating, 0) / ratedEntries.length).toFixed(1)
     : null
+
+  // ── COLLECTION VALUE ──
+  const valMap = {}
+  for (const v of valuations) valMap[v.book_id] = v
+
+  let totalListValue   = 0
+  let listValueCount   = 0
+  let totalMarketValue = 0
+  let marketValueCount = 0
+  for (const e of entries) {
+    const v = valMap[e.book_id]
+    if (v?.list_price)  { totalListValue   += Number(v.list_price);  listValueCount++ }
+    if (v?.avg_price)   { totalMarketValue += Number(v.avg_price);   marketValueCount++ }
+  }
+
+  function fmtPrice(n) {
+    return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  }
 
   // ── BOOKS PER YEAR ──
   const perYear = {}
@@ -217,6 +247,42 @@ export default function Stats({ session }) {
                   <div style={s.statLabel}>{label}</div>
                 </div>
               ))}
+            </div>
+
+            {/* ── COLLECTION VALUE CARDS ── */}
+            <div style={{ ...s.cardRow, marginTop: -8 }}>
+              {/* List / retail value */}
+              <div style={{ ...s.statCard, borderColor: theme.sage, flex: 1 }}>
+                <div style={{ ...s.statVal, color: theme.sage, fontSize: 22 }}>
+                  {listValueCount > 0 ? fmtPrice(totalListValue) : '—'}
+                </div>
+                <div style={s.statLabel}>Collection Value (list price)</div>
+                <div style={{ fontSize: 11, color: theme.textSubtle, marginTop: 4 }}>
+                  {listValueCount > 0
+                    ? `Based on ${listValueCount} of ${entries.length} books`
+                    : 'Open book pages to load pricing'}
+                </div>
+              </div>
+
+              {/* Market / resale value */}
+              <div style={{ ...s.statCard, borderColor: theme.rust, flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <div style={{ ...s.statVal, color: theme.rust, fontSize: 22 }}>
+                    {marketValueCount > 0 ? fmtPrice(totalMarketValue) : '—'}
+                  </div>
+                  {marketValueCount === 0 && (
+                    <span style={{ fontSize: 10, background: 'rgba(192,82,30,0.1)', color: theme.rust, borderRadius: 10, padding: '2px 8px', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                      Coming Soon
+                    </span>
+                  )}
+                </div>
+                <div style={s.statLabel}>Resale Value (eBay market)</div>
+                <div style={{ fontSize: 11, color: theme.textSubtle, marginTop: 4 }}>
+                  {marketValueCount > 0
+                    ? `Based on ${marketValueCount} of ${entries.length} books · avg ${fmtPrice(totalMarketValue / marketValueCount)}/book`
+                    : 'Requires eBay API key to populate'}
+                </div>
+              </div>
             </div>
 
             {/* ── READING STREAK CARD ── */}

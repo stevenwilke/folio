@@ -247,8 +247,10 @@ export default function NavBar({ session, extra }) {
           onClose={() => setShowImport(false)}
           onImported={() => {
             localStorage.setItem('exlibris-goodreads-imported', '1')
+            localStorage.setItem('exlibris-onboarded', '1')
             setShowImport(false)
             window.dispatchEvent(new Event('exlibris:bookAdded'))
+            navigate('/')
           }}
         />
       )}

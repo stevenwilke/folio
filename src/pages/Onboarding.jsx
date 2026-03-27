@@ -233,7 +233,12 @@ export default function Onboarding({ session }) {
         <GoodreadsImportModal
           session={session}
           onClose={() => setShowImport(false)}
-          onImported={() => { setImported(true); setShowImport(false) }}
+          onImported={() => {
+            localStorage.setItem('exlibris-onboarded', '1')
+            setImported(true)
+            setShowImport(false)
+            navigate('/')
+          }}
         />
       )}
       {showSearch && (

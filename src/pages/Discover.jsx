@@ -6,6 +6,7 @@ import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { getCoverUrl } from '../lib/coverUrl'
+import { enrichBook } from '../lib/enrichBook'
 
 const GENRES = [
   { label: 'Fiction',            slug: 'fiction',                      emoji: '📖' },
@@ -679,13 +680,50 @@ export default function Discover({ session }) {
     const payload = { title: book.title, author: book.author, cover_image_url: book.coverUrl, published_year: book.year ?? null }
     // Try to find existing book first
     const { data: existing } = await supabase.from('books').select('id').eq('title', book.title).limit(1)
-    if (existing?.length) { setSelectedBook(existing[0].id); return }
+    if (existing?.length) {
+      const bookId = existing[0].id
+      // Enrich in background — do NOT await
+      enrichBook(bookId, {
+        isbn_13: book.isbn13 || null,
+        isbn_10: book.isbn10 || null,
+        title: book.title,
+        author: book.author,
+        cover_image_url: book.coverUrl || null,
+        description: null,
+      })
+      setSelectedBook(bookId)
+      return
+    }
     // Insert and get ID — if insert fails due to race condition, try finding again
     const { data: nb, error } = await supabase.from('books').insert(payload).select('id').single()
-    if (nb?.id) { setSelectedBook(nb.id); return }
+    if (nb?.id) {
+      // Enrich in background — do NOT await
+      enrichBook(nb.id, {
+        isbn_13: book.isbn13 || null,
+        isbn_10: book.isbn10 || null,
+        title: book.title,
+        author: book.author,
+        cover_image_url: book.coverUrl || null,
+        description: null,
+      })
+      setSelectedBook(nb.id)
+      return
+    }
     if (error) {
       const { data: retry } = await supabase.from('books').select('id').eq('title', book.title).limit(1)
-      if (retry?.length) setSelectedBook(retry[0].id)
+      if (retry?.length) {
+        const bookId = retry[0].id
+        // Enrich in background — do NOT await
+        enrichBook(bookId, {
+          isbn_13: book.isbn13 || null,
+          isbn_10: book.isbn10 || null,
+          title: book.title,
+          author: book.author,
+          cover_image_url: book.coverUrl || null,
+          description: null,
+        })
+        setSelectedBook(bookId)
+      }
     }
   }
 
@@ -701,6 +739,15 @@ export default function Discover({ session }) {
       bookId = nb?.id
     }
     if (!bookId) return
+    // Enrich in background — do NOT await
+    enrichBook(bookId, {
+      isbn_13: book.isbn13 || null,
+      isbn_10: book.isbn10 || null,
+      title: book.title,
+      author: book.author,
+      cover_image_url: book.coverUrl || null,
+      description: null,
+    })
     await supabase.from('collection_entries').upsert({ user_id: user.id, book_id: bookId, read_status: status }, { onConflict: 'user_id,book_id' })
     setMyBookIds(prev => new Set([...prev, titleKey(book.title, book.author)]))
   }

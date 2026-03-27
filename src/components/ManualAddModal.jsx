@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
+import { enrichBook } from '../lib/enrichBook'
 
 const FORMATS  = ['Hardcover', 'Paperback', 'Mass Market Paperback', 'eBook', 'Audiobook', 'Other']
 const GENRES   = ['Fiction', 'Non-Fiction', 'Mystery', 'Thriller', 'Science Fiction', 'Fantasy', 'Romance', 'Historical Fiction', 'Horror', 'Biography', 'Memoir', 'Self-Help', 'Business', 'Science', 'History', 'Travel', 'Cooking', 'Art', 'Poetry', 'Graphic Novel', 'Children\'s', 'Young Adult', 'Other']
@@ -128,6 +129,16 @@ export default function ManualAddModal({ session, onClose, onAdded = () => {} })
       }
       bookId = newBook.id
     }
+
+    // Enrich in background — do NOT await
+    enrichBook(bookId, {
+      isbn_13: isbn13.trim() || null,
+      isbn_10: isbn10.trim() || null,
+      title: title.trim(),
+      author: author.trim(),
+      cover_image_url: coverUrl || null,
+      description: description.trim() || null,
+    })
 
     // 4. Add to collection
     await supabase.from('collection_entries').upsert(

@@ -5,6 +5,7 @@ import NavBar from '../components/NavBar'
 import SearchModal from '../components/SearchModal'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
+import { enrichBook } from '../lib/enrichBook'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -177,6 +178,15 @@ export default function Author({ session }) {
     }
 
     if (bookId) {
+      // Enrich in background — do NOT await
+      enrichBook(bookId, {
+        isbn_13: book.isbn13 || null,
+        isbn_10: book.isbn10 || null,
+        title: book.title,
+        author: book.author,
+        cover_image_url: coverUrl || null,
+        description: null,
+      })
       await supabase
         .from('collection_entries')
         .upsert({ user_id: session.user.id, book_id: bookId, read_status: status }, { onConflict: 'user_id,book_id' })

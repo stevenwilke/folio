@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import ManualAddModal from './ManualAddModal'
 import { useTheme } from '../contexts/ThemeContext'
 import { extractGenre } from '../lib/genres'
+import { enrichBook } from '../lib/enrichBook'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -215,6 +216,16 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
         bookId = newBook.id
       }
     }
+
+    // Enrich in background — do NOT await
+    enrichBook(bookId, {
+      isbn_13: result.isbn13 || null,
+      isbn_10: result.isbn10 || null,
+      title: result.title,
+      author: result.author,
+      cover_image_url: result.saveCoverUrl || null,
+      description: null,
+    })
 
     const { error: collectionError } = await supabase
       .from('collection_entries')

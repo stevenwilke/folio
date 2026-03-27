@@ -111,8 +111,38 @@ export default function Library({ session }) {
         sessionStorage.setItem('exlibris-genre-backfill', '1')
         backfillGenres(data || [])
       }
+      // Backfill missing covers in the background (once per session)
+      if (!sessionStorage.getItem('exlibris-cover-backfill')) {
+        sessionStorage.setItem('exlibris-cover-backfill', '1')
+        backfillCovers(data || [])
+      }
     }
     setLoading(false)
+  }
+
+  // Fetch covers from Open Library for books that don't have one
+  async function backfillCovers(entries) {
+    const todo = entries.filter(e => !e.books.cover_image_url && (e.books.isbn_13 || e.books.isbn_10))
+    if (todo.length === 0) return
+    const BATCH = 4
+    for (let i = 0; i < todo.length; i += BATCH) {
+      await Promise.all(todo.slice(i, i + BATCH).map(async entry => {
+        const isbn = entry.books.isbn_13 || entry.books.isbn_10
+        try {
+          const r = await fetch(`https://openlibrary.org/search.json?isbn=${isbn}&fields=cover_i&limit=1`)
+          const data = await r.json()
+          const coverId = data.docs?.[0]?.cover_i
+          if (coverId) {
+            const url = `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`
+            await supabase.from('books').update({ cover_image_url: url }).eq('id', entry.books.id)
+            setBooks(prev => prev.map(e =>
+              e.books.id === entry.books.id ? { ...e, books: { ...e.books, cover_image_url: url } } : e
+            ))
+          }
+        } catch { /* ignore network errors */ }
+      }))
+      await new Promise(r => setTimeout(r, 700))
+    }
   }
 
   // Fetch genres from Open Library for books that don't have one

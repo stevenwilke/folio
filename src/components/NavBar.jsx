@@ -40,6 +40,7 @@ export default function NavBar({ session, extra }) {
   const [showImport,   setShowImport]   = useState(false)
   const [friendReqs,   setFriendReqs]   = useState([])
   const [borrowNotifs, setBorrowNotifs] = useState([])
+  const [orderNotifs,  setOrderNotifs]  = useState([])
   const avatarRef = useRef(null)
   const goodreadsImported = !!localStorage.getItem('exlibris-goodreads-imported')
 
@@ -69,7 +70,7 @@ export default function NavBar({ session, extra }) {
   }, [session?.user?.id])
 
   async function fetchNotifications() {
-    const [{ data: friends }, { data: borrows }] = await Promise.all([
+    const [{ data: friends }, { data: borrows }, { data: orders }] = await Promise.all([
       supabase
         .from('friendships')
         .select('id, requester_id, created_at, profiles!friendships_requester_id_fkey(username)')
@@ -80,9 +81,15 @@ export default function NavBar({ session, extra }) {
         .select('id, requester_id, created_at, books(title), profiles!borrow_requests_requester_id_fkey(username)')
         .eq('owner_id', session.user.id)
         .eq('status', 'pending'),
+      supabase
+        .from('orders')
+        .select('id, price, created_at, listings(books(title)), profiles!orders_buyer_id_fkey(username)')
+        .eq('seller_id', session.user.id)
+        .eq('status', 'pending'),
     ])
     setFriendReqs(friends || [])
     setBorrowNotifs(borrows || [])
+    setOrderNotifs(orders || [])
   }
 
   async function respondToFriend(id, accept) {
@@ -105,7 +112,7 @@ export default function NavBar({ session, extra }) {
   }, [])
 
   const path      = location.pathname
-  const bellCount = friendReqs.length + borrowNotifs.length
+  const bellCount = friendReqs.length + borrowNotifs.length + orderNotifs.length
 
   function isActive(item) {
     if (item.path === '/') return path === '/'
@@ -145,8 +152,10 @@ export default function NavBar({ session, extra }) {
                 <NotificationsDropdown
                   friendReqs={friendReqs}
                   borrowNotifs={borrowNotifs}
+                  orderNotifs={orderNotifs}
                   onRespondFriend={respondToFriend}
                   onViewLoans={() => { setShowBell(false); navigate('/loans') }}
+                  onViewMarketplace={() => { setShowBell(false); navigate('/marketplace') }}
                   onNavigate={username => { setShowBell(false); navigate(`/profile/${username}`) }}
                   onClose={() => setShowBell(false)}
                 />
@@ -193,8 +202,10 @@ export default function NavBar({ session, extra }) {
                 <NotificationsDropdown
                   friendReqs={friendReqs}
                   borrowNotifs={borrowNotifs}
+                  orderNotifs={orderNotifs}
                   onRespondFriend={respondToFriend}
                   onViewLoans={() => { setShowBell(false); navigate('/loans') }}
+                  onViewMarketplace={() => { setShowBell(false); navigate('/marketplace') }}
                   onNavigate={username => { setShowBell(false); navigate(`/profile/${username}`) }}
                   onClose={() => setShowBell(false)}
                 />
@@ -299,8 +310,8 @@ function MenuItem({ icon, label, onClick, danger }) {
 }
 
 // ---- NOTIFICATIONS DROPDOWN ----
-function NotificationsDropdown({ friendReqs, borrowNotifs, onRespondFriend, onViewLoans, onNavigate }) {
-  const total = friendReqs.length + borrowNotifs.length
+function NotificationsDropdown({ friendReqs, borrowNotifs, orderNotifs, onRespondFriend, onViewLoans, onViewMarketplace, onNavigate }) {
+  const total = friendReqs.length + borrowNotifs.length + (orderNotifs || []).length
   return (
     <div style={s.dropdown}>
       <div style={s.dropHead}>
@@ -340,6 +351,22 @@ function NotificationsDropdown({ friendReqs, borrowNotifs, onRespondFriend, onVi
                 <div style={s.dropSub}>wants to borrow "{req.books?.title}"</div>
               </div>
               <button style={{ ...s.dropAccept, background: '#5a7a5a' }} onClick={onViewLoans}>
+                View
+              </button>
+            </div>
+          ))}
+          {(orderNotifs || []).map(order => (
+            <div key={`o-${order.id}`} style={s.dropRow}>
+              <div style={{ ...s.dropAvatar, background: 'linear-gradient(135deg, #b8860b, #c0521e)' }}>
+                🏪
+              </div>
+              <div style={{ flex: 1 }}>
+                <span style={s.dropName} onClick={() => onNavigate(order.profiles?.username)}>
+                  {order.profiles?.username}
+                </span>
+                <div style={s.dropSub}>wants to buy "{order.listings?.books?.title}" · ${Number(order.price).toFixed(2)}</div>
+              </div>
+              <button style={{ ...s.dropAccept, background: '#b8860b' }} onClick={onViewMarketplace}>
                 View
               </button>
             </div>

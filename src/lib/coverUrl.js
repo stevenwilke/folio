@@ -5,7 +5,9 @@
 export function getCoverUrl(book) {
   if (!book) return null
   if (book.cover_image_url) return book.cover_image_url
-  if (book.isbn_13) return `https://covers.openlibrary.org/b/isbn/${book.isbn_13}-L.jpg`
-  if (book.isbn_10) return `https://covers.openlibrary.org/b/isbn/${book.isbn_10}-L.jpg`
+  // ?default=false makes OL return 404 instead of a blank placeholder GIF,
+  // so the img onError handler fires and we fall back to FakeCover properly.
+  if (book.isbn_13) return `https://covers.openlibrary.org/b/isbn/${book.isbn_13}-L.jpg?default=false`
+  if (book.isbn_10) return `https://covers.openlibrary.org/b/isbn/${book.isbn_10}-L.jpg?default=false`
   return null
 }

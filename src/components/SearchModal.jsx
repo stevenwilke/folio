@@ -166,17 +166,32 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
     if (!bookId) {
       // Try to find existing book by ISBN or title+author
       if (result.isbn13) {
-        const { data } = await supabase.from('books').select('id').eq('isbn_13', result.isbn13).maybeSingle()
-        if (data) bookId = data.id
+        const { data } = await supabase.from('books').select('id, cover_image_url').eq('isbn_13', result.isbn13).maybeSingle()
+        if (data) {
+          bookId = data.id
+          if (!data.cover_image_url && result.saveCoverUrl) {
+            await supabase.from('books').update({ cover_image_url: result.saveCoverUrl }).eq('id', bookId)
+          }
+        }
       }
       if (!bookId && result.isbn10) {
-        const { data } = await supabase.from('books').select('id').eq('isbn_10', result.isbn10).maybeSingle()
-        if (data) bookId = data.id
+        const { data } = await supabase.from('books').select('id, cover_image_url').eq('isbn_10', result.isbn10).maybeSingle()
+        if (data) {
+          bookId = data.id
+          if (!data.cover_image_url && result.saveCoverUrl) {
+            await supabase.from('books').update({ cover_image_url: result.saveCoverUrl }).eq('id', bookId)
+          }
+        }
       }
       if (!bookId) {
-        const { data } = await supabase.from('books').select('id')
+        const { data } = await supabase.from('books').select('id, cover_image_url')
           .eq('title', result.title).eq('author', result.author).maybeSingle()
-        if (data) bookId = data.id
+        if (data) {
+          bookId = data.id
+          if (!data.cover_image_url && result.saveCoverUrl) {
+            await supabase.from('books').update({ cover_image_url: result.saveCoverUrl }).eq('id', bookId)
+          }
+        }
       }
 
       // Still not found — insert a new book record

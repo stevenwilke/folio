@@ -84,7 +84,7 @@ export default function BottomTabBar({ session }) {
       <div style={{
         position: 'fixed',
         left: 0, right: 0,
-        bottom: showMore ? 60 : '-100%',
+        bottom: showMore ? 'calc(60px + env(safe-area-inset-bottom, 0px))' : '-100%',
         zIndex: 99,
         background: theme.bgCard,
         borderTop: `1px solid ${theme.border}`,
@@ -92,6 +92,8 @@ export default function BottomTabBar({ session }) {
         transition: 'bottom 0.28s cubic-bezier(0.32,0.72,0,1)',
         padding: '12px 0 8px',
         boxShadow: '0 -4px 24px rgba(26,18,8,0.15)',
+        maxHeight: 'calc(85vh - 60px)',
+        overflowY: 'auto',
       }}>
         {/* Handle */}
         <div style={{
@@ -160,7 +162,7 @@ export default function BottomTabBar({ session }) {
           ))}
         </div>
 
-        {/* Dark mode toggle */}
+        {/* Dark mode + sign out */}
         <div style={{
           margin: '4px 16px 4px',
           borderTop: `1px solid ${theme.borderLight}`,
@@ -177,6 +179,20 @@ export default function BottomTabBar({ session }) {
             <span style={{ fontSize: 20 }}>{isDark ? '☀️' : '🌙'}</span>
             <span style={{ fontSize: 14, color: theme.text, fontFamily: "'DM Sans', sans-serif" }}>
               {isDark ? 'Light Mode' : 'Dark Mode'}
+            </span>
+          </button>
+
+          <button
+            onClick={async () => { setShowMore(false); await supabase.auth.signOut() }}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+              padding: '10px 8px', background: 'none', border: 'none',
+              borderRadius: 10, cursor: 'pointer', marginTop: 2,
+            }}
+          >
+            <span style={{ fontSize: 20 }}>🚪</span>
+            <span style={{ fontSize: 14, color: '#c0521e', fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>
+              Sign out
             </span>
           </button>
         </div>

@@ -35,6 +35,8 @@ export default function Library({ session }) {
   const [listingTarget, setListingTarget] = useState(null)
   const [activeListings, setActiveListings] = useState({})
   const [collectionValue, setCollectionValue] = useState(null)
+  const [groupBy, setGroupBy]           = useState('none')
+  const [collapsedGroups, setCollapsedGroups] = useState(new Set())
   const [selectMode, setSelectMode]     = useState(false)
   const [selectedIds, setSelectedIds]   = useState(new Set())
   const [bulkStatus, setBulkStatus]     = useState('')
@@ -113,6 +115,64 @@ export default function Library({ session }) {
     }
   }
   const sorted = sortEntries(filtered)
+
+  const STATUS_GROUP_ORDER = ['reading', 'want', 'read', 'owned']
+
+  function groupEntries(entries) {
+    if (groupBy === 'none') return [{ label: null, entries }]
+    const groups = {}
+    for (const entry of entries) {
+      let key
+      if (groupBy === 'status') {
+        key = STATUS_LABELS[entry.read_status] || 'Other'
+      } else if (groupBy === 'genre') {
+        key = entry.books.genre || 'Uncategorized'
+      } else if (groupBy === 'author') {
+        key = entry.books.author || 'Unknown Author'
+      } else if (groupBy === 'decade') {
+        const y = entry.books.published_year
+        key = y ? `${Math.floor(y / 10) * 10}s` : 'Unknown'
+      }
+      if (!groups[key]) groups[key] = []
+      groups[key].push(entry)
+    }
+    const sortedGroups = Object.entries(groups).map(([label, entries]) => ({ label, entries }))
+    if (groupBy === 'status') {
+      const order = STATUS_GROUP_ORDER.map(k => STATUS_LABELS[k])
+      sortedGroups.sort((a, b) => {
+        const ai = order.indexOf(a.label), bi = order.indexOf(b.label)
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+      })
+    } else if (groupBy === 'decade') {
+      sortedGroups.sort((a, b) => {
+        if (a.label === 'Unknown') return 1
+        if (b.label === 'Unknown') return -1
+        return parseInt(b.label) - parseInt(a.label)
+      })
+    } else {
+      sortedGroups.sort((a, b) => a.label.localeCompare(b.label))
+    }
+    return sortedGroups
+  }
+
+  function toggleGroupCollapse(label) {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(label)) next.delete(label)
+      else next.add(label)
+      return next
+    })
+  }
+
+  function selectAllInGroup(entries) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      for (const e of entries) next.add(e.id)
+      return next
+    })
+  }
+
+  const grouped = groupEntries(sorted)
 
   const stats = {
     total:   books.length,
@@ -241,6 +301,12 @@ export default function Library({ session }) {
     bulkBtn:        { padding: '7px 16px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     bulkBtnDanger:  { background: theme.bgCard, color: '#c0392b', border: '1px solid #f5c6c6' },
     bulkBtnCancel:  { padding: '7px 14px', background: 'none', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textSubtle },
+    groupSection:   { marginBottom: 36 },
+    groupHeader:    { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, cursor: 'pointer', userSelect: 'none' },
+    groupLabel:     { fontFamily: 'Georgia, serif', fontSize: isMobile ? 16 : 18, fontWeight: 700, color: theme.text },
+    groupCount:     { fontSize: 12, fontWeight: 600, color: theme.textSubtle, background: theme.bgSubtle, border: `1px solid ${theme.border}`, borderRadius: 20, padding: '1px 9px' },
+    groupCollapse:  { fontSize: 11, color: theme.textSubtle, marginLeft: 2 },
+    selectAllBtn:   { marginLeft: 'auto', fontSize: 11, color: theme.rust, background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: 600, padding: '2px 6px' },
     fieldGroup:     { marginBottom: 18 },
     fieldLabel:     { display: 'block', fontSize: 11, fontWeight: 600, color: theme.textMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
     priceInputWrap: { display: 'flex', alignItems: 'center', border: `1px solid ${theme.border}`, borderRadius: 8, overflow: 'hidden', background: theme.bgCard, width: 140 },
@@ -346,12 +412,28 @@ export default function Library({ session }) {
               ))}
             </>
           )}
-          <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {/* Group by */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 12, color: theme.textSubtle, fontWeight: 500, flexShrink: 0 }}>Group:</span>
+              <select
+                value={groupBy}
+                onChange={e => { setGroupBy(e.target.value); setCollapsedGroups(new Set()) }}
+                style={{ padding: '6px 10px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, background: theme.bgCard, color: groupBy !== 'none' ? theme.rust : theme.text, fontFamily: "'DM Sans', sans-serif", outline: 'none', cursor: 'pointer', fontWeight: groupBy !== 'none' ? 600 : 400 }}
+              >
+                <option value="none">None</option>
+                <option value="status">Status</option>
+                <option value="genre">Genre</option>
+                <option value="author">Author</option>
+                <option value="decade">Decade</option>
+              </select>
+            </div>
+            {/* Select mode */}
             <button
               style={selectMode ? s.filterActive : { ...s.filterInactive, borderColor: theme.gold, color: theme.gold }}
               onClick={toggleSelectMode}
             >
-              {selectMode ? '✕ Cancel' : '✓ Select'}
+              {selectMode ? '✕ Cancel' : '☑ Select'}
             </button>
           </div>
         </div>
@@ -388,23 +470,49 @@ export default function Library({ session }) {
             )}
           </div>
         ) : (
-          <div style={s.grid}>
-            {sorted.map(entry => (
-              <BookCard
-                key={entry.id}
-                entry={entry}
-                listing={activeListings[entry.books.id] || null}
-                onUpdate={fetchCollection}
-                onSelect={() => {
-                  if (selectMode) toggleSelect(entry.id)
-                  else setSelectedBook(entry.books.id)
-                }}
-                onListForSale={() => setListingTarget(entry)}
-                selectMode={selectMode}
-                isSelected={selectedIds.has(entry.id)}
-              />
-            ))}
-          </div>
+          <>
+            {grouped.map(({ label, entries: groupEntries }) => {
+              const isCollapsed = label && collapsedGroups.has(label)
+              return (
+                <div key={label || 'all'} style={label ? s.groupSection : undefined}>
+                  {label && (
+                    <div style={s.groupHeader} onClick={() => toggleGroupCollapse(label)}>
+                      <span style={s.groupCollapse}>{isCollapsed ? '▶' : '▼'}</span>
+                      <span style={s.groupLabel}>{label}</span>
+                      <span style={s.groupCount}>{groupEntries.length}</span>
+                      {selectMode && !isCollapsed && (
+                        <button
+                          style={s.selectAllBtn}
+                          onClick={e => { e.stopPropagation(); selectAllInGroup(groupEntries) }}
+                        >
+                          Select all
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {!isCollapsed && (
+                    <div style={s.grid}>
+                      {groupEntries.map(entry => (
+                        <BookCard
+                          key={entry.id}
+                          entry={entry}
+                          listing={activeListings[entry.books.id] || null}
+                          onUpdate={fetchCollection}
+                          onSelect={() => {
+                            if (selectMode) toggleSelect(entry.id)
+                            else setSelectedBook(entry.books.id)
+                          }}
+                          onListForSale={() => setListingTarget(entry)}
+                          selectMode={selectMode}
+                          isSelected={selectedIds.has(entry.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </>
         )}
       {showImport && (
         <GoodreadsImportModal

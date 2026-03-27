@@ -38,6 +38,7 @@ export default function Feed({ session }) {
   const { theme } = useTheme()
   const isMobile = useIsMobile()
   const [activity, setActivity]         = useState([])
+  const [friendListings, setFriendListings] = useState([])
   const [loading, setLoading]           = useState(true)
   const [hasFriends, setHasFriends]     = useState(true)
   const [selectedBook, setSelectedBook] = useState(null)
@@ -74,16 +75,26 @@ export default function Feed({ session }) {
       .select('id, username')
       .in('id', friendIds)
 
-    // Step 3: get their recent activity
-    const { data: entries } = await supabase
-      .from('collection_entries')
-      .select('id, user_id, read_status, user_rating, review_text, added_at, books(id, title, author, cover_image_url, isbn_13, isbn_10)')
-      .in('user_id', friendIds)
-      .order('added_at', { ascending: false })
-      .limit(50)
+    // Step 3: get their recent activity + active listings in parallel
+    const [{ data: entries }, { data: listings }] = await Promise.all([
+      supabase
+        .from('collection_entries')
+        .select('id, user_id, read_status, user_rating, review_text, added_at, books(id, title, author, cover_image_url, isbn_13, isbn_10)')
+        .in('user_id', friendIds)
+        .order('added_at', { ascending: false })
+        .limit(50),
+      supabase
+        .from('listings')
+        .select('id, price, condition, created_at, seller_id, books(id, title, author, cover_image_url), profiles!listings_seller_id_fkey(username)')
+        .in('seller_id', friendIds)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(12),
+    ])
 
     const profileMap = Object.fromEntries((profiles || []).map(p => [p.id, p]))
     setActivity((entries || []).map(e => ({ ...e, profile: profileMap[e.user_id] })))
+    setFriendListings(listings || [])
     setLoading(false)
   }
 
@@ -110,17 +121,30 @@ export default function Feed({ session }) {
               Go to My Library
             </button>
           </div>
-        ) : activity.length === 0 ? (
-          <div style={{ ...s.emptyBox, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={s.emptyIcon}>📰</div>
-            <div style={s.emptyTitle}>No activity yet</div>
-            <div style={s.emptyText}>
-              Your friends haven't added any books recently.
-            </div>
-          </div>
         ) : (
           <div style={s.feed}>
-            {activity.map(item => (
+            {/* Friends' marketplace listings */}
+            {friendListings.length > 0 && (
+              <div style={{ marginBottom: 28 }}>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: theme.text, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  🏪 For Sale by Friends
+                  <span style={{ fontSize: 12, fontWeight: 500, color: theme.textSubtle, fontFamily: "'DM Sans', sans-serif" }}>{friendListings.length} listing{friendListings.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8, WebkitOverflowScrolling: 'touch' }}>
+                  {friendListings.map(l => (
+                    <FriendListingCard key={l.id} listing={l} onView={() => navigate('/marketplace')} theme={theme} />
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Activity feed */}
+            {activity.length === 0 ? (
+              <div style={{ ...s.emptyBox, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div style={s.emptyIcon}>📰</div>
+                <div style={s.emptyTitle}>No activity yet</div>
+                <div style={s.emptyText}>Your friends haven't added any books recently.</div>
+              </div>
+            ) : activity.map(item => (
               <ActivityCard
                 key={item.id}
                 item={item}
@@ -207,6 +231,35 @@ function ActivityCard({ item, onBookClick, onProfileClick, theme }) {
             ? <img src={url} alt={book.title} style={s.coverImg} onError={e => e.target.style.display='none'} />
             : <FakeCover title={book.title} />
         })()}
+      </div>
+    </div>
+  )
+}
+
+// ---- FRIEND LISTING CARD ----
+const COND_LABEL = { like_new: 'Like New', very_good: 'Very Good', good: 'Good', acceptable: 'Acceptable', poor: 'Poor' }
+function FriendListingCard({ listing, onView, theme }) {
+  const book = listing.books
+  const colors = ['#7b4f3a','#4a6b8a','#5a7a5a','#8b2500','#b8860b','#3d5a5a']
+  const c = colors[(book.title || '').charCodeAt(0) % colors.length]
+  const c2 = colors[((book.title || '').charCodeAt(0) + 3) % colors.length]
+  return (
+    <div
+      onClick={onView}
+      style={{ flexShrink: 0, width: 130, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 10, overflow: 'hidden', cursor: 'pointer', boxShadow: theme.shadowCard }}
+    >
+      <div style={{ width: '100%', height: 90, background: `linear-gradient(135deg, ${c}, ${c2})`, position: 'relative', overflow: 'hidden' }}>
+        {book.cover_image_url
+          ? <img src={book.cover_image_url} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => e.target.style.display='none'} />
+          : null}
+      </div>
+      <div style={{ padding: '8px 10px' }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: theme.text, lineHeight: 1.3, marginBottom: 2, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{book.title}</div>
+        <div style={{ fontSize: 11, color: theme.textSubtle, marginBottom: 6 }}>{listing.profiles?.username}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, color: theme.text }}>${Number(listing.price).toFixed(2)}</span>
+          <span style={{ fontSize: 10, color: theme.textSubtle }}>{COND_LABEL[listing.condition] || listing.condition}</span>
+        </div>
       </div>
     </div>
   )

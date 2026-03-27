@@ -19,6 +19,7 @@ import Onboarding from './pages/Onboarding'
 import Landing from './pages/Landing'
 import BottomTabBar from './components/BottomTabBar'
 import { useIsMobile } from './hooks/useIsMobile'
+import { useTheme } from './contexts/ThemeContext'
 
 function AppRoutes({ session }) {
   const isMobile = useIsMobile()
@@ -87,7 +88,34 @@ function AppRoutes({ session }) {
         </Routes>
       </div>
       {session && <BottomTabBar session={session} />}
+      {!isMobile && session && <SiteFooter />}
     </>
+  )
+}
+
+function SiteFooter() {
+  const { theme } = useTheme()
+  return (
+    <footer style={{ borderTop: `1px solid ${theme.border}`, background: theme.bg, padding: '20px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, fontFamily: "'DM Sans', sans-serif", fontSize: 13, color: theme.textSubtle }}>
+      <div style={{ fontFamily: 'Georgia, serif', fontSize: 14, fontWeight: 700, color: theme.text }}>
+        Ex Libris Omnium
+      </div>
+      <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+        {[
+          ['About', '#'],
+          ['Privacy', '#'],
+          ['Terms', '#'],
+          ['Contact', '#'],
+        ].map(([label, href]) => (
+          <a key={label} href={href} style={{ color: theme.textSubtle, textDecoration: 'none', fontSize: 13 }}
+            onMouseEnter={e => e.target.style.color = theme.rust}
+            onMouseLeave={e => e.target.style.color = theme.textSubtle}>
+            {label}
+          </a>
+        ))}
+      </div>
+      <div style={{ fontSize: 12 }}>© {new Date().getFullYear()} Ex Libris Omnium · Built for book lovers</div>
+    </footer>
   )
 }
 

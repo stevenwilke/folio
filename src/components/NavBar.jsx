@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import SearchModal from './SearchModal'
+import GoodreadsImportModal from './GoodreadsImportModal'
 import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
 
@@ -35,8 +36,12 @@ export default function NavBar({ session, extra }) {
   const [showSearch,   setShowSearch]   = useState(false)
   const [showBell,     setShowBell]     = useState(false)
   const [showMenu,     setShowMenu]     = useState(false)
+  const [showAvatar,   setShowAvatar]   = useState(false)
+  const [showImport,   setShowImport]   = useState(false)
   const [friendReqs,   setFriendReqs]   = useState([])
   const [borrowNotifs, setBorrowNotifs] = useState([])
+  const avatarRef = useRef(null)
+  const goodreadsImported = !!localStorage.getItem('exlibris-goodreads-imported')
 
   // Close mobile menu when route changes
   useEffect(() => { setShowMenu(false) }, [location.pathname])
@@ -89,12 +94,11 @@ export default function NavBar({ session, extra }) {
     fetchNotifications()
   }
 
-  // Close bell dropdown when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClick(e) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setShowBell(false)
-      }
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setShowBell(false)
+      if (avatarRef.current && !avatarRef.current.contains(e.target)) setShowAvatar(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
@@ -197,18 +201,31 @@ export default function NavBar({ session, extra }) {
               )}
             </div>
 
-            {/* Avatar — furthest right, navigates to profile */}
+            {/* Avatar dropdown */}
             {profile?.username && (
-              <button
-                style={{ ...s.avatarBtn, ...(path.startsWith('/profile') ? s.avatarBtnActive : {}) }}
-                onClick={() => navigate(`/profile/${profile.username}`)}
-                title={`My Profile (${profile.username})`}
-              >
-                {profile.avatar_url
-                  ? <img src={profile.avatar_url} alt={profile.username} style={s.avatarImg} />
-                  : <span style={s.avatarInitial}>{profile.username.charAt(0).toUpperCase()}</span>
-                }
-              </button>
+              <div style={{ position: 'relative' }} ref={avatarRef}>
+                <button
+                  style={{ ...s.avatarBtn, ...(showAvatar || path.startsWith('/profile') ? s.avatarBtnActive : {}) }}
+                  onClick={() => setShowAvatar(v => !v)}
+                  title={profile.username}
+                >
+                  {profile.avatar_url
+                    ? <img src={profile.avatar_url} alt={profile.username} style={s.avatarImg} />
+                    : <span style={s.avatarInitial}>{profile.username.charAt(0).toUpperCase()}</span>
+                  }
+                </button>
+                {showAvatar && (
+                  <AvatarDropdown
+                    profile={profile}
+                    isDark={isDark}
+                    toggleTheme={toggleTheme}
+                    goodreadsImported={goodreadsImported}
+                    onProfile={() => { setShowAvatar(false); navigate(`/profile/${profile.username}`) }}
+                    onImport={() => { setShowAvatar(false); setShowImport(true) }}
+                    onSignOut={async () => { setShowAvatar(false); await supabase.auth.signOut() }}
+                  />
+                )}
+              </div>
             )}
           </div>
         )}
@@ -221,7 +238,63 @@ export default function NavBar({ session, extra }) {
           onAdded={() => setShowSearch(false)}
         />
       )}
+      {showImport && (
+        <GoodreadsImportModal
+          session={session}
+          onClose={() => setShowImport(false)}
+          onImported={() => {
+            localStorage.setItem('exlibris-goodreads-imported', '1')
+            setShowImport(false)
+            window.dispatchEvent(new Event('exlibris:bookAdded'))
+          }}
+        />
+      )}
     </>
+  )
+}
+
+// ---- AVATAR DROPDOWN ----
+function AvatarDropdown({ profile, isDark, toggleTheme, goodreadsImported, onProfile, onImport, onSignOut }) {
+  return (
+    <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, minWidth: 220, boxShadow: '0 8px 24px rgba(26,18,8,0.14)', zIndex: 200, overflow: 'hidden' }}>
+      {/* Profile header */}
+      <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid #e8dfc8', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={onProfile}>
+        <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+          {profile.avatar_url
+            ? <img src={profile.avatar_url} alt={profile.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <span style={{ fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 15, color: 'white' }}>{profile.username.charAt(0).toUpperCase()}</span>
+          }
+        </div>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1208', fontFamily: "'DM Sans', sans-serif" }}>{profile.username}</div>
+          <div style={{ fontSize: 11, color: '#8a7f72', fontFamily: "'DM Sans', sans-serif" }}>View profile →</div>
+        </div>
+      </div>
+      {/* Menu items */}
+      <div style={{ padding: '6px 0' }}>
+        <MenuItem icon={isDark ? '☀️' : '🌙'} label={isDark ? 'Light mode' : 'Dark mode'} onClick={toggleTheme} />
+        {!goodreadsImported && (
+          <MenuItem icon="📥" label="Import from Goodreads" onClick={onImport} />
+        )}
+        <div style={{ height: 1, background: '#e8dfc8', margin: '6px 0' }} />
+        <MenuItem icon="🚪" label="Sign out" onClick={onSignOut} danger />
+      </div>
+    </div>
+  )
+}
+
+function MenuItem({ icon, label, onClick, danger }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', background: hover ? 'rgba(192,82,30,0.06)' : 'transparent', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontSize: 14, color: danger ? '#c0521e' : '#1a1208', textAlign: 'left' }}
+    >
+      <span style={{ fontSize: 16, width: 20, textAlign: 'center' }}>{icon}</span>
+      {label}
+    </button>
   )
 }
 

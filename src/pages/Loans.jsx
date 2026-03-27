@@ -3,15 +3,28 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
+import { getCoverUrl } from '../lib/coverUrl'
 
 export default function Loans({ session }) {
   const { theme } = useTheme()
   const navigate  = useNavigate()
-  const [lending, setLending]   = useState([])
+  const [lending, setLending]     = useState([])
   const [borrowing, setBorrowing] = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [tab, setTab]           = useState('lending')
-  useEffect(() => { fetchLoans() }, [])
+  const [loading, setLoading]     = useState(true)
+  const [tab, setTab]             = useState('lending')
+  // Browse friends' books
+  const [friends, setFriends]     = useState([])
+  const [browseFriend, setBrowseFriend] = useState(null)
+  const [friendBooks, setFriendBooks]   = useState([])
+  const [browseLoading, setBrowseLoading] = useState(false)
+  const [requestModal, setRequestModal]   = useState(null) // book entry to request
+  const [requestMsg, setRequestMsg]       = useState('')
+  const [requestDue, setRequestDue]       = useState('')
+  const [requesting, setRequesting]       = useState(false)
+  // Accept with due date
+  const [acceptModal, setAcceptModal]     = useState(null)
+  const [acceptDue, setAcceptDue]         = useState('')
+  useEffect(() => { fetchLoans(); fetchFriends() }, [])
 
   async function fetchLoans() {
     setLoading(true)
@@ -40,11 +53,57 @@ export default function Loans({ session }) {
     setLoading(false)
   }
 
-  async function handleAction(id, action) {
+  async function fetchFriends() {
+    const { data } = await supabase
+      .from('friendships')
+      .select('requester_id, addressee_id, profiles!friendships_requester_id_fkey(id,username), profiles!friendships_addressee_id_fkey(id,username)')
+      .eq('status', 'accepted')
+      .or(`requester_id.eq.${session.user.id},addressee_id.eq.${session.user.id}`)
+    setFriends((data || []).map(f =>
+      f.requester_id === session.user.id
+        ? { id: f.addressee_id, username: f['profiles!friendships_addressee_id_fkey']?.username }
+        : { id: f.requester_id, username: f['profiles!friendships_requester_id_fkey']?.username }
+    ))
+  }
+
+  async function loadFriendBooks(friendId) {
+    setBrowseLoading(true)
+    setFriendBooks([])
+    const { data } = await supabase
+      .from('collection_entries')
+      .select('id, books(id, title, author, cover_image_url, isbn_13, isbn_10)')
+      .eq('user_id', friendId)
+      .eq('read_status', 'owned')
+      .order('books(title)')
+    setFriendBooks(data || [])
+    setBrowseLoading(false)
+  }
+
+  async function submitBorrowRequest() {
+    if (!requestModal) return
+    setRequesting(true)
+    const friend = friends.find(f => f.id === browseFriend)
+    await supabase.from('borrow_requests').insert({
+      requester_id: session.user.id,
+      owner_id: browseFriend,
+      book_id: requestModal.books.id,
+      message: requestMsg || null,
+      due_date: requestDue || null,
+      status: 'pending',
+    })
+    setRequesting(false)
+    setRequestModal(null)
+    setRequestMsg('')
+    setRequestDue('')
+    fetchLoans()
+    setTab('borrowing')
+  }
+
+  async function handleAction(id, action, dueDate) {
     if (action === 'accept') {
       await supabase
         .from('borrow_requests')
-        .update({ status: 'active', updated_at: new Date().toISOString() })
+        .update({ status: 'active', due_date: dueDate || null, updated_at: new Date().toISOString() })
         .eq('id', id)
     } else if (action === 'decline' || action === 'cancel') {
       await supabase.from('borrow_requests').delete().eq('id', id)
@@ -117,6 +176,9 @@ export default function Loans({ session }) {
             Borrowing
             {borPending.length > 0 && <span style={s.tabBadge}>{borPending.length}</span>}
           </button>
+          <button style={tab === 'browse' ? s.tabActive : s.tabInactive} onClick={() => setTab('browse')}>
+            Browse Friends' Books
+          </button>
         </div>
 
         {loading ? (
@@ -126,13 +188,119 @@ export default function Loans({ session }) {
             pending={lendPending} active={lendActive} history={lendHistory}
             onAction={handleAction} navigate={navigate} s={s} theme={theme}
           />
-        ) : (
+        ) : tab === 'borrowing' ? (
           <BorrowingView
             pending={borPending} active={borActive} history={borHistory}
             onAction={handleAction} navigate={navigate} s={s} theme={theme}
           />
+        ) : (
+          /* Browse Friends' Books */
+          <BrowseTab
+            friends={friends} browseFriend={browseFriend} friendBooks={friendBooks}
+            browseLoading={browseLoading} borrowing={borrowing}
+            onSelectFriend={id => { setBrowseFriend(id); loadFriendBooks(id) }}
+            onRequest={entry => setRequestModal(entry)}
+            s={s} theme={theme}
+          />
         )}
       </div>
+
+      {/* Borrow request modal */}
+      {requestModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 28, width: 420, maxWidth: '95vw' }}>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text, marginBottom: 4 }}>Request to Borrow</div>
+            <div style={{ fontSize: 14, color: theme.textSubtle, marginBottom: 20 }}>{requestModal.books.title} by {requestModal.books.author}</div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: theme.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Message (optional)</label>
+              <textarea
+                value={requestMsg} onChange={e => setRequestMsg(e.target.value)}
+                placeholder="Hi! Would you mind lending me this book?"
+                rows={3}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", background: theme.bgCard, color: theme.text, resize: 'vertical', outline: 'none' }}
+              />
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: theme.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Return by (optional)</label>
+              <input type="date" value={requestDue} onChange={e => setRequestDue(e.target.value)}
+                style={{ padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", background: theme.bgCard, color: theme.text, outline: 'none' }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => { setRequestModal(null); setRequestMsg(''); setRequestDue('') }} style={s.btnDecline}>Cancel</button>
+              <button onClick={submitBorrowRequest} disabled={requesting} style={s.btnAccept}>{requesting ? 'Sending…' : 'Send Request'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---- BROWSE FRIENDS' BOOKS ----
+function BrowseTab({ friends, browseFriend, friendBooks, browseLoading, borrowing, onSelectFriend, onRequest, s, theme }) {
+  const alreadyRequested = new Set(borrowing.filter(r => r.status === 'pending' || r.status === 'active').map(r => r.books?.id))
+
+  if (!friends.length) {
+    return (
+      <div style={s.emptyState}>
+        <div style={s.emptyIcon}>👥</div>
+        <div style={s.emptyTitle}>No friends yet</div>
+        <div style={s.emptySub}>Add friends to browse their libraries and request to borrow books.</div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ fontSize: 12, fontWeight: 600, color: theme.textSubtle, marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>Choose a friend</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {friends.map(f => (
+            <button key={f.id}
+              onClick={() => onSelectFriend(f.id)}
+              style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${browseFriend === f.id ? theme.rust : theme.border}`, background: browseFriend === f.id ? 'rgba(192,82,30,0.1)' : 'transparent', color: browseFriend === f.id ? theme.rust : theme.text, fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: browseFriend === f.id ? 600 : 400, cursor: 'pointer' }}>
+              {f.username}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {browseLoading && <div style={s.empty}>Loading books…</div>}
+
+      {!browseLoading && browseFriend && friendBooks.length === 0 && (
+        <div style={s.empty}>This friend has no books marked as "In Library" yet.</div>
+      )}
+
+      {!browseLoading && friendBooks.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {friendBooks.map(entry => {
+            const book = entry.books
+            const requested = alreadyRequested.has(book.id)
+            const coverUrl = getCoverUrl(book)
+            return (
+              <div key={entry.id} style={{ ...s.loanCard, alignItems: 'center' }}>
+                <div style={s.loanCover}>
+                  {coverUrl
+                    ? <img src={coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }} onError={e => e.target.style.display='none'} />
+                    : <MiniCover title={book.title} />}
+                </div>
+                <div style={s.loanInfo}>
+                  <div style={s.loanBookTitle}>{book.title}</div>
+                  <div style={s.loanBookAuthor}>{book.author}</div>
+                </div>
+                <div>
+                  {requested ? (
+                    <span style={{ fontSize: 12, color: theme.textSubtle, fontStyle: 'italic' }}>Requested</span>
+                  ) : (
+                    <button onClick={() => onRequest(entry)} style={s.btnAccept}>Request to Borrow</button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -215,11 +383,13 @@ function Section({ title, count, muted, children, s, theme }) {
 function LoanCard({ req, mode, onAction, navigate, s, theme }) {
   const book         = req.books
   const otherProfile = req.profiles
-  const [acting, setActing] = useState(false)
+  const [acting, setActing]   = useState(false)
+  const [showDue, setShowDue] = useState(false)
+  const [dueDate, setDueDate] = useState('')
 
-  async function act(action) {
+  async function act(action, due) {
     setActing(true)
-    await onAction(req.id, action)
+    await onAction(req.id, action, due)
     setActing(false)
   }
 
@@ -264,14 +434,21 @@ function LoanCard({ req, mode, onAction, navigate, s, theme }) {
       </div>
       <div style={s.loanActions}>
         <StatusBadge status={req.status} theme={theme} />
-        {mode === 'lend-pending' && (
+        {mode === 'lend-pending' && !showDue && (
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            <button style={s.btnAccept} onClick={() => act('accept')} disabled={acting}>
-              {acting ? '…' : 'Accept'}
-            </button>
-            <button style={s.btnDecline} onClick={() => act('decline')} disabled={acting}>
-              Decline
-            </button>
+            <button style={s.btnAccept} onClick={() => setShowDue(true)}>Accept</button>
+            <button style={s.btnDecline} onClick={() => act('decline')} disabled={acting}>Decline</button>
+          </div>
+        )}
+        {mode === 'lend-pending' && showDue && (
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+            <div style={{ fontSize: 11, color: theme.textSubtle }}>Return by (optional)</div>
+            <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
+              style={{ padding: '5px 8px', border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, fontFamily: "'DM Sans', sans-serif", background: theme.bgCard, color: theme.text, outline: 'none' }} />
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button style={s.btnDecline} onClick={() => setShowDue(false)}>Back</button>
+              <button style={s.btnAccept} onClick={() => act('accept', dueDate)} disabled={acting}>{acting ? '…' : 'Confirm'}</button>
+            </div>
           </div>
         )}
         {mode === 'lend-active' && (

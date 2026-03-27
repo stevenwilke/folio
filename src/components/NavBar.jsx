@@ -13,10 +13,8 @@ const NAV_ITEMS = [
   { label: 'Friends',     path: '/friends' },
   { label: 'Loans',       path: '/loans' },
   { label: 'Marketplace', path: '/marketplace' },
-  { label: 'Shelves',     path: '/shelves' },
   { label: 'Clubs',       path: '/clubs' },
   { label: 'Polls',       path: '/polls' },
-  { label: 'Stats',       path: '/stats' },
 ]
 
 // Module-level cache — survives React navigation without re-fetching
@@ -177,15 +175,6 @@ export default function NavBar({ session, extra }) {
 
             <button style={s.addBtn} onClick={() => setShowSearch(true)}>+ Add Book</button>
 
-            {/* Dark mode toggle */}
-            <button
-              onClick={toggleTheme}
-              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-              style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer', padding: '0 6px' }}
-            >
-              {isDark ? '☀️' : '🌙'}
-            </button>
-
             {/* Slot for page-specific extras */}
             {extra}
 
@@ -234,6 +223,7 @@ export default function NavBar({ session, extra }) {
                     onProfile={() => { setShowAvatar(false); navigate(`/profile/${profile.username}`) }}
                     onImport={() => { setShowAvatar(false); setShowImport(true) }}
                     onSignOut={async () => { setShowAvatar(false); await supabase.auth.signOut() }}
+                    onNavigate={path => { setShowAvatar(false); navigate(path) }}
                   />
                 )}
               </div>
@@ -265,9 +255,9 @@ export default function NavBar({ session, extra }) {
 }
 
 // ---- AVATAR DROPDOWN ----
-function AvatarDropdown({ profile, isDark, toggleTheme, goodreadsImported, onProfile, onImport, onSignOut }) {
+function AvatarDropdown({ profile, isDark, toggleTheme, goodreadsImported, onProfile, onImport, onSignOut, onNavigate }) {
   return (
-    <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, minWidth: 220, boxShadow: '0 8px 24px rgba(26,18,8,0.14)', zIndex: 200, overflow: 'hidden' }}>
+    <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, minWidth: 230, boxShadow: '0 8px 24px rgba(26,18,8,0.14)', zIndex: 200, overflow: 'hidden' }}>
       {/* Profile header */}
       <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid #e8dfc8', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={onProfile}>
         <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #c0521e, #b8860b)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
@@ -283,6 +273,9 @@ function AvatarDropdown({ profile, isDark, toggleTheme, goodreadsImported, onPro
       </div>
       {/* Menu items */}
       <div style={{ padding: '6px 0' }}>
+        <MenuItem icon="📊" label="Reading Stats"       onClick={() => onNavigate('/stats')} />
+        <MenuItem icon="🗂️"  label="My Shelves"         onClick={() => onNavigate('/shelves')} />
+        <div style={{ height: 1, background: '#e8dfc8', margin: '6px 0' }} />
         <MenuItem icon={isDark ? '☀️' : '🌙'} label={isDark ? 'Light mode' : 'Dark mode'} onClick={toggleTheme} />
         {!goodreadsImported && (
           <MenuItem icon="📥" label="Import from Goodreads" onClick={onImport} />

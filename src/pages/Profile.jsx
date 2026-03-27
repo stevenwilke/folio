@@ -1164,9 +1164,19 @@ function makeStyles(theme, accentColor = '#c0521e', isMobile = false) {
 }
 
 // ── CLEAR BOOKS MODAL ──────────────────────────────────────────────────────
-function ClearBooksModal({ session, bookCount, theme, onClose, onCleared }) {
+function ClearBooksModal({ session, theme, onClose, onCleared }) {
+  const [count,      setCount]      = useState(null)   // fetched fresh on open
   const [confirming, setConfirming] = useState(false)
   const [done,       setDone]       = useState(false)
+
+  // Fetch the real count when modal opens
+  useEffect(() => {
+    supabase
+      .from('collection_entries')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', session.user.id)
+      .then(({ count: c }) => setCount(c ?? 0))
+  }, [])
 
   async function handleClear() {
     setConfirming(true)
@@ -1174,14 +1184,17 @@ function ClearBooksModal({ session, bookCount, theme, onClose, onCleared }) {
       .from('collection_entries')
       .delete()
       .eq('user_id', session.user.id)
+    // Prevent the empty-library onboarding redirect
+    localStorage.setItem('exlibris-onboarded', '1')
     setConfirming(false)
     setDone(true)
     window.dispatchEvent(new CustomEvent('exlibris:bookRemoved'))
-    setTimeout(onCleared, 1200)
+    setTimeout(onCleared, 1400)
   }
 
   const overlay = { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.55)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }
   const box     = { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 420, maxWidth: '92vw', padding: '28px 28px 24px' }
+  const countLabel = count === null ? '…' : `${count} book${count !== 1 ? 's' : ''}`
 
   return (
     <div style={overlay} onClick={e => e.target === e.currentTarget && onClose()}>
@@ -1197,15 +1210,15 @@ function ClearBooksModal({ session, bookCount, theme, onClose, onCleared }) {
               Clear your library?
             </div>
             <div style={{ fontSize: 14, color: theme.textSubtle, marginBottom: 24, lineHeight: 1.6 }}>
-              This will remove all <strong style={{ color: theme.text }}>{bookCount} book{bookCount !== 1 ? 's' : ''}</strong> from your collection.
+              This will remove all <strong style={{ color: theme.text }}>{countLabel}</strong> from your collection.
               Your account, reviews, and friends will be kept. This cannot be undone.
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button onClick={onClose} style={{ padding: '9px 18px', background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 9, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textSubtle }}>
                 Cancel
               </button>
-              <button onClick={handleClear} disabled={confirming} style={{ padding: '9px 20px', background: '#c0521e', border: 'none', borderRadius: 9, fontSize: 14, fontWeight: 600, color: 'white', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                {confirming ? 'Clearing…' : `Yes, clear ${bookCount} book${bookCount !== 1 ? 's' : ''}`}
+              <button onClick={handleClear} disabled={confirming || count === null} style={{ padding: '9px 20px', background: '#c0521e', border: 'none', borderRadius: 9, fontSize: 14, fontWeight: 600, color: 'white', cursor: confirming || count === null ? 'not-allowed' : 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                {confirming ? 'Clearing…' : `Yes, clear ${countLabel}`}
               </button>
             </div>
           </>

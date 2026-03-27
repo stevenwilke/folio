@@ -105,6 +105,10 @@ export default function Library({ session }) {
 
     if (!error) {
       setBooks(data || [])
+      // Mark as onboarded once they've ever had books — prevents accidental redirect
+      if (data && data.length > 0) {
+        localStorage.setItem('exlibris-onboarded', '1')
+      }
       const ownedIds = (data || [])
         .filter(e => e.read_status === 'owned')
         .map(e => e.books.id)

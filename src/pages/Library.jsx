@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { extractGenre } from '../lib/genres'
 import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
 import SearchModal from '../components/SearchModal'
@@ -100,8 +101,39 @@ export default function Library({ session }) {
         .filter(e => e.read_status === 'owned')
         .map(e => e.books.id)
       fetchCollectionValue(ownedIds)
+      // Backfill genres in the background (once per session)
+      if (!sessionStorage.getItem('exlibris-genre-backfill')) {
+        sessionStorage.setItem('exlibris-genre-backfill', '1')
+        backfillGenres(data || [])
+      }
     }
     setLoading(false)
+  }
+
+  // Fetch genres from Open Library for books that don't have one
+  async function backfillGenres(entries) {
+    const todo = entries.filter(e => !e.books.genre && (e.books.isbn_13 || e.books.isbn_10))
+    if (todo.length === 0) return
+
+    const BATCH = 5
+    for (let i = 0; i < todo.length; i += BATCH) {
+      await Promise.all(todo.slice(i, i + BATCH).map(async entry => {
+        const isbn = entry.books.isbn_13 || entry.books.isbn_10
+        try {
+          const r = await fetch(`https://openlibrary.org/search.json?isbn=${isbn}&fields=subject&limit=1`)
+          const data = await r.json()
+          const genre = extractGenre(data.docs?.[0]?.subject)
+          if (genre) {
+            await supabase.from('books').update({ genre }).eq('id', entry.books.id)
+            setBooks(prev => prev.map(e =>
+              e.books.id === entry.books.id ? { ...e, books: { ...e.books, genre } } : e
+            ))
+          }
+        } catch { /* ignore network errors */ }
+      }))
+      // Pause between batches to be respectful to OL
+      await new Promise(r => setTimeout(r, 600))
+    }
   }
 
   const searchLower = search.trim().toLowerCase()

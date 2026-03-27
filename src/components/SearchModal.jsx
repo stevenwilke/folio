@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import ManualAddModal from './ManualAddModal'
 import { useTheme } from '../contexts/ThemeContext'
+import { extractGenre } from '../lib/genres'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -35,7 +36,7 @@ function fromOL(doc) {
     year:     doc.first_publish_year || null,
     isbn13:   doc.isbn?.find(i => i.length === 13) || null,
     isbn10:   doc.isbn?.find(i => i.length === 10) || null,
-    genre:    doc.subject?.[0] || null,
+    genre:    extractGenre(doc.subject),
     source:   'openlibrary',
     bookId:   null,
   }

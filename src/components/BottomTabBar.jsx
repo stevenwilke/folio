@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
@@ -30,6 +30,9 @@ export default function BottomTabBar({ session }) {
   const location  = useLocation()
   const { theme, isDark, toggleTheme } = useTheme()
   const [showMore, setShowMore] = useState(false)
+  const [dragY,    setDragY]    = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const dragStartY = useRef(0)
 
   const [profile, setProfile] = useState(
     session?.user?.id === _cachedId ? _cachedProfile : null
@@ -48,7 +51,24 @@ export default function BottomTabBar({ session }) {
   }, [session?.user?.id])
 
   // Close More drawer on route change
-  useEffect(() => { setShowMore(false) }, [location.pathname])
+  useEffect(() => { setShowMore(false); setDragY(0) }, [location.pathname])
+
+  // Reset drag when drawer closes
+  useEffect(() => { if (!showMore) setDragY(0) }, [showMore])
+
+  function onHandleTouchStart(e) {
+    dragStartY.current = e.touches[0].clientY
+    setDragging(true)
+  }
+  function onHandleTouchMove(e) {
+    const delta = e.touches[0].clientY - dragStartY.current
+    setDragY(Math.max(0, delta))
+  }
+  function onHandleTouchEnd() {
+    setDragging(false)
+    if (dragY > 80) { setShowMore(false) }
+    else { setDragY(0) }
+  }
 
   if (!isMobile) return null
 
@@ -89,17 +109,29 @@ export default function BottomTabBar({ session }) {
         background: theme.bgCard,
         borderTop: `1px solid ${theme.border}`,
         borderRadius: '16px 16px 0 0',
-        transition: 'bottom 0.28s cubic-bezier(0.32,0.72,0,1)',
-        padding: '12px 0 8px',
+        transition: dragging ? 'none' : 'bottom 0.28s cubic-bezier(0.32,0.72,0,1), transform 0.28s cubic-bezier(0.32,0.72,0,1)',
+        transform: `translateY(${dragY}px)`,
+        padding: '0 0 8px',
         boxShadow: '0 -4px 24px rgba(26,18,8,0.15)',
         maxHeight: 'calc(85vh - 60px)',
         overflowY: 'auto',
       }}>
-        {/* Handle */}
-        <div style={{
-          width: 36, height: 4, borderRadius: 2,
-          background: theme.border, margin: '0 auto 16px',
-        }} />
+        {/* Draggable handle */}
+        <div
+          onTouchStart={onHandleTouchStart}
+          onTouchMove={onHandleTouchMove}
+          onTouchEnd={onHandleTouchEnd}
+          style={{
+            padding: '12px 0 8px', cursor: 'grab',
+            display: 'flex', justifyContent: 'center', alignItems: 'center',
+            touchAction: 'none',
+          }}
+        >
+          <div style={{
+            width: 36, height: 4, borderRadius: 2,
+            background: theme.border,
+          }} />
+        </div>
 
         {/* Profile link at top */}
         <button
@@ -162,22 +194,23 @@ export default function BottomTabBar({ session }) {
           ))}
         </div>
 
-        {/* Dark mode + sign out */}
+        {/* Dark mode + sign out — side by side */}
         <div style={{
-          margin: '4px 16px 4px',
+          margin: '4px 12px 4px',
           borderTop: `1px solid ${theme.borderLight}`,
-          paddingTop: 12,
+          paddingTop: 10,
+          display: 'flex', gap: 8,
         }}>
           <button
             onClick={toggleTheme}
             style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-              padding: '10px 8px', background: 'none', border: 'none',
-              borderRadius: 10, cursor: 'pointer',
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              padding: '11px 8px', background: theme.bgSubtle, border: `1px solid ${theme.border}`,
+              borderRadius: 12, cursor: 'pointer',
             }}
           >
-            <span style={{ fontSize: 20 }}>{isDark ? '☀️' : '🌙'}</span>
-            <span style={{ fontSize: 14, color: theme.text, fontFamily: "'DM Sans', sans-serif" }}>
+            <span style={{ fontSize: 18 }}>{isDark ? '☀️' : '🌙'}</span>
+            <span style={{ fontSize: 13, color: theme.text, fontFamily: "'DM Sans', sans-serif" }}>
               {isDark ? 'Light Mode' : 'Dark Mode'}
             </span>
           </button>
@@ -185,13 +218,13 @@ export default function BottomTabBar({ session }) {
           <button
             onClick={async () => { setShowMore(false); await supabase.auth.signOut() }}
             style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-              padding: '10px 8px', background: 'none', border: 'none',
-              borderRadius: 10, cursor: 'pointer', marginTop: 2,
+              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              padding: '11px 8px', background: 'rgba(192,82,30,0.08)', border: '1px solid rgba(192,82,30,0.2)',
+              borderRadius: 12, cursor: 'pointer',
             }}
           >
-            <span style={{ fontSize: 20 }}>🚪</span>
-            <span style={{ fontSize: 14, color: '#c0521e', fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>
+            <span style={{ fontSize: 18 }}>🚪</span>
+            <span style={{ fontSize: 13, color: '#c0521e', fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>
               Sign out
             </span>
           </button>

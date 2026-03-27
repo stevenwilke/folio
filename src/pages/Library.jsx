@@ -35,6 +35,7 @@ export default function Library({ session }) {
   const [listingTarget, setListingTarget] = useState(null)
   const [activeListings, setActiveListings] = useState({})
   const [collectionValue, setCollectionValue] = useState(null)
+  const [search, setSearch]             = useState('')
   const [groupBy, setGroupBy]           = useState('none')
   const [collapsedGroups, setCollapsedGroups] = useState(new Set())
   const [selectMode, setSelectMode]     = useState(false)
@@ -103,7 +104,10 @@ export default function Library({ session }) {
     setLoading(false)
   }
 
-  const filtered = filter === 'all' ? books : books.filter(e => e.read_status === filter)
+  const searchLower = search.trim().toLowerCase()
+  const filtered = books
+    .filter(e => filter === 'all' || e.read_status === filter)
+    .filter(e => !searchLower || e.books.title.toLowerCase().includes(searchLower) || (e.books.author || '').toLowerCase().includes(searchLower))
 
   function sortEntries(arr) {
     switch (sort) {
@@ -357,6 +361,32 @@ export default function Library({ session }) {
           </div>
         )}
 
+        {/* Search bar */}
+        <div style={{ position: 'relative', marginBottom: 16 }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 15, color: theme.textSubtle, pointerEvents: 'none' }}>🔍</span>
+          <input
+            type="text"
+            placeholder="Search your library…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              padding: '10px 36px 10px 36px',
+              border: `1px solid ${search ? theme.rust : theme.border}`,
+              borderRadius: 10, fontSize: 14,
+              fontFamily: "'DM Sans', sans-serif",
+              background: theme.bgCard, color: theme.text,
+              outline: 'none', transition: 'border-color 0.15s',
+            }}
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: theme.textSubtle, lineHeight: 1, padding: 2 }}
+            >×</button>
+          )}
+        </div>
+
         {/* Filter pills */}
         <div style={s.filterRow} className={isMobile ? 'chips-scroll' : ''}>
           {['all', 'owned', 'read', 'reading', 'want'].map(f => (
@@ -461,7 +491,9 @@ export default function Library({ session }) {
             <div>
               {books.length === 0
                 ? 'Your library is empty'
-                : 'No books with this status yet.'}
+                : searchLower
+                  ? `No books matching "${search}"`
+                  : 'No books with this status yet.'}
             </div>
             {books.length === 0 && (
               <button style={s.btnPrimary} onClick={() => setShowSearch(true)}>

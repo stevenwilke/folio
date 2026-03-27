@@ -283,6 +283,8 @@ function AvatarDropdown({ profile, isDark, toggleTheme, goodreadsImported, onPro
           <MenuItem icon="📥" label="Import from Goodreads" onClick={onImport} />
         )}
         <div style={{ height: 1, background: '#e8dfc8', margin: '6px 0' }} />
+        <MenuItem icon="⚙️" label="Account Settings" onClick={() => onNavigate(`/profile/${profile.username}`)} />
+        <div style={{ height: 1, background: '#e8dfc8', margin: '6px 0' }} />
         <MenuItem icon="🚪" label="Sign out" onClick={onSignOut} danger />
       </div>
     </div>

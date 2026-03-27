@@ -58,6 +58,8 @@ export default function Profile({ session }) {
   const [showGoalInput, setShowGoalInput] = useState(false)
   const [goalInputVal, setGoalInputVal]   = useState('')
   const [savingGoal, setSavingGoal]       = useState(false)
+  const [showClearBooks,   setShowClearBooks]   = useState(false)
+  const [showDeleteAcct,   setShowDeleteAcct]   = useState(false)
 
   // ── BADGES STATE ──
   const [badges, setBadges]               = useState([])
@@ -527,6 +529,42 @@ export default function Profile({ session }) {
         </div>
       )}
 
+      {/* Danger Zone — own profile only */}
+      {isOwnProfile && (
+        <div style={{ maxWidth: 820, margin: '0 auto', padding: isMobile ? '0 16px 80px' : '0 32px 60px' }}>
+          <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 32, marginTop: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#c0521e', textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 12 }}>
+              ⚠️ Danger Zone
+            </div>
+            <div style={{ background: 'rgba(192,82,30,0.04)', border: '1px solid rgba(192,82,30,0.18)', borderRadius: 14, padding: '18px 20px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: theme.text, marginBottom: 3 }}>Clear my library</div>
+                <div style={{ fontSize: 13, color: theme.textSubtle }}>Remove all books from your collection. Your account stays active.</div>
+              </div>
+              <button
+                onClick={() => setShowClearBooks(true)}
+                style={{ padding: '9px 20px', background: 'transparent', border: '1px solid rgba(192,82,30,0.4)', borderRadius: 9, fontSize: 13, fontWeight: 600, color: '#c0521e', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap', alignSelf: 'center' }}
+              >
+                Clear library
+              </button>
+            </div>
+
+            <div style={{ background: 'rgba(192,82,30,0.04)', border: '1px solid rgba(192,82,30,0.18)', borderRadius: 14, padding: '18px 20px', marginTop: 10, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: theme.text, marginBottom: 3 }}>Delete account</div>
+                <div style={{ fontSize: 13, color: theme.textSubtle }}>Permanently delete your account and all data. This cannot be undone.</div>
+              </div>
+              <button
+                onClick={() => setShowDeleteAcct(true)}
+                style={{ padding: '9px 20px', background: '#c0521e', border: 'none', borderRadius: 9, fontSize: 13, fontWeight: 600, color: 'white', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap', alignSelf: 'center' }}
+              >
+                Delete account
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Borrow modal */}
       {borrowTarget && session && profile && (
         <BorrowModal session={session} entry={borrowTarget} ownerId={profile.id} theme={theme} onClose={() => setBorrowTarget(null)} />
@@ -537,6 +575,24 @@ export default function Profile({ session }) {
         <div style={{ position: 'fixed', inset: 0, background: theme.bg, zIndex: 40, overflowY: 'auto', isolation: 'isolate' }}>
           <BookDetail bookId={selectedBook} session={session} onBack={() => setSelectedBook(null)} />
         </div>
+      )}
+
+      {showClearBooks && (
+        <ClearBooksModal
+          session={session}
+          bookCount={books.length}
+          theme={theme}
+          onClose={() => setShowClearBooks(false)}
+          onCleared={() => { setShowClearBooks(false); setBooks([]) }}
+        />
+      )}
+
+      {showDeleteAcct && (
+        <DeleteAccountModal
+          session={session}
+          theme={theme}
+          onClose={() => setShowDeleteAcct(false)}
+        />
       )}
 
       {showEditProfile && (
@@ -1105,4 +1161,125 @@ function makeStyles(theme, accentColor = '#c0521e', isMobile = false) {
     textarea:    { width: '100%', padding: '10px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', outline: 'none', background: theme.bgCard, color: theme.text, boxSizing: 'border-box' },
     dateInput:   { width: '100%', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgCard, color: theme.text, boxSizing: 'border-box' },
   }
+}
+
+// ── CLEAR BOOKS MODAL ──────────────────────────────────────────────────────
+function ClearBooksModal({ session, bookCount, theme, onClose, onCleared }) {
+  const [confirming, setConfirming] = useState(false)
+  const [done,       setDone]       = useState(false)
+
+  async function handleClear() {
+    setConfirming(true)
+    await supabase
+      .from('collection_entries')
+      .delete()
+      .eq('user_id', session.user.id)
+    setConfirming(false)
+    setDone(true)
+    window.dispatchEvent(new CustomEvent('exlibris:bookRemoved'))
+    setTimeout(onCleared, 1200)
+  }
+
+  const overlay = { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.55)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+  const box     = { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 420, maxWidth: '92vw', padding: '28px 28px 24px' }
+
+  return (
+    <div style={overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={box}>
+        {done ? (
+          <div style={{ textAlign: 'center', padding: '12px 0' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: theme.text }}>Library cleared</div>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text, marginBottom: 8 }}>
+              Clear your library?
+            </div>
+            <div style={{ fontSize: 14, color: theme.textSubtle, marginBottom: 24, lineHeight: 1.6 }}>
+              This will remove all <strong style={{ color: theme.text }}>{bookCount} book{bookCount !== 1 ? 's' : ''}</strong> from your collection.
+              Your account, reviews, and friends will be kept. This cannot be undone.
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={onClose} style={{ padding: '9px 18px', background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 9, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textSubtle }}>
+                Cancel
+              </button>
+              <button onClick={handleClear} disabled={confirming} style={{ padding: '9px 20px', background: '#c0521e', border: 'none', borderRadius: 9, fontSize: 14, fontWeight: 600, color: 'white', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                {confirming ? 'Clearing…' : `Yes, clear ${bookCount} book${bookCount !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── DELETE ACCOUNT MODAL ───────────────────────────────────────────────────
+function DeleteAccountModal({ session, theme, onClose }) {
+  const [confirmText, setConfirmText] = useState('')
+  const [deleting,    setDeleting]    = useState(false)
+  const [error,       setError]       = useState('')
+  const ready = confirmText.trim().toUpperCase() === 'DELETE'
+
+  async function handleDelete() {
+    if (!ready) return
+    setDeleting(true)
+    setError('')
+    try {
+      const { error: err } = await supabase.rpc('delete_user_account')
+      if (err) throw err
+      await supabase.auth.signOut()
+    } catch (e) {
+      setError('Something went wrong. Please try again or contact support.')
+      setDeleting(false)
+    }
+  }
+
+  const overlay = { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.65)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+  const box     = { background: theme.bgCard, border: '1px solid rgba(192,82,30,0.3)', borderRadius: 16, width: 440, maxWidth: '92vw', padding: '28px 28px 24px' }
+
+  return (
+    <div style={overlay} onClick={e => e.target === e.currentTarget && !deleting && onClose()}>
+      <div style={box}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <span style={{ fontSize: 28 }}>⚠️</span>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: '#c0521e' }}>Delete account</div>
+        </div>
+        <div style={{ fontSize: 14, color: theme.textSubtle, marginBottom: 8, lineHeight: 1.65 }}>
+          This will <strong style={{ color: theme.text }}>permanently delete</strong> your account and all associated data including:
+        </div>
+        <ul style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 20, paddingLeft: 18, lineHeight: 2 }}>
+          <li>Your entire book collection</li>
+          <li>Reviews, ratings &amp; journal entries</li>
+          <li>Friends &amp; friend requests</li>
+          <li>Marketplace listings &amp; orders</li>
+          <li>All profile data</li>
+        </ul>
+        <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, marginBottom: 8 }}>
+          Type <span style={{ fontFamily: 'monospace', background: 'rgba(192,82,30,0.1)', padding: '1px 6px', borderRadius: 4, color: '#c0521e' }}>DELETE</span> to confirm:
+        </div>
+        <input
+          value={confirmText}
+          onChange={e => setConfirmText(e.target.value)}
+          placeholder="DELETE"
+          disabled={deleting}
+          style={{ width: '100%', padding: '10px 14px', border: `2px solid ${ready ? '#c0521e' : theme.border}`, borderRadius: 9, fontSize: 15, fontFamily: 'monospace', outline: 'none', background: theme.bgCard, color: theme.text, marginBottom: 16, boxSizing: 'border-box', transition: 'border-color 0.15s' }}
+        />
+        {error && <div style={{ fontSize: 13, color: '#c0521e', marginBottom: 12 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} disabled={deleting} style={{ padding: '9px 18px', background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 9, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textSubtle }}>
+            Cancel
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={!ready || deleting}
+            style={{ padding: '9px 20px', background: ready ? '#c0521e' : '#ccc', border: 'none', borderRadius: 9, fontSize: 14, fontWeight: 600, color: 'white', cursor: ready && !deleting ? 'pointer' : 'not-allowed', fontFamily: "'DM Sans', sans-serif", transition: 'background 0.15s' }}
+          >
+            {deleting ? 'Deleting…' : 'Delete my account'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }

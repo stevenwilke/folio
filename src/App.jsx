@@ -17,6 +17,7 @@ import BookClubs from './pages/BookClubs'
 import Author from './pages/Author'
 import Onboarding from './pages/Onboarding'
 import Landing from './pages/Landing'
+import Notifications from './pages/Notifications'
 import BottomTabBar from './components/BottomTabBar'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useTheme } from './contexts/ThemeContext'
@@ -75,6 +76,10 @@ function AppRoutes({ session }) {
           <Route
             path="/author/:authorName"
             element={<Author session={session} />}
+          />
+          <Route
+            path="/notifications"
+            element={session ? <Notifications session={session} /> : <Navigate to="/" replace />}
           />
           <Route
             path="/onboarding"

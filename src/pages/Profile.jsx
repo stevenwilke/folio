@@ -432,6 +432,28 @@ export default function Profile({ session }) {
       ) : (
         <div style={s.content}>
 
+          {/* ── CURRENTLY READING WIDGET ── */}
+          {reading.length > 0 && (
+            <div style={{ marginBottom: 28 }}>
+              <div style={{ fontFamily:'Georgia, serif', fontSize:16, fontWeight:700, color:theme.text, marginBottom:12 }}>
+                📖 Currently Reading
+                <span style={{ fontSize:14, fontWeight:500, color:theme.textSubtle, fontFamily:"'DM Sans', sans-serif", marginLeft:8 }}>
+                  {reading.length} book{reading.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+                {reading.map(entry => (
+                  <CurrentlyReadingBook
+                    key={entry.id || entry.book_id}
+                    book={entry.books}
+                    theme={theme}
+                    onClick={() => { if (session && entry.books?.id) setSelectedBook(entry.books.id) }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Currently Reading */}
           {reading.length > 0 && (
             <section style={s.section}>
@@ -545,6 +567,24 @@ export default function Profile({ session }) {
           theme={theme}
         />
       )}
+    </div>
+  )
+}
+
+// ── CURRENTLY READING BOOK ──
+function CurrentlyReadingBook({ book, theme, onClick }) {
+  const [hover, setHover] = useState(false)
+  const url = getCoverUrl(book)
+  const colors = ['#7b4f3a','#4a6b8a','#5a7a5a','#8b2500','#b8860b','#3d5a5a']
+  const c = colors[(book.title||'').charCodeAt(0) % colors.length]
+  const c2 = colors[((book.title||'').charCodeAt(0)+3) % colors.length]
+  return (
+    <div onClick={onClick} onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
+      style={{ cursor:'pointer', textAlign:'center', width:64, transform: hover?'translateY(-2px)':'none', transition:'transform 0.15s' }}>
+      <div style={{ width:64, height:96, borderRadius:6, overflow:'hidden', background:`linear-gradient(135deg,${c},${c2})`, marginBottom:6, boxShadow: hover ? '0 4px 12px rgba(0,0,0,0.2)' : '0 2px 6px rgba(0,0,0,0.1)' }}>
+        {url && <img src={url} alt={book.title} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>e.target.style.display='none'} />}
+      </div>
+      <div style={{fontSize:11,color:theme.textSubtle,lineHeight:1.3,overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{book.title}</div>
     </div>
   )
 }

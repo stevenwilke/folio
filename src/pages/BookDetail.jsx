@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
+import BookTagsManager from '../components/BookTagsManager'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -998,6 +999,17 @@ export default function BookDetail({ bookId, session, onBack }) {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* My Tags */}
+        {session && book?.id && (
+          <div style={{ marginTop: 28 }}>
+            <BookTagsManager
+              bookId={book.id}
+              userId={session.user.id}
+              theme={theme}
+            />
           </div>
         )}
       </div>

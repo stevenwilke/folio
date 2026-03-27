@@ -45,6 +45,9 @@ export default function Library({ session }) {
   const [bulkWorking, setBulkWorking]   = useState(false)
   const [viewMode,  setViewMode]  = useState(() => localStorage.getItem('exlibris-view-mode')  || 'grid')
   const [coverSize, setCoverSize] = useState(() => localStorage.getItem('exlibris-cover-size') || 'md')
+  const [selectedTag, setSelectedTag] = useState(null)
+  const [tagMap, setTagMap]           = useState({})
+  const [allTags, setAllTags]         = useState([])
 
   function changeViewMode(v)  { setViewMode(v);  localStorage.setItem('exlibris-view-mode',  v) }
   function changeCoverSize(s) { setCoverSize(s); localStorage.setItem('exlibris-cover-size', s) }
@@ -118,6 +121,23 @@ export default function Library({ session }) {
       }
     }
     setLoading(false)
+    fetchTags()
+  }
+
+  async function fetchTags() {
+    const { data } = await supabase
+      .from('book_tags')
+      .select('book_id, tag')
+      .eq('user_id', session.user.id)
+    const map = {}
+    const tagSet = new Set()
+    for (const row of data || []) {
+      if (!map[row.book_id]) map[row.book_id] = []
+      map[row.book_id].push(row.tag)
+      tagSet.add(row.tag)
+    }
+    setTagMap(map)
+    setAllTags([...tagSet].sort())
   }
 
   // Fetch covers from Open Library for books that don't have one
@@ -175,6 +195,7 @@ export default function Library({ session }) {
   const filtered = books
     .filter(e => filter === 'all' || e.read_status === filter)
     .filter(e => !searchLower || e.books.title.toLowerCase().includes(searchLower) || (e.books.author || '').toLowerCase().includes(searchLower))
+    .filter(e => !selectedTag || (tagMap[e.books.id] || []).includes(selectedTag))
 
   function sortEntries(arr) {
     switch (sort) {
@@ -467,6 +488,28 @@ export default function Library({ session }) {
           ))}
         </div>
 
+        {/* Tag filter row */}
+        {allTags.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: theme.textSubtle, fontWeight: 500, flexShrink: 0 }}>🏷️ Tags:</span>
+            <button
+              style={selectedTag === null ? s.filterActive : s.filterInactive}
+              onClick={() => setSelectedTag(null)}
+            >
+              All
+            </button>
+            {allTags.map(tag => (
+              <button
+                key={tag}
+                style={selectedTag === tag ? s.filterActive : s.filterInactive}
+                onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Sort + Select toggle */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
           {isMobile ? (
@@ -560,10 +603,35 @@ export default function Library({ session }) {
           </div>
         </div>
 
-        {/* Import button */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        {/* Import / Export buttons */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
           <button style={{ ...s.filterInactive, color: theme.sage, borderColor: theme.sage }} onClick={() => setShowImport(true)}>
             📥 Import from Goodreads
+          </button>
+          <button style={{ ...s.filterInactive, color: theme.sage, borderColor: theme.sage }} onClick={() => {
+            const STATUS_LABELS = { owned: 'In Library', read: 'Read', reading: 'Reading', want: 'Want to Read' }
+            const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`
+            const header = ['Title', 'Author', 'Status', 'Rating', 'Genre', 'Year', 'ISBN', 'Date Added']
+            const rows = books.map(b => [
+              escape(b.books?.title),
+              escape(b.books?.author),
+              escape(STATUS_LABELS[b.read_status] ?? b.read_status),
+              escape(b.user_rating ?? ''),
+              escape(b.books?.genre),
+              escape(b.books?.published_year),
+              escape(b.books?.isbn_13),
+              escape(b.added_at ? new Date(b.added_at).toLocaleDateString() : ''),
+            ])
+            const csv = [header.join(','), ...rows.map(r => r.join(','))].join('\n')
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = 'my-library.csv'
+            a.click()
+            URL.revokeObjectURL(url)
+          }}>
+            📤 Export as CSV
           </button>
         </div>
 

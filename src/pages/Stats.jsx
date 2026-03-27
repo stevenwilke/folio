@@ -6,6 +6,37 @@ import { useIsMobile } from '../hooks/useIsMobile'
 
 const CHART_COLORS = ['#c0521e', '#5a7a5a', '#b8860b', '#4a6b8a', '#7b4f3a', '#8b5e83', '#3d6b6b']
 
+function computeStreaks(entries) {
+  if (!entries.length) return { current: 0, longest: 0 }
+  const days = new Set(entries.map(e => e.added_at?.slice(0, 10)).filter(Boolean))
+  const sorted = [...days].sort()
+  let longest = 1, run = 1
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = new Date(sorted[i-1])
+    const curr = new Date(sorted[i])
+    const diff = (curr - prev) / 86400000
+    if (diff === 1) { run++; longest = Math.max(longest, run) }
+    else run = 1
+  }
+  const today = new Date().toISOString().slice(0, 10)
+  let current = 0, check = today
+  while (days.has(check)) {
+    current++
+    const d = new Date(check); d.setDate(d.getDate() - 1)
+    check = d.toISOString().slice(0, 10)
+  }
+  if (current === 0) {
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1)
+    check = yesterday.toISOString().slice(0, 10)
+    while (days.has(check)) {
+      current++
+      const d = new Date(check); d.setDate(d.getDate() - 1)
+      check = d.toISOString().slice(0, 10)
+    }
+  }
+  return { current, longest }
+}
+
 export default function Stats({ session }) {
   const { theme } = useTheme()
   const isMobile = useIsMobile()
@@ -100,6 +131,18 @@ export default function Stats({ session }) {
     if (streak > 120) break // safety
   }
 
+  // ── DAILY READING STREAK ──
+  const streakEntries = entries.filter(e => e.read_status === 'read' || e.read_status === 'reading')
+  const streaks = computeStreaks(streakEntries)
+
+  // Last 30 days activity set
+  const activityDays = new Set(streakEntries.map(e => e.added_at?.slice(0, 10)).filter(Boolean))
+  const last30 = []
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i)
+    last30.push(d.toISOString().slice(0, 10))
+  }
+
   const s = {
     page:    { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
     content: { maxWidth: 960, margin: '0 auto', padding: isMobile ? '16px 16px 60px' : '32px 32px 60px' },
@@ -174,6 +217,55 @@ export default function Stats({ session }) {
                   <div style={s.statLabel}>{label}</div>
                 </div>
               ))}
+            </div>
+
+            {/* ── READING STREAK CARD ── */}
+            <div style={{ ...s.chartCard, marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 22 }}>🔥</span>
+                    <span style={{ ...s.chartTitle, marginBottom: 0 }}>Reading Streak</span>
+                  </div>
+                  {streaks.current > 0 ? (
+                    <>
+                      <div style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 32, fontWeight: 700, color: theme.rust, lineHeight: 1.1, marginBottom: 2 }}>
+                        {streaks.current} day{streaks.current !== 1 ? 's' : ''}
+                      </div>
+                      <div style={{ fontSize: 13, color: theme.textSubtle }}>
+                        Best: {streaks.longest} day{streaks.longest !== 1 ? 's' : ''}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 32, fontWeight: 700, color: theme.textSubtle, lineHeight: 1.1, marginBottom: 2 }}>
+                        0 days
+                      </div>
+                      <div style={{ fontSize: 13, color: theme.textSubtle, fontStyle: 'italic' }}>
+                        Start reading today to build your streak!
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                  <div style={{ fontSize: 11, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.8 }}>Last 30 days</div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 220 }}>
+                    {last30.map(day => (
+                      <div
+                        key={day}
+                        title={day}
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          background: activityDays.has(day) ? '#5a7a5a' : '#e8e0d0',
+                          flexShrink: 0,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div style={s.twoCol}>

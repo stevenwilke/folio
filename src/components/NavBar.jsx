@@ -156,6 +156,7 @@ export default function NavBar({ session, extra }) {
                   onViewMarketplace={() => { setShowBell(false); navigate('/marketplace') }}
                   onNavigate={username => { setShowBell(false); navigate(`/profile/${username}`) }}
                   onClose={() => setShowBell(false)}
+                  onViewAll={() => { setShowBell(false); navigate('/notifications') }}
                 />
               )}
             </div>
@@ -197,6 +198,7 @@ export default function NavBar({ session, extra }) {
                   onViewMarketplace={() => { setShowBell(false); navigate('/marketplace') }}
                   onNavigate={username => { setShowBell(false); navigate(`/profile/${username}`) }}
                   onClose={() => setShowBell(false)}
+                  onViewAll={() => { setShowBell(false); navigate('/notifications') }}
                 />
               )}
             </div>
@@ -303,7 +305,7 @@ function MenuItem({ icon, label, onClick, danger }) {
 }
 
 // ---- NOTIFICATIONS DROPDOWN ----
-function NotificationsDropdown({ friendReqs, borrowNotifs, orderNotifs, onRespondFriend, onViewLoans, onViewMarketplace, onNavigate }) {
+function NotificationsDropdown({ friendReqs, borrowNotifs, orderNotifs, onRespondFriend, onViewLoans, onViewMarketplace, onNavigate, onViewAll }) {
   const total = friendReqs.length + borrowNotifs.length + (orderNotifs || []).length
   return (
     <div style={s.dropdown}>
@@ -366,6 +368,11 @@ function NotificationsDropdown({ friendReqs, borrowNotifs, orderNotifs, onRespon
           ))}
         </>
       )}
+      <div style={{ padding: '10px 16px', borderTop: '1px solid #e8dfc8', textAlign: 'center' }}>
+        <span style={{ fontSize: 12, color: '#c0521e', cursor: 'pointer', fontWeight: 500 }} onClick={onViewAll}>
+          View all notifications →
+        </span>
+      </div>
     </div>
   )
 }

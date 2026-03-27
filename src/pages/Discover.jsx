@@ -5,6 +5,7 @@ import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { getCoverUrl } from '../lib/coverUrl'
 
 const GENRES = [
   { label: 'Fiction',            slug: 'fiction',                      emoji: '📖' },
@@ -92,6 +93,57 @@ async function searchOL(query, limit = 10) {
       year:     d.first_publish_year ?? null,
     }))
   } catch { return [] }
+}
+
+async function fetchRecommendations(userId) {
+  // 1. Get user's collection
+  const { data: myBooks } = await supabase
+    .from('collection_entries')
+    .select('book_id, user_rating, books(author, genre)')
+    .eq('user_id', userId)
+
+  if (!myBooks || myBooks.length < 3) return { recs: [], hasEnoughData: myBooks?.length >= 3 }
+
+  const myBookIds = new Set(myBooks.map(b => b.book_id))
+
+  // Find user's top authors and genres
+  const authorCount = {}, genreCount = {}
+  for (const b of myBooks) {
+    if (b.books?.author) authorCount[b.books.author] = (authorCount[b.books.author] || 0) + 1
+    if (b.books?.genre) genreCount[b.books.genre] = (genreCount[b.books.genre] || 0) + 1
+  }
+  const topAuthors = Object.entries(authorCount).sort((a,b) => b[1]-a[1]).slice(0,3).map(([a])=>a)
+  const topGenres  = Object.entries(genreCount).sort((a,b) => b[1]-a[1]).slice(0,3).map(([g])=>g)
+
+  // Find highly-rated books in other users' collections
+  const { data: candidates } = await supabase
+    .from('collection_entries')
+    .select('book_id, user_rating, books(id, title, author, genre, cover_image_url, isbn_13, isbn_10)')
+    .neq('user_id', userId)
+    .not('user_rating', 'is', null)
+    .gte('user_rating', 4)
+    .limit(200)
+
+  // Score and filter
+  const scored = {}
+  for (const c of (candidates || [])) {
+    const book = c.books
+    if (!book || myBookIds.has(c.book_id)) continue
+    const id = c.book_id
+    if (!scored[id]) scored[id] = { book, score: 0, reason: '', ratings: [] }
+    scored[id].ratings.push(c.user_rating)
+    if (topAuthors.includes(book.author)) { scored[id].score += 3; if (!scored[id].reason) scored[id].reason = `More by ${book.author}` }
+    else if (topGenres.includes(book.genre)) { scored[id].score += 1; if (!scored[id].reason) scored[id].reason = `Popular in ${book.genre}` }
+    scored[id].score += (c.user_rating || 0) * 0.1
+  }
+
+  const recs = Object.values(scored)
+    .filter(s => s.score > 0)
+    .sort((a,b) => b.score - a.score)
+    .slice(0, 12)
+    .map(s => ({ ...s.book, _reason: s.reason, _avgRating: Math.round(s.ratings.reduce((a,b)=>a+b,0)/s.ratings.length * 10) / 10 }))
+
+  return { recs, hasEnoughData: true }
 }
 
 function titleKey(title, author) {
@@ -331,6 +383,27 @@ function AuthorCard({ book, onPreview, myBookIds }) {
   )
 }
 
+function RecommendationCard({ book, theme, onView }) {
+  const [hover, setHover] = useState(false)
+  const url = getCoverUrl(book)
+  const colors = ['#7b4f3a','#4a6b8a','#5a7a5a','#8b2500','#b8860b','#3d5a5a']
+  const c = colors[(book.title||'').charCodeAt(0) % colors.length]
+  const c2 = colors[((book.title||'').charCodeAt(0)+3) % colors.length]
+  return (
+    <div onClick={onView} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{ flexShrink: 0, width: 120, cursor: 'pointer', transform: hover ? 'translateY(-2px)' : 'none', transition: 'transform 0.15s' }}>
+      <div style={{ width: 120, height: 160, borderRadius: 8, overflow: 'hidden', background: `linear-gradient(135deg,${c},${c2})`, marginBottom: 8, boxShadow: hover ? '0 6px 18px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.1)' }}>
+        {url && <img src={url} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => e.target.style.display = 'none'} />}
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: theme.text, lineHeight: 1.3, marginBottom: 4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{book.title}</div>
+      <div style={{ fontSize: 11, color: theme.textSubtle, marginBottom: 4 }}>{book.author}</div>
+      {book._reason && (
+        <div style={{ fontSize: 10, background: 'rgba(192,82,30,0.1)', color: '#c0521e', borderRadius: 10, padding: '2px 7px', display: 'inline-block' }}>{book._reason}</div>
+      )}
+    </div>
+  )
+}
+
 function BookRow({ books, myBookIds, onPreview, loading }) {
   const { theme } = useTheme()
   const s = makeStyles(theme)
@@ -377,10 +450,23 @@ export default function Discover({ session }) {
   const [genreBooks,  setGenreBooks]  = useState([])
   const [genreLoad,   setGenreLoad]   = useState(false)
 
+  const [recommendations, setRecommendations] = useState([])
+  const [recsLoading,     setRecsLoading]     = useState(true)
+  const [hasEnoughData,   setHasEnoughData]   = useState(true)
+
   const [previewBook,  setPreviewBook]  = useState(null)   // OL book object for quick preview
   const [selectedBook, setSelectedBook] = useState(null)   // Supabase UUID for full detail
 
   const s = makeStyles(theme, isMobile)
+
+  useEffect(() => {
+    if (!session) return
+    fetchRecommendations(session.user.id).then(({ recs, hasEnoughData }) => {
+      setRecommendations(recs)
+      setHasEnoughData(hasEnoughData)
+      setRecsLoading(false)
+    })
+  }, [session?.user?.id])
 
   useEffect(() => {
     async function init() {
@@ -629,6 +715,26 @@ export default function Discover({ session }) {
           <h1 style={s.pageTitle}>Discover</h1>
           <p  style={s.pageSub}>Find your next great read</p>
         </div>
+
+        {/* Recommendations */}
+        {!recsLoading && hasEnoughData && recommendations.length > 0 && (
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text, marginBottom: 4 }}>
+              🔮 Recommended For You
+            </div>
+            <div style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 14 }}>Based on your reading history</div>
+            <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8, WebkitOverflowScrolling: 'touch' }}>
+              {recommendations.map(book => (
+                <RecommendationCard key={book.id} book={book} theme={theme} onView={() => setSelectedBook(book.id)} />
+              ))}
+            </div>
+          </div>
+        )}
+        {!recsLoading && !hasEnoughData && (
+          <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '20px 24px', marginBottom: 28, fontSize: 14, color: theme.textSubtle }}>
+            🔮 Add at least 3 books to your library to get personalized recommendations!
+          </div>
+        )}
 
         {/* Trending in Your Network */}
         <section style={s.section}>

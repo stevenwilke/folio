@@ -43,6 +43,11 @@ export default function Library({ session }) {
   const [selectedIds, setSelectedIds]   = useState(new Set())
   const [bulkStatus, setBulkStatus]     = useState('')
   const [bulkWorking, setBulkWorking]   = useState(false)
+  const [viewMode,  setViewMode]  = useState(() => localStorage.getItem('exlibris-view-mode')  || 'grid')
+  const [coverSize, setCoverSize] = useState(() => localStorage.getItem('exlibris-cover-size') || 'md')
+
+  function changeViewMode(v)  { setViewMode(v);  localStorage.setItem('exlibris-view-mode',  v) }
+  function changeCoverSize(s) { setCoverSize(s); localStorage.setItem('exlibris-cover-size', s) }
 
   // Redirect new users with empty libraries to onboarding
   useEffect(() => {
@@ -277,7 +282,7 @@ export default function Library({ session }) {
     filterRow:      { display: 'flex', gap: isMobile ? 6 : 8, marginBottom: 24, flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' },
     filterActive:   { padding: '7px 16px', borderRadius: 8, border: 'none', background: theme.rust, color: 'white', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     filterInactive: { padding: '7px 16px', borderRadius: 8, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.text, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
-    grid:           { display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(auto-fill, minmax(148px, 1fr))', gap: isMobile ? 12 : 24 },
+    grid:           { display: 'grid', gridTemplateColumns: isMobile ? ({ sm: 'repeat(4, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(2, 1fr)' }[coverSize]) : ({ sm: 'repeat(auto-fill, minmax(100px, 1fr))', md: 'repeat(auto-fill, minmax(148px, 1fr))', lg: 'repeat(auto-fill, minmax(200px, 1fr))' }[coverSize]), gap: isMobile ? ({ sm: 8, md: 12, lg: 16 }[coverSize]) : ({ sm: 16, md: 24, lg: 28 }[coverSize]) },
     card:           { cursor: 'pointer', transition: 'transform 0.18s, box-shadow 0.18s' },
     cardHover:      { transform: 'translateY(-4px)' },
     coverWrap:      { width: '100%', aspectRatio: '2/3' },
@@ -474,21 +479,46 @@ export default function Library({ session }) {
               ))}
             </>
           )}
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
             {/* Group by */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 12, color: theme.textSubtle, fontWeight: 500, flexShrink: 0 }}>Group:</span>
-              <select
-                value={groupBy}
-                onChange={e => { setGroupBy(e.target.value); setCollapsedGroups(new Set()) }}
-                style={{ padding: '6px 10px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, background: theme.bgCard, color: groupBy !== 'none' ? theme.rust : theme.text, fontFamily: "'DM Sans', sans-serif", outline: 'none', cursor: 'pointer', fontWeight: groupBy !== 'none' ? 600 : 400 }}
-              >
-                <option value="none">None</option>
-                <option value="status">Status</option>
-                <option value="genre">Genre</option>
-                <option value="author">Author</option>
-                <option value="decade">Decade</option>
-              </select>
+            {!isMobile && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 12, color: theme.textSubtle, fontWeight: 500, flexShrink: 0 }}>Group:</span>
+                <select
+                  value={groupBy}
+                  onChange={e => { setGroupBy(e.target.value); setCollapsedGroups(new Set()) }}
+                  style={{ padding: '6px 10px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, background: theme.bgCard, color: groupBy !== 'none' ? theme.rust : theme.text, fontFamily: "'DM Sans', sans-serif", outline: 'none', cursor: 'pointer', fontWeight: groupBy !== 'none' ? 600 : 400 }}
+                >
+                  <option value="none">None</option>
+                  <option value="status">Status</option>
+                  <option value="genre">Genre</option>
+                  <option value="author">Author</option>
+                  <option value="decade">Decade</option>
+                </select>
+              </div>
+            )}
+            {/* Cover size — grid mode only */}
+            {viewMode === 'grid' && (
+              <div style={{ display: 'flex', border: `1px solid ${theme.border}`, borderRadius: 8, overflow: 'hidden' }}>
+                {[['sm','S'],['md','M'],['lg','L']].map(([sz, label], i) => (
+                  <button key={sz} onClick={() => changeCoverSize(sz)}
+                    title={{ sm: 'Small covers', md: 'Medium covers', lg: 'Large covers' }[sz]}
+                    style={{ padding: '5px 10px', border: 'none', borderLeft: i > 0 ? `1px solid ${theme.border}` : 'none', background: coverSize === sz ? theme.rust : 'transparent', color: coverSize === sz ? 'white' : theme.textSubtle, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontWeight: 600 }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* View mode toggle */}
+            <div style={{ display: 'flex', border: `1px solid ${theme.border}`, borderRadius: 8, overflow: 'hidden' }}>
+              <button onClick={() => changeViewMode('grid')} title="Grid view"
+                style={{ padding: '5px 10px', border: 'none', background: viewMode === 'grid' ? theme.rust : 'transparent', color: viewMode === 'grid' ? 'white' : theme.textSubtle, cursor: 'pointer', fontSize: 15, lineHeight: 1 }}>
+                ⊞
+              </button>
+              <button onClick={() => changeViewMode('list')} title="List view"
+                style={{ padding: '5px 10px', border: 'none', borderLeft: `1px solid ${theme.border}`, background: viewMode === 'list' ? theme.rust : 'transparent', color: viewMode === 'list' ? 'white' : theme.textSubtle, cursor: 'pointer', fontSize: 15, lineHeight: 1 }}>
+                ☰
+              </button>
             </div>
             {/* Select mode */}
             <button
@@ -555,23 +585,40 @@ export default function Library({ session }) {
                     </div>
                   )}
                   {!isCollapsed && (
-                    <div style={s.grid}>
-                      {groupEntries.map(entry => (
-                        <BookCard
-                          key={entry.id}
-                          entry={entry}
-                          listing={activeListings[entry.books.id] || null}
-                          onUpdate={fetchCollection}
-                          onSelect={() => {
-                            if (selectMode) toggleSelect(entry.id)
-                            else setSelectedBook(entry.books.id)
-                          }}
-                          onListForSale={() => setListingTarget(entry)}
-                          selectMode={selectMode}
-                          isSelected={selectedIds.has(entry.id)}
-                        />
-                      ))}
-                    </div>
+                    viewMode === 'list' ? (
+                      <div style={{ border: `1px solid ${theme.border}`, borderRadius: 10, overflow: 'hidden', background: theme.bgCard }}>
+                        {groupEntries.map((entry, idx) => (
+                          <ListRow
+                            key={entry.id}
+                            entry={entry}
+                            isLast={idx === groupEntries.length - 1}
+                            selectMode={selectMode}
+                            isSelected={selectedIds.has(entry.id)}
+                            onSelect={() => { if (selectMode) toggleSelect(entry.id); else setSelectedBook(entry.books.id) }}
+                            theme={theme}
+                            isMobile={isMobile}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={s.grid}>
+                        {groupEntries.map(entry => (
+                          <BookCard
+                            key={entry.id}
+                            entry={entry}
+                            listing={activeListings[entry.books.id] || null}
+                            onUpdate={fetchCollection}
+                            onSelect={() => {
+                              if (selectMode) toggleSelect(entry.id)
+                              else setSelectedBook(entry.books.id)
+                            }}
+                            onListForSale={() => setListingTarget(entry)}
+                            selectMode={selectMode}
+                            isSelected={selectedIds.has(entry.id)}
+                          />
+                        ))}
+                      </div>
+                    )
                   )}
                 </div>
               )
@@ -645,6 +692,69 @@ export default function Library({ session }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ---- LIST ROW ----
+function ListRow({ entry, isLast, selectMode, isSelected, onSelect, theme, isMobile }) {
+  const book    = entry.books
+  const status  = entry.read_status
+  const sc      = STATUS_COLORS[status] || {}
+  const sl      = STATUS_LABELS[status] || status
+  const [hover, setHover]       = useState(false)
+  const [imgError, setImgError] = useState(false)
+  const coverUrl = getCoverUrl(book)
+  const colors   = ['#7b4f3a','#4a6b8a','#5a7a5a','#2c3e50','#8b2500','#b8860b','#3d5a5a','#c0521e']
+  const c        = colors[book.title.charCodeAt(0) % colors.length]
+  const c2       = colors[(book.title.charCodeAt(0) + 3) % colors.length]
+
+  return (
+    <div
+      onClick={onSelect}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 14,
+        padding: isMobile ? '10px 12px' : '10px 16px',
+        background: isSelected ? 'rgba(192,82,30,0.06)' : hover ? theme.bgSubtle : 'transparent',
+        cursor: 'pointer', transition: 'background 0.1s',
+        borderBottom: isLast ? 'none' : `1px solid ${theme.borderLight}`,
+        outline: isSelected ? `2px solid ${theme.rust}` : 'none',
+        outlineOffset: -2,
+      }}
+    >
+      {/* Select checkbox */}
+      {selectMode && (
+        <div style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0, background: isSelected ? theme.rust : 'transparent', border: `2px solid ${isSelected ? theme.rust : theme.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {isSelected && <span style={{ color: 'white', fontSize: 11, fontWeight: 700 }}>✓</span>}
+        </div>
+      )}
+      {/* Thumbnail */}
+      <div style={{ width: 38, height: 57, flexShrink: 0, borderRadius: 3, overflow: 'hidden', boxShadow: '1px 2px 6px rgba(26,18,8,0.18)' }}>
+        {coverUrl && !imgError
+          ? <img src={coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setImgError(true)} />
+          : <div style={{ width: '100%', height: '100%', background: `linear-gradient(135deg, ${c}, ${c2})` }} />
+        }
+      </div>
+      {/* Title / author / meta */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: isMobile ? 13 : 14, fontWeight: 600, color: theme.text, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{book.title}</div>
+        <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 2 }}>{book.author}</div>
+        {!isMobile && (book.genre || book.published_year) && (
+          <div style={{ fontSize: 11, color: theme.textSubtle, marginTop: 3, opacity: 0.7 }}>
+            {[book.genre, book.published_year].filter(Boolean).join(' · ')}
+          </div>
+        )}
+      </div>
+      {/* Rating */}
+      {!isMobile && entry.user_rating > 0 && (
+        <div style={{ fontSize: 12, color: '#b8860b', letterSpacing: 1, flexShrink: 0 }}>
+          {'★'.repeat(entry.user_rating)}{'☆'.repeat(5 - entry.user_rating)}
+        </div>
+      )}
+      {/* Status badge */}
+      <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 20, fontWeight: 500, flexShrink: 0, background: sc.bg, color: sc.color, whiteSpace: 'nowrap' }}>{sl}</span>
     </div>
   )
 }

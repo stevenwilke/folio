@@ -87,6 +87,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [saved, setSaved]               = useState(false)
   const [listing, setListing]           = useState(null)
   const [showListingModal, setShowListingModal] = useState(false)
+  const [showLendModal,    setShowLendModal]    = useState(false)
   const [valuation, setValuation]       = useState(null)
   const [valuationLoading, setValuationLoading] = useState(true)
   const [friendStats, setFriendStats]   = useState(null)   // null = loading, [] = none
@@ -118,6 +119,8 @@ export default function BookDetail({ bookId, session, onBack }) {
     setReviewText('')
     setSaved(false)
     setListing(null)
+    setShowListingModal(false)
+    setShowLendModal(false)
     setValuation(null)
     setValuationLoading(true)
     setFriendStats(null)
@@ -487,6 +490,7 @@ export default function BookDetail({ bookId, session, onBack }) {
 
     forSaleRow:      { display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 },
     listForSaleBtn:  { padding: '7px 16px', background: 'transparent', border: `1px solid ${theme.sage}`, borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.sage },
+    lendOutBtn:      { padding: '7px 16px', background: 'transparent', border: `1px solid ${theme.gold}`, borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.gold },
     forSaleTag:      { fontSize: 13, fontWeight: 600, color: theme.sage, background: theme.sageLight, padding: '4px 12px', borderRadius: 20 },
     removeListingBtn:{ padding: '4px 10px', background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textSubtle },
     progressBarBg:   { flex: 1, height: 6, background: theme.bgSubtle, borderRadius: 3, overflow: 'hidden' },
@@ -693,9 +697,9 @@ export default function BookDetail({ bookId, session, onBack }) {
               </div>
             )}
 
-            {/* For sale row */}
-            {entry?.read_status === 'owned' && (
-              <div style={s.forSaleRow}>
+            {/* For sale / lend row */}
+            {entry && (
+              <div style={{ ...s.forSaleRow, flexWrap: 'wrap', gap: 8 }}>
                 {listing ? (
                   <>
                     <span style={s.forSaleTag}>
@@ -707,9 +711,12 @@ export default function BookDetail({ bookId, session, onBack }) {
                   </>
                 ) : (
                   <button style={s.listForSaleBtn} onClick={() => setShowListingModal(true)}>
-                    List for Sale
+                    🏷️ List for Sale
                   </button>
                 )}
+                <button style={s.lendOutBtn} onClick={() => setShowLendModal(true)}>
+                  🤝 Lend Out
+                </button>
               </div>
             )}
 
@@ -754,6 +761,16 @@ export default function BookDetail({ bookId, session, onBack }) {
             book={book}
             onClose={() => setShowListingModal(false)}
             onSuccess={(newListing) => { setListing(newListing); setShowListingModal(false) }}
+          />
+        )}
+
+        {/* Lend out modal */}
+        {showLendModal && book && (
+          <LendOutModal
+            session={session}
+            book={book}
+            theme={theme}
+            onClose={() => setShowLendModal(false)}
           />
         )}
 
@@ -1130,6 +1147,150 @@ function ListingModal({ session, book, onClose, onSuccess }) {
               Cancel
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- LEND OUT MODAL ----
+function LendOutModal({ session, book, theme, onClose }) {
+  const [friends,       setFriends]       = useState([])
+  const [friendId,      setFriendId]      = useState('')
+  const [message,       setMessage]       = useState('')
+  const [returnDate,    setReturnDate]    = useState('')
+  const [submitting,    setSubmitting]    = useState(false)
+  const [done,          setDone]          = useState(false)
+  const [error,         setError]         = useState('')
+
+  useEffect(() => {
+    async function loadFriends() {
+      const { data: fs } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id, profiles!friendships_requester_id_fkey(id,username), profiles!friendships_addressee_id_fkey(id,username)')
+        .eq('status', 'accepted')
+        .or(`requester_id.eq.${session.user.id},addressee_id.eq.${session.user.id}`)
+      const list = (fs || []).map(f => {
+        const isRequester = f.requester_id === session.user.id
+        const p = isRequester
+          ? f['profiles!friendships_addressee_id_fkey']
+          : f['profiles!friendships_requester_id_fkey']
+        return p
+      }).filter(Boolean)
+      setFriends(list)
+      if (list.length) setFriendId(list[0].id)
+    }
+    loadFriends()
+  }, [])
+
+  async function submit() {
+    if (!friendId) { setError('Please select a friend.'); return }
+    setSubmitting(true)
+    setError('')
+    const { error: err } = await supabase
+      .from('borrow_requests')
+      .insert({
+        requester_id: friendId,
+        owner_id:     session.user.id,
+        book_id:      book.id,
+        status:       'pending',
+        message:      message.trim() || `${session.user.email?.split('@')[0] || 'Someone'} wants to lend you this book!`,
+        return_date:  returnDate || null,
+      })
+    if (err) {
+      setError('Could not send request. Please try again.')
+      setSubmitting(false)
+    } else {
+      setDone(true)
+    }
+  }
+
+  const overlay = { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+  const box     = { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 400, maxWidth: '92vw', padding: 0, overflow: 'hidden' }
+  const head    = { padding: '18px 20px 14px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }
+  const body    = { padding: '20px 20px 24px' }
+  const label   = { display: 'block', fontSize: 11, fontWeight: 600, color: theme.textSubtle, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }
+  const select  = { width: '100%', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", background: theme.bgCard, color: theme.text, outline: 'none' }
+  const input   = { width: '100%', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", background: theme.bgCard, color: theme.text, outline: 'none', boxSizing: 'border-box' }
+  const textarea= { ...input, resize: 'vertical', minHeight: 72, lineHeight: 1.5 }
+  const btnPrim = { padding: '9px 22px', background: theme.gold, color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }
+  const btnSec  = { padding: '9px 16px', background: 'transparent', color: theme.textSubtle, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }
+
+  return (
+    <div style={overlay} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={box}>
+        <div style={head}>
+          <div>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: theme.text }}>🤝 Lend Out</div>
+            <div style={{ fontSize: 13, color: theme.textSubtle, marginTop: 2 }}>{book.title}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: theme.textSubtle, lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={body}>
+          {done ? (
+            <div style={{ textAlign: 'center', padding: '20px 0' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🎉</div>
+              <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: theme.text, marginBottom: 8 }}>Offer sent!</div>
+              <div style={{ fontSize: 14, color: theme.textSubtle, marginBottom: 20 }}>
+                Your friend will see the borrow request in their Loans page.
+              </div>
+              <button style={btnPrim} onClick={onClose}>Done</button>
+            </div>
+          ) : (
+            <>
+              {friends.length === 0 ? (
+                <div style={{ fontSize: 14, color: theme.textSubtle, textAlign: 'center', padding: '20px 0' }}>
+                  Add friends first to lend books to them.
+                </div>
+              ) : (
+                <>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={label}>Lend to</label>
+                    <select
+                      value={friendId}
+                      onChange={e => setFriendId(e.target.value)}
+                      style={select}
+                    >
+                      {friends.map(f => (
+                        <option key={f.id} value={f.id}>{f.username}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={label}>Return by (optional)</label>
+                    <input
+                      type="date"
+                      value={returnDate}
+                      onChange={e => setReturnDate(e.target.value)}
+                      min={new Date().toISOString().slice(0, 10)}
+                      style={input}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={label}>Message (optional)</label>
+                    <textarea
+                      value={message}
+                      onChange={e => setMessage(e.target.value)}
+                      placeholder="I think you'd love this one!"
+                      style={textarea}
+                    />
+                  </div>
+
+                  {error && <div style={{ fontSize: 13, color: '#c0521e', marginBottom: 12 }}>{error}</div>}
+
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                    <button style={btnSec} onClick={onClose}>Cancel</button>
+                    <button style={btnPrim} onClick={submit} disabled={submitting}>
+                      {submitting ? 'Sending…' : 'Send Offer'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

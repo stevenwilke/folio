@@ -159,7 +159,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Ex Libris <noreply@exlibris.app>',
+        from: 'Ex Libris <noreply@exlibrisomnium.com>',
         to: user.email,
         subject,
         html,

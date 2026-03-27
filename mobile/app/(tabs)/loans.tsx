@@ -11,6 +11,10 @@ import {
   RefreshControl,
   Image,
   ScrollView,
+  Modal,
+  TextInput,
+  Alert,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -39,6 +43,19 @@ interface BorrowRequest {
 }
 
 type LoanMode = 'lend-pending' | 'lend-active' | 'borrow-pending' | 'borrow-active' | 'history';
+
+interface Friend {
+  id: string;
+  username: string;
+}
+
+interface FriendBook {
+  entry_id: string;
+  book_id: string;
+  title: string;
+  author: string | null;
+  cover_image_url: string | null;
+}
 
 // ---- Status badge ----
 
@@ -319,11 +336,27 @@ export default function LoansScreen() {
   const [borrowing, setBorrowing] = useState<BorrowRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [tab, setTab] = useState<'lending' | 'borrowing'>('lending');
+  const [tab, setTab] = useState<'lending' | 'borrowing' | 'browse'>('lending');
+
+  // Browse tab state
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+  const [friendBooks, setFriendBooks] = useState<FriendBook[]>([]);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // Borrow request modal
+  const [borrowModalVisible, setBorrowModalVisible] = useState(false);
+  const [borrowTargetBook, setBorrowTargetBook] = useState<FriendBook | null>(null);
+  const [borrowMessage, setBorrowMessage] = useState('');
+  const [borrowDueDate, setBorrowDueDate] = useState('');
+  const [borrowSubmitting, setBorrowSubmitting] = useState(false);
 
   async function fetchLoans() {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) return;
+    setCurrentUserId(user.id);
 
     const [{ data: lendData }, { data: borrowData }] = await Promise.all([
       supabase
@@ -348,6 +381,75 @@ export default function LoansScreen() {
 
     setLending((lendData as unknown as BorrowRequest[]) || []);
     setBorrowing((borrowData as unknown as BorrowRequest[]) || []);
+
+    // Fetch friends for Browse tab
+    const { data: friendships } = await supabase
+      .from('friendships')
+      .select('requester_id, addressee_id, profiles!friendships_requester_id_fkey ( id, username ), addressee:profiles!friendships_addressee_id_fkey ( id, username )')
+      .eq('status', 'accepted')
+      .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+
+    if (friendships) {
+      const mapped: Friend[] = friendships.map((f: any) => {
+        if (f.requester_id === user.id) {
+          return { id: f.addressee?.id ?? '', username: f.addressee?.username ?? '' };
+        } else {
+          return { id: f.profiles?.id ?? '', username: f.profiles?.username ?? '' };
+        }
+      }).filter((f) => f.id);
+      setFriends(mapped);
+    }
+  }
+
+  async function fetchFriendBooks(friendId: string) {
+    setBrowseLoading(true);
+    try {
+      const { data } = await supabase
+        .from('collection_entries')
+        .select('id, book_id, books ( id, title, author, cover_image_url )')
+        .eq('user_id', friendId)
+        .eq('read_status', 'owned');
+
+      if (data) {
+        const mapped: FriendBook[] = data.map((e: any) => ({
+          entry_id: e.id,
+          book_id: e.book_id,
+          title: e.books?.title ?? 'Unknown',
+          author: e.books?.author ?? null,
+          cover_image_url: e.books?.cover_image_url ?? null,
+        }));
+        setFriendBooks(mapped);
+      }
+    } finally {
+      setBrowseLoading(false);
+    }
+  }
+
+  async function handleBorrowRequest() {
+    if (!borrowTargetBook || !selectedFriendId || !currentUserId) return;
+    setBorrowSubmitting(true);
+    try {
+      const { error } = await supabase.from('borrow_requests').insert({
+        requester_id: currentUserId,
+        owner_id: selectedFriendId,
+        book_id: borrowTargetBook.book_id,
+        message: borrowMessage.trim() || null,
+        due_date: borrowDueDate.trim() || null,
+        status: 'pending',
+      });
+      if (error) throw error;
+      setBorrowMessage('');
+      setBorrowDueDate('');
+      setBorrowModalVisible(false);
+      setBorrowTargetBook(null);
+      Alert.alert('Request sent!', 'Your borrow request has been sent.');
+      setTab('borrowing');
+      await fetchLoans();
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Could not send borrow request.');
+    } finally {
+      setBorrowSubmitting(false);
+    }
   }
 
   async function handleAction(id: string, action: string) {
@@ -511,13 +613,96 @@ export default function LoansScreen() {
     );
   }
 
+  function renderBrowseContent() {
+    if (!friends.length) {
+      return (
+        <View style={styles.empty}>
+          <Text style={styles.emptyIcon}>👥</Text>
+          <Text style={styles.emptyTitle}>No friends yet</Text>
+          <Text style={styles.emptySubtitle}>
+            Add friends to browse their libraries and request books.
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.rust} />}
+      >
+        {/* Friend chips */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={br.chipRow}>
+          {friends.map((f) => (
+            <TouchableOpacity
+              key={f.id}
+              style={[br.friendChip, selectedFriendId === f.id && br.friendChipActive]}
+              onPress={() => {
+                setSelectedFriendId(f.id);
+                setFriendBooks([]);
+                fetchFriendBooks(f.id);
+              }}
+            >
+              <Text style={[br.friendChipText, selectedFriendId === f.id && br.friendChipTextActive]}>
+                {f.username}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {selectedFriendId ? (
+          browseLoading ? (
+            <View style={{ paddingTop: 40, alignItems: 'center' }}>
+              <ActivityIndicator size="large" color={Colors.rust} />
+            </View>
+          ) : friendBooks.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>No owned books</Text>
+              <Text style={styles.emptySubtitle}>This friend hasn't marked any books as owned.</Text>
+            </View>
+          ) : (
+            <View>
+              {friendBooks.map((book) => (
+                <View key={book.book_id} style={br.bookRow}>
+                  <View style={br.coverBox}>
+                    {book.cover_image_url ? (
+                      <Image source={{ uri: book.cover_image_url }} style={br.coverImg} resizeMode="cover" />
+                    ) : (
+                      <MiniCover title={book.title} />
+                    )}
+                  </View>
+                  <View style={br.bookInfo}>
+                    <Text style={br.bookTitle} numberOfLines={2}>{book.title}</Text>
+                    {book.author ? <Text style={br.bookAuthor}>{book.author}</Text> : null}
+                    <TouchableOpacity
+                      style={br.requestBtn}
+                      onPress={() => {
+                        setBorrowTargetBook(book);
+                        setBorrowModalVisible(true);
+                      }}
+                    >
+                      <Text style={br.requestBtnText}>Request to Borrow</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )
+        ) : (
+          <View style={styles.empty}>
+            <Text style={styles.emptySubtitle}>Select a friend above to browse their library.</Text>
+          </View>
+        )}
+      </ScrollView>
+    );
+  }
+
   return (
     <View style={styles.root}>
       {/* Pill tab switcher */}
       <View style={styles.tabBar}>
-        {(['lending', 'borrowing'] as const).map((t) => {
+        {(['lending', 'borrowing', 'browse'] as const).map((t) => {
           const isActive = tab === t;
-          const count = t === 'lending' ? lendPending.length : borPending.length;
+          const count = t === 'lending' ? lendPending.length : t === 'borrowing' ? borPending.length : 0;
           return (
             <TouchableOpacity
               key={t}
@@ -525,7 +710,7 @@ export default function LoansScreen() {
               onPress={() => setTab(t)}
             >
               <Text style={[styles.tabPillText, isActive && styles.tabPillTextActive]}>
-                {t === 'lending' ? 'Lending Out' : 'Borrowing'}
+                {t === 'lending' ? 'Lending Out' : t === 'borrowing' ? 'Borrowing' : 'Browse'}
               </Text>
               {count > 0 && (
                 <View style={styles.tabBadge}>
@@ -543,9 +728,81 @@ export default function LoansScreen() {
         </View>
       ) : tab === 'lending' ? (
         renderLendingContent()
-      ) : (
+      ) : tab === 'borrowing' ? (
         renderBorrowingContent()
+      ) : (
+        renderBrowseContent()
       )}
+
+      {/* Borrow Request Modal */}
+      <Modal
+        visible={borrowModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setBorrowModalVisible(false)}
+      >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <View style={brm.container}>
+            <View style={brm.header}>
+              <Text style={brm.headerTitle}>Request to Borrow</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setBorrowModalVisible(false);
+                  setBorrowTargetBook(null);
+                  setBorrowMessage('');
+                  setBorrowDueDate('');
+                }}
+                style={brm.closeBtn}
+              >
+                <Text style={brm.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={brm.content}>
+              {borrowTargetBook && (
+                <View style={brm.bookSummary}>
+                  <Text style={brm.bookTitle}>{borrowTargetBook.title}</Text>
+                  {borrowTargetBook.author ? (
+                    <Text style={brm.bookAuthor}>{borrowTargetBook.author}</Text>
+                  ) : null}
+                </View>
+              )}
+
+              <Text style={brm.label}>Message (optional)</Text>
+              <TextInput
+                style={[brm.input, brm.textarea]}
+                value={borrowMessage}
+                onChangeText={setBorrowMessage}
+                placeholder="Why you'd like to borrow this book…"
+                placeholderTextColor={Colors.muted}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+
+              <Text style={brm.label}>Return Date (optional)</Text>
+              <TextInput
+                style={brm.input}
+                value={borrowDueDate}
+                onChangeText={setBorrowDueDate}
+                placeholder="e.g. 2026-04-30"
+                placeholderTextColor={Colors.muted}
+              />
+
+              <TouchableOpacity
+                style={[brm.submitBtn, borrowSubmitting && { opacity: 0.6 }]}
+                onPress={handleBorrowRequest}
+                disabled={borrowSubmitting}
+              >
+                {borrowSubmitting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={brm.submitBtnText}>Send Request</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -639,6 +896,154 @@ const styles = StyleSheet.create({
     color: Colors.muted,
     textAlign: 'center',
     lineHeight: 20,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+});
+
+// ---- Browse tab styles ----
+
+const br = StyleSheet.create({
+  chipRow: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    gap: 8,
+  },
+  friendChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  friendChipActive: {
+    backgroundColor: Colors.rust,
+    borderColor: Colors.rust,
+  },
+  friendChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  friendChipTextActive: { color: '#fff' },
+  bookRow: {
+    flexDirection: 'row',
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 12,
+    marginBottom: 10,
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  coverBox: { width: 52, height: 78, borderRadius: 4, overflow: 'hidden', backgroundColor: '#e8dfc8', flexShrink: 0 },
+  coverImg: { width: '100%', height: '100%' },
+  bookInfo: { flex: 1, gap: 4 },
+  bookTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.ink,
+    lineHeight: 19,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  bookAuthor: {
+    fontSize: 12,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  requestBtn: {
+    marginTop: 8,
+    backgroundColor: Colors.rust,
+    borderRadius: 8,
+    paddingVertical: 7,
+    alignItems: 'center',
+  },
+  requestBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+});
+
+// ---- Borrow request modal styles ----
+
+const brm = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.background },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    backgroundColor: Colors.card,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  closeBtn: { padding: 4 },
+  closeBtnText: { fontSize: 16, color: Colors.muted },
+  content: { padding: 20, paddingBottom: 48 },
+  bookSummary: {
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 16,
+    marginBottom: 20,
+    gap: 4,
+  },
+  bookTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  bookAuthor: {
+    fontSize: 13,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+    marginTop: 16,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  input: {
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  textarea: { minHeight: 80, textAlignVertical: 'top' },
+  submitBtn: {
+    marginTop: 28,
+    backgroundColor: Colors.rust,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  submitBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
 });

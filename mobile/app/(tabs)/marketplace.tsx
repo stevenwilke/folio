@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   ScrollView,
   Alert,
   KeyboardAvoidingView,
+  Modal,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -62,6 +63,33 @@ interface OwnedBook {
   };
 }
 
+interface Order {
+  id: string;
+  listing_id: string;
+  buyer_id: string;
+  seller_id: string;
+  price: number;
+  status: string;
+  buyer_message: string | null;
+  shipping_address: string;
+  created_at: string;
+  listings?: {
+    books?: {
+      title: string;
+      author: string | null;
+    } | null;
+  } | null;
+  buyer_profile?: {
+    username: string;
+  } | null;
+  seller_profile?: {
+    username: string;
+  } | null;
+  // For seller incoming orders
+  book_title?: string;
+  buyer_username?: string;
+}
+
 // ---- Condition badge ----
 
 function CondBadge({ condition }: { condition: string }) {
@@ -80,13 +108,31 @@ const cb = StyleSheet.create({
 // ---- Status badge ----
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-  active:  { label: 'Active',  color: Colors.sage, bg: 'rgba(90,122,90,0.15)' },
-  sold:    { label: 'Sold',    color: Colors.muted, bg: 'rgba(138,127,114,0.15)' },
-  removed: { label: 'Removed', color: Colors.rust,  bg: 'rgba(192,82,30,0.10)' },
+  active:    { label: 'Active',    color: Colors.sage,  bg: 'rgba(90,122,90,0.15)' },
+  sold:      { label: 'Sold',      color: Colors.muted, bg: 'rgba(138,127,114,0.15)' },
+  removed:   { label: 'Removed',   color: Colors.rust,  bg: 'rgba(192,82,30,0.10)' },
+};
+
+const ORDER_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  pending:   { label: 'Pending',   color: Colors.gold,  bg: 'rgba(184,134,11,0.14)' },
+  confirmed: { label: 'Confirmed', color: Colors.sage,  bg: 'rgba(90,122,90,0.15)' },
+  shipped:   { label: 'Shipped',   color: Colors.rust,  bg: 'rgba(192,82,30,0.12)' },
+  completed: { label: 'Completed', color: Colors.success, bg: 'rgba(22,163,74,0.12)' },
+  cancelled: { label: 'Cancelled', color: Colors.muted, bg: 'rgba(138,127,114,0.12)' },
+  declined:  { label: 'Declined',  color: Colors.muted, bg: 'rgba(138,127,114,0.12)' },
 };
 
 function StatusBadge({ status }: { status: string }) {
   const meta = STATUS_META[status] ?? STATUS_META.active;
+  return (
+    <View style={[cb.pill, { backgroundColor: meta.bg }]}>
+      <Text style={[cb.text, { color: meta.color }]}>{meta.label}</Text>
+    </View>
+  );
+}
+
+function OrderStatusBadge({ status }: { status: string }) {
+  const meta = ORDER_STATUS_META[status] ?? ORDER_STATUS_META.pending;
   return (
     <View style={[cb.pill, { backgroundColor: meta.bg }]}>
       <Text style={[cb.text, { color: meta.color }]}>{meta.label}</Text>
@@ -108,10 +154,226 @@ function MiniCover({ title }: { title: string }) {
   );
 }
 
+// ---- Buy Now Modal ----
+
+function BuyNowModal({
+  visible,
+  listing,
+  userId,
+  onClose,
+  onSuccess,
+}: {
+  visible: boolean;
+  listing: Listing | null;
+  userId: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [message, setMessage] = useState('');
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  function reset() {
+    setMessage('');
+    setShippingAddress('');
+  }
+
+  async function handlePlaceOrder() {
+    if (!listing) return;
+    if (!shippingAddress.trim()) {
+      Alert.alert('Shipping address required', 'Please enter your shipping address.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { error } = await supabase.from('orders').insert({
+        listing_id: listing.id,
+        buyer_id: userId,
+        seller_id: listing.profiles?.id,
+        price: listing.price,
+        status: 'pending',
+        buyer_message: message.trim() || null,
+        shipping_address: shippingAddress.trim(),
+      });
+      if (error) throw error;
+      reset();
+      onClose();
+      Alert.alert('Order placed!', 'Your order has been sent to the seller.');
+      onSuccess();
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Could not place order.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!listing) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <View style={bm.container}>
+          <View style={bm.header}>
+            <Text style={bm.headerTitle}>Place Order</Text>
+            <TouchableOpacity onPress={() => { reset(); onClose(); }} style={bm.closeBtn}>
+              <Text style={bm.closeBtnText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={bm.content}>
+            <View style={bm.bookSummary}>
+              <Text style={bm.bookTitle}>{listing.books.title}</Text>
+              {listing.books.author ? (
+                <Text style={bm.bookAuthor}>{listing.books.author}</Text>
+              ) : null}
+              <Text style={bm.price}>${Number(listing.price).toFixed(2)}</Text>
+              {listing.profiles ? (
+                <Text style={bm.seller}>Sold by <Text style={bm.sellerName}>{listing.profiles.username}</Text></Text>
+              ) : null}
+            </View>
+
+            <Text style={bm.label}>Message to Seller (optional)</Text>
+            <TextInput
+              style={bm.input}
+              value={message}
+              onChangeText={setMessage}
+              placeholder="Any notes for the seller…"
+              placeholderTextColor={Colors.muted}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+
+            <Text style={bm.label}>Shipping Address *</Text>
+            <TextInput
+              style={[bm.input, bm.textarea]}
+              value={shippingAddress}
+              onChangeText={setShippingAddress}
+              placeholder="Enter your full shipping address"
+              placeholderTextColor={Colors.muted}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+
+            <TouchableOpacity
+              style={[bm.submitBtn, submitting && { opacity: 0.6 }]}
+              onPress={handlePlaceOrder}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={bm.submitBtnText}>Place Order</Text>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const bm = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.background },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    backgroundColor: Colors.card,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  closeBtn: { padding: 4 },
+  closeBtnText: { fontSize: 16, color: Colors.muted },
+  content: { padding: 20, paddingBottom: 48 },
+  bookSummary: {
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 16,
+    marginBottom: 20,
+    gap: 4,
+  },
+  bookTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  bookAuthor: {
+    fontSize: 13,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  price: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.gold,
+    marginTop: 6,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  seller: {
+    fontSize: 12,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  sellerName: { color: Colors.rust, fontWeight: '600' },
+  label: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+    marginTop: 16,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  input: {
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  textarea: { minHeight: 80, textAlignVertical: 'top' },
+  submitBtn: {
+    marginTop: 28,
+    backgroundColor: Colors.rust,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  submitBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+});
+
 // ---- Browse listing card ----
 
-function ListingCard({ listing }: { listing: Listing }) {
-  const router = useRouter();
+function ListingCard({
+  listing,
+  onBuyNow,
+}: {
+  listing: Listing;
+  onBuyNow: (listing: Listing) => void;
+}) {
   const book = listing.books;
   const seller = listing.profiles;
 
@@ -147,9 +409,9 @@ function ListingCard({ listing }: { listing: Listing }) {
 
         <TouchableOpacity
           style={lcard.contactBtn}
-          onPress={() => Alert.alert('Message Seller', `Message @${seller?.username ?? 'seller'} about this book.\n\nMessaging coming soon!`)}
+          onPress={() => onBuyNow(listing)}
         >
-          <Text style={lcard.contactBtnText}>Message Seller</Text>
+          <Text style={lcard.contactBtnText}>Buy Now</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -310,6 +572,122 @@ const mlc = StyleSheet.create({
   btnSoldText: { color: '#fff', fontSize: 12, fontWeight: '600', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
   btnRemove: { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.border, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5, alignItems: 'center' },
   btnRemoveText: { color: Colors.muted, fontSize: 12, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+});
+
+// ---- Incoming order row (Selling tab) ----
+
+interface IncomingOrder {
+  id: string;
+  listing_id: string;
+  buyer_id: string;
+  price: number;
+  status: string;
+  buyer_message: string | null;
+  shipping_address: string;
+  created_at: string;
+  bookTitle: string;
+  buyerUsername: string;
+}
+
+function IncomingOrderRow({
+  order,
+  onAction,
+}: {
+  order: IncomingOrder;
+  onAction: (id: string, action: 'confirm' | 'decline' | 'ship') => Promise<void>;
+}) {
+  const [acting, setActing] = useState(false);
+
+  async function act(action: 'confirm' | 'decline' | 'ship') {
+    setActing(true);
+    await onAction(order.id, action);
+    setActing(false);
+  }
+
+  return (
+    <View style={ior.card}>
+      <View style={ior.topRow}>
+        <Text style={ior.bookTitle} numberOfLines={2}>{order.bookTitle}</Text>
+        <Text style={ior.price}>${Number(order.price).toFixed(2)}</Text>
+      </View>
+      <Text style={ior.buyer}>
+        Buyer: <Text style={ior.buyerName}>{order.buyerUsername}</Text>
+      </Text>
+      {order.buyer_message ? (
+        <Text style={ior.message} numberOfLines={2}>"{order.buyer_message}"</Text>
+      ) : null}
+      <Text style={ior.address} numberOfLines={2}>
+        Ship to: {order.shipping_address}
+      </Text>
+      <View style={ior.actions}>
+        <OrderStatusBadge status={order.status} />
+        {order.status === 'pending' && (
+          <View style={ior.btnRow}>
+            <TouchableOpacity style={ior.btnConfirm} onPress={() => act('confirm')} disabled={acting}>
+              {acting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={ior.btnConfirmText}>Confirm</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity style={ior.btnDecline} onPress={() => act('decline')} disabled={acting}>
+              <Text style={ior.btnDeclineText}>Decline</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {order.status === 'confirmed' && (
+          <TouchableOpacity style={[ior.btnConfirm, { marginTop: 8 }]} onPress={() => act('ship')} disabled={acting}>
+            {acting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={ior.btnConfirmText}>Mark Shipped</Text>}
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
+
+const ior = StyleSheet.create({
+  card: {
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 14,
+    marginBottom: 10,
+    gap: 6,
+  },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  bookTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  price: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.gold,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  buyer: {
+    fontSize: 12,
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  buyerName: { fontWeight: '700', color: Colors.rust },
+  message: {
+    fontSize: 12,
+    color: '#5a4a3a',
+    fontStyle: 'italic',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  address: {
+    fontSize: 11,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  actions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, flexWrap: 'wrap', gap: 8 },
+  btnRow: { flexDirection: 'row', gap: 8 },
+  btnConfirm: { backgroundColor: Colors.rust, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6, alignItems: 'center' },
+  btnConfirmText: { color: '#fff', fontSize: 12, fontWeight: '600', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  btnDecline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.border, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 },
+  btnDeclineText: { color: Colors.muted, fontSize: 12, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
 });
 
 // ---- Sell a book form ----
@@ -573,20 +951,27 @@ const sell = StyleSheet.create({
 
 // ---- Main screen ----
 
-type TabKey = 'browse' | 'my-listings' | 'sell';
+type TabKey = 'browse' | 'my-listings' | 'sell' | 'purchases';
 
 export default function MarketplaceScreen() {
   const [tab, setTab] = useState<TabKey>('browse');
   const [listings, setListings] = useState<Listing[]>([]);
   const [myListings, setMyListings] = useState<Listing[]>([]);
+  const [myOrders, setMyOrders] = useState<IncomingOrder[]>([]);
+  const [purchases, setPurchases] = useState<IncomingOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [condFilter, setCondFilter] = useState('all');
   const [userId, setUserId] = useState<string | null>(null);
 
+  // Buy Now modal
+  const [buyModalVisible, setBuyModalVisible] = useState(false);
+  const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
+
   async function fetchListings() {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) return;
     setUserId(user.id);
 
@@ -615,6 +1000,67 @@ export default function MarketplaceScreen() {
     setMyListings((mine as unknown as Listing[]) || []);
   }
 
+  async function fetchOrders() {
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) return;
+
+    // Seller incoming orders
+    const { data: sellerOrders } = await supabase
+      .from('orders')
+      .select(`
+        id, listing_id, buyer_id, price, status, buyer_message, shipping_address, created_at,
+        listings ( books ( title, author ) ),
+        profiles!orders_buyer_id_fkey ( username )
+      `)
+      .eq('seller_id', user.id)
+      .in('status', ['pending', 'confirmed'])
+      .order('created_at', { ascending: false });
+
+    if (sellerOrders) {
+      const mapped: IncomingOrder[] = sellerOrders.map((o: any) => ({
+        id: o.id,
+        listing_id: o.listing_id,
+        buyer_id: o.buyer_id,
+        price: o.price,
+        status: o.status,
+        buyer_message: o.buyer_message,
+        shipping_address: o.shipping_address,
+        created_at: o.created_at,
+        bookTitle: o.listings?.books?.title ?? 'Unknown Book',
+        buyerUsername: o.profiles?.username ?? 'Unknown',
+      }));
+      setMyOrders(mapped);
+    }
+
+    // Buyer purchases
+    const { data: buyerOrders } = await supabase
+      .from('orders')
+      .select(`
+        id, listing_id, buyer_id, price, status, buyer_message, shipping_address, created_at,
+        listings ( books ( title, author ) ),
+        profiles!orders_seller_id_fkey ( username )
+      `)
+      .eq('buyer_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (buyerOrders) {
+      const mapped: IncomingOrder[] = buyerOrders.map((o: any) => ({
+        id: o.id,
+        listing_id: o.listing_id,
+        buyer_id: o.buyer_id,
+        price: o.price,
+        status: o.status,
+        buyer_message: o.buyer_message,
+        shipping_address: o.shipping_address,
+        created_at: o.created_at,
+        bookTitle: o.listings?.books?.title ?? 'Unknown Book',
+        buyerUsername: o.profiles?.username ?? 'Unknown',
+      }));
+      setPurchases(mapped);
+    }
+  }
+
   async function markSold(id: string) {
     await supabase.from('listings').update({ status: 'sold' }).eq('id', id);
     await fetchListings();
@@ -625,16 +1071,44 @@ export default function MarketplaceScreen() {
     await fetchListings();
   }
 
+  async function handleSellerOrderAction(id: string, action: 'confirm' | 'decline' | 'ship') {
+    if (action === 'confirm') {
+      const order = myOrders.find((o) => o.id === id);
+      await supabase.from('orders').update({ status: 'confirmed' }).eq('id', id);
+      if (order?.listing_id) {
+        await supabase.from('listings').update({ status: 'sold' }).eq('id', order.listing_id);
+      }
+    } else if (action === 'decline') {
+      await supabase.from('orders').update({ status: 'declined' }).eq('id', id);
+    } else if (action === 'ship') {
+      await supabase.from('orders').update({ status: 'shipped' }).eq('id', id);
+    }
+    await Promise.all([fetchListings(), fetchOrders()]);
+  }
+
+  async function handleBuyerOrderAction(id: string, action: 'cancel' | 'complete') {
+    if (action === 'cancel') {
+      await supabase.from('orders').update({ status: 'cancelled' }).eq('id', id);
+    } else if (action === 'complete') {
+      await supabase.from('orders').update({ status: 'completed' }).eq('id', id);
+    }
+    await fetchOrders();
+  }
+
+  async function fetchAll() {
+    await Promise.all([fetchListings(), fetchOrders()]);
+  }
+
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
-      fetchListings().finally(() => setLoading(false));
+      fetchAll().finally(() => setLoading(false));
     }, [])
   );
 
   async function onRefresh() {
     setRefreshing(true);
-    await fetchListings();
+    await fetchAll();
     setRefreshing(false);
   }
 
@@ -650,9 +1124,11 @@ export default function MarketplaceScreen() {
   });
 
   const activeMyCount = myListings.filter((l) => l.status === 'active').length;
+  const pendingOrdersCount = myOrders.filter((o) => o.status === 'pending').length;
 
   const TABS: { key: TabKey; label: string }[] = [
     { key: 'browse',      label: 'Browse' },
+    { key: 'purchases',   label: `Purchases${purchases.length ? ` (${purchases.length})` : ''}` },
     { key: 'my-listings', label: `My Listings${activeMyCount ? ` (${activeMyCount})` : ''}` },
     { key: 'sell',        label: 'Sell a Book' },
   ];
@@ -702,7 +1178,15 @@ export default function MarketplaceScreen() {
           <FlatList
             data={filtered}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <ListingCard listing={item} />}
+            renderItem={({ item }) => (
+              <ListingCard
+                listing={item}
+                onBuyNow={(listing) => {
+                  setSelectedListing(listing);
+                  setBuyModalVisible(true);
+                }}
+              />
+            )}
             contentContainerStyle={styles.listContent}
             refreshControl={
               <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.rust} />
@@ -726,10 +1210,7 @@ export default function MarketplaceScreen() {
     );
   }
 
-  function renderMyListings() {
-    const active  = myListings.filter((l) => l.status === 'active');
-    const history = myListings.filter((l) => l.status !== 'active');
-
+  function renderPurchases() {
     if (loading) {
       return (
         <View style={styles.loader}>
@@ -738,13 +1219,13 @@ export default function MarketplaceScreen() {
       );
     }
 
-    if (!myListings.length) {
+    if (!purchases.length) {
       return (
         <View style={styles.empty}>
-          <Text style={styles.emptyIcon}>📦</Text>
-          <Text style={styles.emptyTitle}>Nothing listed yet</Text>
+          <Text style={styles.emptyIcon}>🛍️</Text>
+          <Text style={styles.emptyTitle}>No purchases yet</Text>
           <Text style={styles.emptySubtitle}>
-            Use the "Sell a Book" tab to list a book from your collection.
+            Browse listings and tap "Buy Now" to place an order.
           </Text>
         </View>
       );
@@ -758,6 +1239,89 @@ export default function MarketplaceScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.rust} />
         }
       >
+        {purchases.map((order) => (
+          <View key={order.id} style={poc.card}>
+            <View style={poc.topRow}>
+              <Text style={poc.bookTitle} numberOfLines={2}>{order.bookTitle}</Text>
+              <Text style={poc.price}>${Number(order.price).toFixed(2)}</Text>
+            </View>
+            <Text style={poc.seller}>
+              Seller: <Text style={poc.sellerName}>{order.buyerUsername}</Text>
+            </Text>
+            <View style={poc.badgeRow}>
+              <OrderStatusBadge status={order.status} />
+            </View>
+            {order.status === 'pending' && (
+              <TouchableOpacity
+                style={poc.cancelBtn}
+                onPress={async () => {
+                  await handleBuyerOrderAction(order.id, 'cancel');
+                }}
+              >
+                <Text style={poc.cancelBtnText}>Cancel Order</Text>
+              </TouchableOpacity>
+            )}
+            {order.status === 'shipped' && (
+              <TouchableOpacity
+                style={poc.receivedBtn}
+                onPress={async () => {
+                  await handleBuyerOrderAction(order.id, 'complete');
+                }}
+              >
+                <Text style={poc.receivedBtnText}>Mark Received</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ))}
+      </ScrollView>
+    );
+  }
+
+  function renderMyListings() {
+    const active  = myListings.filter((l) => l.status === 'active');
+    const history = myListings.filter((l) => l.status !== 'active');
+
+    if (loading) {
+      return (
+        <View style={styles.loader}>
+          <ActivityIndicator size="large" color={Colors.rust} />
+        </View>
+      );
+    }
+
+    return (
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.rust} />
+        }
+      >
+        {/* Incoming Orders section */}
+        {myOrders.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Incoming Orders</Text>
+              <View style={styles.sectionCount}>
+                <Text style={styles.sectionCountText}>{myOrders.length}</Text>
+              </View>
+            </View>
+            {myOrders.map((order) => (
+              <IncomingOrderRow key={order.id} order={order} onAction={handleSellerOrderAction} />
+            ))}
+          </View>
+        )}
+
+        {!myListings.length && !myOrders.length ? (
+          <View style={styles.empty}>
+            <Text style={styles.emptyIcon}>📦</Text>
+            <Text style={styles.emptyTitle}>Nothing listed yet</Text>
+            <Text style={styles.emptySubtitle}>
+              Use the "Sell a Book" tab to list a book from your collection.
+            </Text>
+          </View>
+        ) : null}
+
         {active.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
@@ -811,11 +1375,89 @@ export default function MarketplaceScreen() {
       </ScrollView>
 
       {tab === 'browse' && renderBrowse()}
+      {tab === 'purchases' && renderPurchases()}
       {tab === 'my-listings' && renderMyListings()}
       {tab === 'sell' && userId && <SellTab userId={userId} />}
+
+      {/* Buy Now Modal */}
+      {userId && (
+        <BuyNowModal
+          visible={buyModalVisible}
+          listing={selectedListing}
+          userId={userId}
+          onClose={() => {
+            setBuyModalVisible(false);
+            setSelectedListing(null);
+          }}
+          onSuccess={() => {
+            fetchOrders();
+            setTab('purchases');
+          }}
+        />
+      )}
     </View>
   );
 }
+
+const poc = StyleSheet.create({
+  card: {
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 14,
+    marginBottom: 10,
+    gap: 6,
+  },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  bookTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  price: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.gold,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  seller: {
+    fontSize: 12,
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  sellerName: { fontWeight: '700', color: Colors.rust },
+  badgeRow: { flexDirection: 'row', marginTop: 2 },
+  cancelBtn: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingVertical: 7,
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    color: Colors.muted,
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  receivedBtn: {
+    marginTop: 8,
+    backgroundColor: Colors.sage,
+    borderRadius: 8,
+    paddingVertical: 7,
+    alignItems: 'center',
+  },
+  receivedBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+});
 
 const styles = StyleSheet.create({
   root: {

@@ -46,6 +46,10 @@ interface Stats {
   want: number;
 }
 
+type SizeKey = 'S' | 'M' | 'L';
+const SIZE_COLUMNS: Record<SizeKey, number> = { S: 3, M: 2, L: 1 };
+const SIZE_STORAGE_KEY = 'exlibris-cover-size';
+
 export default function LibraryScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -53,11 +57,23 @@ export default function LibraryScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterKey>('all');
+  const [coverSize, setCoverSize] = useState<SizeKey>('M');
 
-  const COLUMNS = 2;
+  const COLUMNS = SIZE_COLUMNS[coverSize];
   const HORIZONTAL_PADDING = 16;
   const GAP = 10;
-  const cardWidth = Math.floor((width - HORIZONTAL_PADDING * 2 - GAP) / COLUMNS);
+  const cardWidth = Math.floor((width - HORIZONTAL_PADDING * 2 - GAP * (COLUMNS - 1)) / COLUMNS);
+
+  useEffect(() => {
+    AsyncStorage.getItem(SIZE_STORAGE_KEY).then((val) => {
+      if (val === 'S' || val === 'M' || val === 'L') setCoverSize(val);
+    });
+  }, []);
+
+  async function handleSizeChange(size: SizeKey) {
+    setCoverSize(size);
+    await AsyncStorage.setItem(SIZE_STORAGE_KEY, size);
+  }
 
   async function fetchLibrary() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -116,9 +132,11 @@ export default function LibraryScreen() {
   };
 
   const renderItem = ({ item, index }: { item: CollectionEntry; index: number }) => {
-    const isLeft = index % 2 === 0;
+    const col = index % COLUMNS;
+    const marginLeft  = col === 0 ? 0 : GAP / 2;
+    const marginRight = col === COLUMNS - 1 ? 0 : GAP / 2;
     return (
-      <View style={[styles.gridItem, isLeft ? { marginRight: GAP / 2 } : { marginLeft: GAP / 2 }]}>
+      <View style={[styles.gridItem, { marginLeft, marginRight }]}>
         <BookCard
           id={item.book_id}
           title={item.books.title}
@@ -167,6 +185,21 @@ export default function LibraryScreen() {
           </TouchableOpacity>
         )}
       />
+
+      {/* Grid size control */}
+      <View style={styles.sizeRow}>
+        {(['S', 'M', 'L'] as SizeKey[]).map((size) => (
+          <TouchableOpacity
+            key={size}
+            style={[styles.sizeBtn, coverSize === size && styles.sizeBtnActive]}
+            onPress={() => handleSizeChange(size)}
+          >
+            <Text style={[styles.sizeBtnText, coverSize === size && styles.sizeBtnTextActive]}>
+              {size}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
     </View>
   );
 
@@ -198,6 +231,7 @@ export default function LibraryScreen() {
         </View>
       ) : (
         <FlatList
+          key={COLUMNS}
           data={filtered}
           numColumns={COLUMNS}
           keyExtractor={(item) => item.id}
@@ -330,5 +364,35 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 15,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  sizeRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    gap: 6,
+    justifyContent: 'flex-end',
+  },
+  sizeBtn: {
+    width: 32,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sizeBtnActive: {
+    backgroundColor: Colors.rust,
+    borderColor: Colors.rust,
+  },
+  sizeBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  sizeBtnTextActive: {
+    color: Colors.white,
   },
 });

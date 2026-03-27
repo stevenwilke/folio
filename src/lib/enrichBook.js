@@ -6,6 +6,7 @@ function isLikelyEnglish(text) {
   return (nonLatin / text.length) < 0.2
 }
 
+// ── Open Library cover ────────────────────────────────────────────────────
 async function fetchOLCover(isbn, title, author) {
   try {
     if (isbn) {
@@ -17,16 +18,51 @@ async function fetchOLCover(isbn, title, author) {
       }
     }
     const q = encodeURIComponent(`${title || ''} ${author || ''}`.trim())
-    const res = await fetch(`https://openlibrary.org/search.json?q=${q}&fields=cover_i&limit=1`)
+    const res = await fetch(`https://openlibrary.org/search.json?q=${q}&fields=cover_i&limit=3`)
     if (res.ok) {
       const data = await res.json()
-      const coverId = data?.docs?.[0]?.cover_i
-      if (coverId) return `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`
+      for (const doc of data?.docs || []) {
+        if (doc.cover_i) return `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`
+      }
     }
   } catch {}
   return null
 }
 
+// ── Google Books cover (fallback) ─────────────────────────────────────────
+async function fetchGoogleBooksCover(isbn, title, author) {
+  try {
+    let url
+    if (isbn) {
+      url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}&fields=items(id,volumeInfo/imageLinks)&maxResults=1`
+    } else {
+      const q = encodeURIComponent(`intitle:${title || ''} inauthor:${author || ''}`)
+      url = `https://www.googleapis.com/books/v1/volumes?q=${q}&fields=items(id,volumeInfo/imageLinks)&maxResults=1`
+    }
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const data = await res.json()
+    const links = data?.items?.[0]?.volumeInfo?.imageLinks
+    const raw = links?.large || links?.medium || links?.thumbnail || links?.smallThumbnail
+    if (!raw) return null
+    // Upgrade to a large, uncurled version
+    return raw
+      .replace(/^http:/, 'https:')
+      .replace(/&edge=curl/, '')
+      .replace(/zoom=\d/, 'zoom=3')
+      .replace(/&source=[^&]+/, '')
+  } catch {}
+  return null
+}
+
+// ── Combined cover fetch: OL first, Google Books fallback ─────────────────
+async function fetchBestCover(isbn, title, author) {
+  const ol = await fetchOLCover(isbn, title, author)
+  if (ol) return ol
+  return fetchGoogleBooksCover(isbn, title, author)
+}
+
+// ── Open Library description ──────────────────────────────────────────────
 async function fetchOLDescription(isbn, title, author) {
   try {
     if (isbn) {
@@ -65,6 +101,14 @@ async function fetchOLDescription(isbn, title, author) {
   return null
 }
 
+// Whether a stored URL is a low-quality placeholder we should upgrade
+function isLowQualityCover(url) {
+  if (!url) return true
+  if (url.includes('-S.jpg') || url.includes('-M.jpg')) return true
+  if (url.includes('zoom=1')) return true   // small Google Books thumbnail
+  return false
+}
+
 /**
  * Enriches a book record with cover, description, and pricing.
  * Call this AFTER inserting a book — do NOT await it (runs in background).
@@ -76,12 +120,12 @@ export async function enrichBook(bookId, { isbn_13, isbn_10, title, author, cove
   if (!bookId) return
   const isbn = isbn_13 || isbn_10 || null
 
-  // Only fetch what's missing
-  const needsCover = !cover_image_url
+  // Fetch cover if missing or only a low-quality placeholder
+  const needsCover = isLowQualityCover(cover_image_url)
   const needsDesc  = !description
 
   const [cover, desc, valResult] = await Promise.all([
-    needsCover ? fetchOLCover(isbn, title, author) : Promise.resolve(null),
+    needsCover ? fetchBestCover(isbn, title, author) : Promise.resolve(null),
     needsDesc  ? fetchOLDescription(isbn, title, author) : Promise.resolve(null),
     supabase.functions.invoke('get-book-valuation', { body: { isbn, title, author } }),
   ])
@@ -117,4 +161,25 @@ export async function enrichBook(bookId, { isbn_13, isbn_10, title, author, cove
       fetched_at: new Date().toISOString(),
     }, { onConflict: 'book_id' })
   }
+}
+
+/**
+ * Backfills covers for a list of books that are missing them.
+ * Pass the raw book rows from the collection query.
+ * Processes up to `limit` books at a time to avoid hammering the APIs.
+ */
+export async function backfillMissingCovers(books, limit = 8) {
+  const missing = books.filter(b => isLowQualityCover(b.cover_image_url))
+  if (missing.length === 0) return
+
+  const batch = missing.slice(0, limit)
+  await Promise.allSettled(
+    batch.map(b =>
+      fetchBestCover(b.isbn_13 || b.isbn_10 || null, b.title, b.author).then(cover => {
+        if (cover) {
+          return supabase.from('books').update({ cover_image_url: cover }).eq('id', b.id)
+        }
+      })
+    )
+  )
 }

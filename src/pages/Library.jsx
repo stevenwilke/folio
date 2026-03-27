@@ -118,9 +118,9 @@ export default function Library({ session }) {
         sessionStorage.setItem('exlibris-genre-backfill', '1')
         backfillGenres(data || [])
       }
-      // Backfill missing covers in the background (once per session)
-      if (!sessionStorage.getItem('exlibris-cover-backfill')) {
-        sessionStorage.setItem('exlibris-cover-backfill', '1')
+      // Backfill missing/low-quality covers in the background (once per session)
+      if (!sessionStorage.getItem('exlibris-cover-backfill-v2')) {
+        sessionStorage.setItem('exlibris-cover-backfill-v2', '1')
         backfillCovers(data || [])
       }
     }
@@ -146,26 +146,69 @@ export default function Library({ session }) {
 
   // Fetch covers from Open Library for books that don't have one
   async function backfillCovers(entries) {
-    const todo = entries.filter(e => !e.books.cover_image_url && (e.books.isbn_13 || e.books.isbn_10))
+    // Include books with no cover OR only a low-quality placeholder
+    function isLowQuality(url) {
+      if (!url) return true
+      return url.includes('-S.jpg') || url.includes('-M.jpg') || url.includes('zoom=1')
+    }
+
+    async function fetchOLCover(isbn, title, author) {
+      if (isbn) {
+        const r = await fetch(`https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&fields=cover_i&limit=1`)
+        if (r.ok) {
+          const d = await r.json()
+          const coverId = d.docs?.[0]?.cover_i
+          if (coverId) return `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`
+        }
+      }
+      // fallback: title + author search
+      if (title) {
+        const q = encodeURIComponent(`${title} ${author || ''}`.trim())
+        const r = await fetch(`https://openlibrary.org/search.json?q=${q}&fields=cover_i&limit=3`)
+        if (r.ok) {
+          const d = await r.json()
+          for (const doc of d.docs || []) {
+            if (doc.cover_i) return `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`
+          }
+        }
+      }
+      return null
+    }
+
+    async function fetchGoogleCover(isbn, title, author) {
+      try {
+        const q = isbn
+          ? `isbn:${isbn}`
+          : `intitle:${encodeURIComponent(title || '')} inauthor:${encodeURIComponent(author || '')}`
+        const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&fields=items(volumeInfo/imageLinks)&maxResults=1`)
+        if (!r.ok) return null
+        const d = await r.json()
+        const links = d?.items?.[0]?.volumeInfo?.imageLinks
+        const raw = links?.large || links?.medium || links?.thumbnail
+        if (!raw) return null
+        return raw.replace(/^http:/, 'https:').replace(/&edge=curl/, '').replace(/zoom=\d/, 'zoom=3')
+      } catch { return null }
+    }
+
+    const todo = entries.filter(e => isLowQuality(e.books.cover_image_url))
     if (todo.length === 0) return
+
     const BATCH = 4
     for (let i = 0; i < todo.length; i += BATCH) {
       await Promise.all(todo.slice(i, i + BATCH).map(async entry => {
-        const isbn = entry.books.isbn_13 || entry.books.isbn_10
+        const { id, isbn_13, isbn_10, title, author } = entry.books
+        const isbn = isbn_13 || isbn_10 || null
         try {
-          const r = await fetch(`https://openlibrary.org/search.json?isbn=${isbn}&fields=cover_i&limit=1`)
-          const data = await r.json()
-          const coverId = data.docs?.[0]?.cover_i
-          if (coverId) {
-            const url = `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`
-            await supabase.from('books').update({ cover_image_url: url }).eq('id', entry.books.id)
+          const url = (await fetchOLCover(isbn, title, author)) || (await fetchGoogleCover(isbn, title, author))
+          if (url) {
+            await supabase.from('books').update({ cover_image_url: url }).eq('id', id)
             setBooks(prev => prev.map(e =>
-              e.books.id === entry.books.id ? { ...e, books: { ...e.books, cover_image_url: url } } : e
+              e.books.id === id ? { ...e, books: { ...e.books, cover_image_url: url } } : e
             ))
           }
-        } catch { /* ignore network errors */ }
+        } catch { /* ignore */ }
       }))
-      await new Promise(r => setTimeout(r, 700))
+      await new Promise(r => setTimeout(r, 600))
     }
   }
 

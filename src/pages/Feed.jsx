@@ -184,6 +184,7 @@ function ActivityCard({ item, onBookClick, onProfileClick, theme }) {
     <div
       style={{ ...s.card, borderLeft: `3px solid ${color}`, ...(hover ? s.cardHover : {}), cursor: 'pointer' }}
       onClick={onBookClick}
+      onTouchEnd={(e) => { e.preventDefault(); onBookClick?.() }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >

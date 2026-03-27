@@ -173,6 +173,7 @@ function DiscoverCard({ book, onPreview, myBookIds }) {
     <div
       style={{ ...s.card, ...(hover ? s.cardHover : {}), cursor: 'pointer' }}
       onClick={() => onPreview(book)}
+      onTouchEnd={(e) => { e.preventDefault(); onPreview(book) }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
@@ -321,6 +322,7 @@ function TrendingCard({ book, onPreview, myBookIds }) {
     <div
       style={{ ...s.card, ...(hover ? s.cardHover : {}), cursor: 'pointer' }}
       onClick={() => onPreview(book)}
+      onTouchEnd={(e) => { e.preventDefault(); onPreview(book) }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
@@ -357,6 +359,7 @@ function AuthorCard({ book, onPreview, myBookIds }) {
     <div
       style={{ ...s.card, ...(hover ? s.cardHover : {}), cursor: 'pointer' }}
       onClick={() => onPreview(book)}
+      onTouchEnd={(e) => { e.preventDefault(); onPreview(book) }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
@@ -391,7 +394,7 @@ function RecommendationCard({ book, theme, onView }) {
   const c = colors[(book.title||'').charCodeAt(0) % colors.length]
   const c2 = colors[((book.title||'').charCodeAt(0)+3) % colors.length]
   return (
-    <div onClick={onView} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+    <div onClick={onView} onTouchEnd={(e) => { e.preventDefault(); onView?.() }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{ flexShrink: 0, width: 120, cursor: 'pointer', transform: hover ? 'translateY(-2px)' : 'none', transition: 'transform 0.15s' }}>
       <div style={{ width: 120, height: 160, borderRadius: 8, overflow: 'hidden', background: `linear-gradient(135deg,${c},${c2})`, marginBottom: 8, boxShadow: hover ? '0 6px 18px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.1)' }}>
         {url && <img src={url} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => e.target.style.display = 'none'} />}

@@ -579,7 +579,7 @@ function CurrentlyReadingBook({ book, theme, onClick }) {
   const c = colors[(book.title||'').charCodeAt(0) % colors.length]
   const c2 = colors[((book.title||'').charCodeAt(0)+3) % colors.length]
   return (
-    <div onClick={onClick} onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
+    <div onClick={onClick} onTouchEnd={(e) => { e.preventDefault(); onClick?.() }} onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
       style={{ cursor:'pointer', textAlign:'center', width:64, transform: hover?'translateY(-2px)':'none', transition:'transform 0.15s' }}>
       <div style={{ width:64, height:96, borderRadius:6, overflow:'hidden', background:`linear-gradient(135deg,${c},${c2})`, marginBottom:6, boxShadow: hover ? '0 4px 12px rgba(0,0,0,0.2)' : '0 2px 6px rgba(0,0,0,0.1)' }}>
         {url && <img src={url} alt={book.title} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>e.target.style.display='none'} />}
@@ -787,6 +787,7 @@ function ShelfCard({ entry, onSelect, canBorrow, onBorrow, theme }) {
     <div
       style={{ ...s.shelfCard, ...(hover && onSelect ? s.shelfCardHover : {}), cursor: onSelect ? 'pointer' : 'default' }}
       onClick={onSelect}
+      onTouchEnd={(e) => { e.preventDefault(); onSelect?.() }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >

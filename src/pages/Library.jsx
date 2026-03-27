@@ -810,6 +810,7 @@ function ListRow({ entry, isLast, selectMode, isSelected, onSelect, theme, isMob
   return (
     <div
       onClick={onSelect}
+      onTouchEnd={(e) => { e.preventDefault(); onSelect?.() }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -906,6 +907,7 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
         touchAction: 'manipulation',
       }}
       onClick={onSelect}
+      onTouchEnd={(e) => { e.preventDefault(); onSelect?.() }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >

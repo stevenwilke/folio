@@ -820,6 +820,7 @@ function ListRow({ entry, isLast, selectMode, isSelected, onSelect, theme, isMob
         borderBottom: isLast ? 'none' : `1px solid ${theme.borderLight}`,
         outline: isSelected ? `2px solid ${theme.rust}` : 'none',
         outlineOffset: -2,
+        touchAction: 'manipulation',
       }}
     >
       {/* Select checkbox */}
@@ -902,6 +903,7 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
         ...(hover && !selectMode ? s.cardHover : {}),
         ...(isSelected ? s.cardSelected : {}),
         position: 'relative',
+        touchAction: 'manipulation',
       }}
       onClick={onSelect}
       onMouseEnter={() => setHover(true)}

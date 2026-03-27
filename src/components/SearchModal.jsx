@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import ManualAddModal from './ManualAddModal'
 import { useTheme } from '../contexts/ThemeContext'
 import { extractGenre } from '../lib/genres'
 import { enrichBook } from '../lib/enrichBook'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -62,6 +63,8 @@ function fromFolio(b) {
 
 export default function SearchModal({ session, onClose, onAdded = () => {} }) {
   const { theme } = useTheme()
+  const isMobile = useIsMobile()
+  const cameraInputRef = useRef(null)
   const [showManual,    setShowManual]    = useState(false)
   const [showFilters,   setShowFilters]   = useState(false)
   const [query,         setQuery]         = useState('')
@@ -69,6 +72,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
   const [searching,     setSearching]     = useState(false)
   const [adding,        setAdding]        = useState(null)
   const [addedBooks,    setAddedBooks]    = useState({})
+  const [scanning,      setScanning]      = useState(false)
 
   // Filter state
   const [filterGenre,    setFilterGenre]    = useState('')
@@ -158,6 +162,64 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
     setFilterYearFrom('')
     setFilterYearTo('')
     setFilterRating(null)
+  }
+
+  async function handleCameraCapture(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setScanning(true)
+    try {
+      if ('BarcodeDetector' in window) {
+        const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'isbn'] })
+        const bitmap = await createImageBitmap(file)
+        const barcodes = await detector.detect(bitmap)
+        const isbn = barcodes[0]?.rawValue
+        if (isbn) {
+          setQuery(isbn)
+          // Call search directly with the isbn value
+          setSearching(true)
+          setResults([])
+          const stripped = isbn.replace(/[-\s]/g, '')
+          let folioQ = supabase
+            .from('books')
+            .select('id, title, author, isbn_13, isbn_10, cover_image_url, published_year, genre')
+            .limit(8)
+            .or(`isbn_13.eq.${stripped},isbn_10.eq.${stripped}`)
+          try {
+            const [olJson, { data: folioBooks }] = await Promise.all([
+              fetch(
+                `https://openlibrary.org/search.json?q=${encodeURIComponent(isbn)}&fields=key,title,author_name,isbn,cover_i,first_publish_year,subject&limit=20`
+              ).then(r => r.json()).catch(() => ({ docs: [] })),
+              folioQ,
+            ])
+            const folioResults = (folioBooks || []).map(fromFolio)
+            const folioIsbn13s = new Set(folioResults.map(r => r.isbn13).filter(Boolean))
+            const folioIsbn10s = new Set(folioResults.map(r => r.isbn10).filter(Boolean))
+            const olResults = (olJson.docs || [])
+              .filter(doc => {
+                const i13 = doc.isbn?.find(i => i.length === 13)
+                const i10 = doc.isbn?.find(i => i.length === 10)
+                if (i13 && folioIsbn13s.has(i13)) return false
+                if (i10 && folioIsbn10s.has(i10)) return false
+                return true
+              })
+              .map(fromOL)
+            setResults([...folioResults, ...olResults.slice(0, 12)])
+          } catch {
+            setResults([])
+          }
+          setSearching(false)
+        } else {
+          alert('No barcode found. Please try a clearer photo or type the ISBN manually.')
+        }
+      } else {
+        alert('Barcode scanning is not supported on this browser. Please type the ISBN in the search box.')
+      }
+    } catch (err) {
+      alert('Could not scan barcode. Please type the ISBN manually.')
+    }
+    setScanning(false)
+    e.target.value = ''
   }
 
   async function addBook(result, status) {
@@ -259,6 +321,15 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
 
         {/* Search row */}
         <div style={s.searchRow}>
+          {/* Hidden camera input */}
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: 'none' }}
+            onChange={handleCameraCapture}
+          />
           <input
             style={s.searchInput}
             placeholder="Search by title, author, or ISBN…"
@@ -274,6 +345,31 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
           >
             ⚙ Filters{filtersActive && <span style={s.filterDot} />}
           </button>
+          {/* Camera button — only show on mobile */}
+          {isMobile && (
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={scanning}
+              style={{
+                padding: '0 14px',
+                background: theme.rust,
+                color: 'white',
+                border: 'none',
+                borderRadius: 8,
+                fontSize: 18,
+                cursor: 'pointer',
+                flexShrink: 0,
+                height: 42,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title="Scan book barcode"
+            >
+              {scanning ? '⏳' : '📷'}
+            </button>
+          )}
           <button style={s.btnPrimary} onClick={search} disabled={searching}>
             {searching ? '…' : 'Search'}
           </button>

@@ -22,7 +22,10 @@ export default function Auth() {
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { username } }
+        options: {
+          data: { username },
+          emailRedirectTo: 'https://exlibrisomnium.com',
+        }
       })
       if (error) setError(error.message)
       else setMessage('Check your email to confirm your account!')

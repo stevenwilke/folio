@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
 import BookTagsManager from '../components/BookTagsManager'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -70,6 +71,7 @@ function isLikelyEnglish(text) {
 
 export default function BookDetail({ bookId, session, onBack }) {
   const { theme }  = useTheme()
+  const isMobile   = useIsMobile()
   const navigate   = useNavigate()
   const [activeBookId, setActiveBookId] = useState(bookId)
   const [book, setBook]                 = useState(null)
@@ -447,15 +449,15 @@ export default function BookDetail({ bookId, session, onBack }) {
 
   const s = {
     page:                { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
-    topbar:              { position: 'sticky', top: 0, zIndex: 10, background: theme.bg, backdropFilter: 'blur(8px)', borderBottom: `1px solid ${theme.border}`, padding: '14px 32px' },
+    topbar:              { position: 'sticky', top: 0, zIndex: 10, background: theme.bg, backdropFilter: 'blur(8px)', borderBottom: `1px solid ${theme.border}`, padding: isMobile ? '12px 16px' : '14px 32px' },
     backBtn:             { background: 'none', border: 'none', fontSize: 14, cursor: 'pointer', color: theme.rust, fontFamily: "'DM Sans', sans-serif", padding: 0, fontWeight: 500 },
-    content:             { padding: '32px 32px', maxWidth: 820, margin: '0 auto' },
-    hero:                { display: 'flex', gap: 32, marginBottom: 36 },
-    coverWrap:           { width: 160, height: 240, flexShrink: 0 },
-    coverImg:            { width: 160, height: 240, objectFit: 'cover', borderRadius: 8, boxShadow: '4px 6px 20px rgba(26,18,8,0.22)' },
-    heroInfo:            { flex: 1 },
-    title:               { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, lineHeight: 1.2, color: theme.text },
-    author:              { fontSize: 16, color: theme.textSubtle, marginTop: 6 },
+    content:             { padding: isMobile ? '16px 16px 100px' : '32px 32px 60px', maxWidth: 820, margin: '0 auto' },
+    hero:                { display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 16 : 32, marginBottom: isMobile ? 20 : 36, alignItems: isMobile ? 'center' : 'flex-start' },
+    coverWrap:           { width: isMobile ? 140 : 160, height: isMobile ? 210 : 240, flexShrink: 0 },
+    coverImg:            { width: isMobile ? 140 : 160, height: isMobile ? 210 : 240, objectFit: 'cover', borderRadius: 8, boxShadow: '4px 6px 20px rgba(26,18,8,0.22)' },
+    heroInfo:            { flex: 1, width: isMobile ? '100%' : 'auto' },
+    title:               { fontFamily: 'Georgia, serif', fontSize: isMobile ? 22 : 28, fontWeight: 700, lineHeight: 1.2, color: theme.text, textAlign: isMobile ? 'center' : 'left' },
+    author:              { fontSize: isMobile ? 14 : 16, color: theme.textSubtle, marginTop: 6, textAlign: isMobile ? 'center' : 'left' },
     communityRatingRow:  { display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 },
     communityRatingNum:  { fontSize: 15, fontWeight: 700, color: theme.text },
     communityRatingCount:{ fontSize: 13, color: theme.textSubtle },
@@ -1043,7 +1045,7 @@ export default function BookDetail({ bookId, session, onBack }) {
 
         {/* My Tags */}
         {session && book?.id && (
-          <div style={{ marginTop: 28 }}>
+          <div style={{ marginTop: 28, marginBottom: isMobile ? 40 : 0 }}>
             <BookTagsManager
               bookId={book.id}
               userId={session.user.id}

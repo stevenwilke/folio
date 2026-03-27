@@ -385,7 +385,7 @@ function LoanCard({ req, mode, onAction, navigate, s, theme }) {
   const otherProfile = req.profiles
   const [acting, setActing]   = useState(false)
   const [showDue, setShowDue] = useState(false)
-  const [dueDate, setDueDate] = useState('')
+  const [pickedDue, setPickedDue] = useState('')
 
   async function act(action, due) {
     setActing(true)
@@ -443,11 +443,11 @@ function LoanCard({ req, mode, onAction, navigate, s, theme }) {
         {mode === 'lend-pending' && showDue && (
           <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
             <div style={{ fontSize: 11, color: theme.textSubtle }}>Return by (optional)</div>
-            <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
+            <input type="date" value={pickedDue} onChange={e => setPickedDue(e.target.value)}
               style={{ padding: '5px 8px', border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, fontFamily: "'DM Sans', sans-serif", background: theme.bgCard, color: theme.text, outline: 'none' }} />
             <div style={{ display: 'flex', gap: 6 }}>
               <button style={s.btnDecline} onClick={() => setShowDue(false)}>Back</button>
-              <button style={s.btnAccept} onClick={() => act('accept', dueDate)} disabled={acting}>{acting ? '…' : 'Confirm'}</button>
+              <button style={s.btnAccept} onClick={() => act('accept', pickedDue)} disabled={acting}>{acting ? '…' : 'Confirm'}</button>
             </div>
           </div>
         )}

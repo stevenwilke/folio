@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { extractGenre } from '../lib/genres'
 import BookDetail from './BookDetail'
@@ -25,6 +25,7 @@ const STATUS_COLORS = {
 
 export default function Library({ session }) {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { theme } = useTheme()
   const isMobile = useIsMobile()
   const [books, setBooks]             = useState([])
@@ -32,7 +33,11 @@ export default function Library({ session }) {
   const [filter, setFilter]           = useState('all')
   const [sort, setSort]               = useState('added')
   const [showImport, setShowImport]   = useState(false)
-  const [selectedBook, setSelectedBook] = useState(null)
+
+  // Sync selected book with ?book=<id> so browser back button works
+  const selectedBook = searchParams.get('book') || null
+  function openBook(bookId)  { setSearchParams({ book: bookId }) }
+  function closeBook()       { setSearchParams({}); fetchCollection() }
   const [listingTarget, setListingTarget] = useState(null)
   const [activeListings, setActiveListings] = useState({})
   const [collectionValue, setCollectionValue] = useState(null)
@@ -739,7 +744,7 @@ export default function Library({ session }) {
                             isLast={idx === groupEntries.length - 1}
                             selectMode={selectMode}
                             isSelected={selectedIds.has(entry.id)}
-                            onSelect={() => { if (selectMode) toggleSelect(entry.id); else setSelectedBook(entry.books.id) }}
+                            onSelect={() => { if (selectMode) toggleSelect(entry.id); else openBook(entry.books.id) }}
                             theme={theme}
                             isMobile={isMobile}
                           />
@@ -755,7 +760,7 @@ export default function Library({ session }) {
                             onUpdate={fetchCollection}
                             onSelect={() => {
                               if (selectMode) toggleSelect(entry.id)
-                              else setSelectedBook(entry.books.id)
+                              else openBook(entry.books.id)
                             }}
                             onListForSale={() => setListingTarget(entry)}
                             selectMode={selectMode}
@@ -795,7 +800,7 @@ export default function Library({ session }) {
           <BookDetail
             bookId={selectedBook}
             session={session}
-            onBack={() => { setSelectedBook(null); fetchCollection() }}
+            onBack={() => closeBook()}
           />
         </div>
       )}

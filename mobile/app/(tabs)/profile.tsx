@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { BookCard, ReadStatus } from '../../components/BookCard';
+import GoodreadsImportModal from '../../components/GoodreadsImportModal';
 
 interface Profile {
   id: string;
@@ -52,6 +53,7 @@ export default function ProfileScreen() {
   const [entries, setEntries] = useState<CollectionEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const COLUMNS = 2;
   const HORIZONTAL_PADDING = 16;
@@ -193,6 +195,11 @@ export default function ProfileScreen() {
         <Text style={styles.friendsBtnArrow}>›</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity style={styles.editProfileBtn} onPress={() => setShowImport(true)}>
+        <Text style={styles.editProfileBtnText}>📥  Import from Goodreads</Text>
+        <Text style={styles.friendsBtnArrow}>›</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity style={styles.editProfileBtn} onPress={() => router.push('/stats' as any)}>
         <Text style={styles.editProfileBtnText}>📊  My Stats</Text>
         <Text style={styles.friendsBtnArrow}>›</Text>
@@ -228,28 +235,39 @@ export default function ProfileScreen() {
   );
 
   return (
-    <FlatList
-      data={entries}
-      numColumns={COLUMNS}
-      keyExtractor={(item) => item.id}
-      renderItem={renderItem}
-      ListHeaderComponent={ListHeader}
-      ListFooterComponent={ListFooter}
-      contentContainerStyle={styles.gridContent}
-      style={styles.root}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={Colors.rust}
-        />
-      }
-      ListEmptyComponent={
-        <View style={styles.emptyBooks}>
-          <Text style={styles.emptyBooksText}>No books in your collection yet.</Text>
-        </View>
-      }
-    />
+    <>
+      <FlatList
+        data={entries}
+        numColumns={COLUMNS}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        ListHeaderComponent={ListHeader}
+        ListFooterComponent={ListFooter}
+        contentContainerStyle={styles.gridContent}
+        style={styles.root}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.rust}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyBooks}>
+            <Text style={styles.emptyBooksText}>No books in your collection yet.</Text>
+          </View>
+        }
+      />
+      <GoodreadsImportModal
+        visible={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={() => {
+          setShowImport(false);
+          fetchProfile();
+          router.replace('/(tabs)');
+        }}
+      />
+    </>
   );
 }
 

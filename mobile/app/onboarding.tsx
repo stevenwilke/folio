@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 import { FakeCover } from '../components/FakeCover';
+import GoodreadsImportModal from '../components/GoodreadsImportModal';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -136,6 +137,8 @@ function StepImportFriends({
   onSkip: () => void;
   onContinue: () => void;
 }) {
+  const [showImport, setShowImport] = useState(false);
+  const [imported, setImported] = useState(false);
   const [search, setSearch] = useState('');
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -210,14 +213,23 @@ function StepImportFriends({
       <View style={styles.infoCard}>
         <Text style={styles.infoCardTitle}>Import from Goodreads</Text>
         <Text style={styles.infoCardBody}>
-          Export your Goodreads library as a CSV and import it on the Ex Libris
-          web app at <Text style={styles.infoCardLink}>exlibris.app</Text> to
-          bring over your entire reading history.
+          Export your Goodreads library as a CSV and import your entire reading history in seconds.
         </Text>
-        <View style={styles.webNote}>
-          <Text style={styles.webNoteText}>Import on Web (CSV)</Text>
-        </View>
+        {imported ? (
+          <View style={styles.importedBadge}>
+            <Text style={styles.importedBadgeText}>✓ Imported!</Text>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.importBtn} onPress={() => setShowImport(true)} activeOpacity={0.85}>
+            <Text style={styles.importBtnText}>Import CSV</Text>
+          </TouchableOpacity>
+        )}
       </View>
+      <GoodreadsImportModal
+        visible={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={() => { setShowImport(false); setImported(true); onContinue(); }}
+      />
 
       {/* Find Friends */}
       <View style={styles.infoCard}>
@@ -688,6 +700,32 @@ const styles = StyleSheet.create({
     color: Colors.muted,
     fontWeight: '600',
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  importBtn: {
+    backgroundColor: Colors.rust,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  importBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  importedBadge: {
+    backgroundColor: 'rgba(90,122,90,0.15)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  importedBadgeText: {
+    color: '#5a7a5a',
+    fontSize: 13,
+    fontWeight: '600',
   },
   searchRow: {
     flexDirection: 'row',

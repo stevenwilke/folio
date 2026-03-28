@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { enrichBook } from '../lib/enrichBook'
 import { useTheme } from '../contexts/ThemeContext'
 
 // Map Goodreads exclusive_shelf to our status
@@ -74,17 +75,35 @@ function parseCSVLine(line) {
   return result
 }
 
-async function fetchCoverUrl(isbn13, isbn10) {
-  // Try isbn13 first, then isbn10
-  const candidates = [isbn13, isbn10].filter(Boolean)
-  for (const isbn of candidates) {
+async function fetchCoverUrl(isbn13, isbn10, title, author) {
+  // 1. Open Library direct cover by ISBN (fast HEAD check)
+  for (const isbn of [isbn13, isbn10].filter(Boolean)) {
     try {
-      // Open Library cover exists check — a HEAD request tells us if cover exists
       const url = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false`
       const res = await fetch(url, { method: 'HEAD' })
       if (res.ok) return `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`
     } catch { /* skip */ }
   }
+
+  // 2. Google Books API fallback — covers nearly all popular/in-print books
+  try {
+    const isbn = isbn13 || isbn10
+    const q = isbn
+      ? `isbn:${isbn}`
+      : `intitle:${encodeURIComponent(title || '')}+inauthor:${encodeURIComponent(author || '')}`
+    const res = await fetch(
+      `https://www.googleapis.com/books/v1/volumes?q=${q}&fields=items(volumeInfo/imageLinks)&maxResults=1`
+    )
+    if (res.ok) {
+      const data = await res.json()
+      const links = data?.items?.[0]?.volumeInfo?.imageLinks
+      const raw = links?.large || links?.medium || links?.thumbnail
+      if (raw) {
+        return raw.replace(/^http:/, 'https:').replace(/&edge=curl/, '').replace(/zoom=\d/, 'zoom=3')
+      }
+    }
+  } catch { /* skip */ }
+
   return null
 }
 
@@ -165,8 +184,9 @@ export default function GoodreadsImportModal({ session, onClose, onImported }) {
             .eq('title', b.title).eq('author', b.author).maybeSingle()
           if (data) bookId = data.id
         }
+        let isNewBook = false
         if (!bookId) {
-          const coverUrl = await fetchCoverUrl(b.isbn13, b.isbn10)
+          const coverUrl = await fetchCoverUrl(b.isbn13, b.isbn10, b.title, b.author)
           const { data: newBook } = await supabase.from('books').insert({
             title: b.title, author: b.author,
             isbn_13: b.isbn13, isbn_10: b.isbn10,
@@ -174,7 +194,7 @@ export default function GoodreadsImportModal({ session, onClose, onImported }) {
             format: b.format,
             cover_image_url: coverUrl,
           }).select('id').single()
-          if (newBook) bookId = newBook.id
+          if (newBook) { bookId = newBook.id; isNewBook = true }
         }
 
         if (bookId) {
@@ -185,6 +205,16 @@ export default function GoodreadsImportModal({ session, onClose, onImported }) {
             user_rating: b.rating || null,
             review_text: b.review || null,
           }, { onConflict: 'user_id,book_id' })
+
+          // Enrich new books in background (cover upgrade, description, pricing)
+          if (isNewBook) {
+            enrichBook(bookId, {
+              isbn_13: b.isbn13, isbn_10: b.isbn10,
+              title: b.title, author: b.author,
+              cover_image_url: null,  // always try to get best cover
+              description: null,
+            })
+          }
         }
       } catch { /* skip failed books */ }
 

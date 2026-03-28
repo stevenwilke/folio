@@ -15,21 +15,7 @@ const STATUS_COLORS = {
   want:    { bg: 'rgba(184,134,11,0.12)',  color: '#b8860b' },
 }
 
-// ── BADGE DEFINITIONS ──
-const BADGE_DEFS = [
-  { id: 'bookworm',     emoji: '📚', name: 'Bookworm',        desc: 'Read 10+ books',                  check: (col, fc) => col.filter(e => e.read_status === 'read').length >= 10 },
-  { id: 'devoted',      emoji: '📖', name: 'Devoted Reader',  desc: 'Read 50+ books',                  check: (col, fc) => col.filter(e => e.read_status === 'read').length >= 50 },
-  { id: 'century',      emoji: '🏆', name: 'Century Club',    desc: 'Read 100+ books',                 check: (col, fc) => col.filter(e => e.read_status === 'read').length >= 100 },
-  { id: 'explorer',     emoji: '🎭', name: 'Genre Explorer',  desc: 'Read books in 5+ genres',         check: (col, fc) => { const gs = new Set(col.filter(e => e.read_status === 'read').map(e => e.books?.genre).filter(Boolean)); return gs.size >= 5 } },
-  { id: 'critic',       emoji: '⭐', name: 'Critic',          desc: 'Written 10+ reviews',             check: (col, fc) => col.filter(e => e.review_text).length >= 10 },
-  { id: 'social',       emoji: '🤝', name: 'Social Butterfly',desc: 'Has 10+ friends',                 check: (col, fc) => fc >= 10 },
-  { id: 'deepdiver',    emoji: '🔍', name: 'Deep Diver',      desc: 'Read a book over 500 pages',      check: (col, fc) => col.some(e => e.read_status === 'read' && (e.books?.pages || 0) > 500) },
-  { id: 'completionist',emoji: '🌟', name: 'Completionist',   desc: 'Books in all 4 statuses',         check: (col, fc) => { const ss = new Set(col.map(e => e.read_status)); return ['owned','reading','read','want'].every(s => ss.has(s)) } },
-]
-
-function computeBadges(collectionData, friendCount) {
-  return BADGE_DEFS.map(b => ({ ...b, earned: b.check(collectionData, friendCount) }))
-}
+import { computeBadges, BADGE_CATEGORIES, TIER_STYLES } from '../lib/badges'
 
 export default function Profile({ session }) {
   const { username } = useParams()
@@ -401,17 +387,51 @@ export default function Profile({ session }) {
             <div style={s.badgesHeadRow}>
               <span style={s.badgesTitle}>🏅 Badges</span>
               <span style={s.badgesEarned}>
-                {badges.filter(b => b.earned).length} earned
+                {badges.filter(b => b.earned).length} / {badges.length} earned
               </span>
             </div>
-            <div style={s.badgeRow}>
-              {badges.map(b => (
-                <div key={b.id} style={{ ...s.badgeChip, ...(b.earned ? s.badgeChipEarned : s.badgeChipLocked) }} title={b.desc}>
-                  <span style={{ marginRight: 5 }}>{b.earned ? b.emoji : '🔒'}</span>
-                  <span>{b.name}</span>
+            {BADGE_CATEGORIES.map(cat => {
+              const catBadges = badges.filter(b => b.category === cat)
+              if (!catBadges.length) return null
+              return (
+                <div key={cat} style={{ marginBottom: 20 }}>
+                  <div style={s.badgeCatLabel}>{cat}</div>
+                  <div style={s.badgeGrid}>
+                    {catBadges.map(b => {
+                      const ts = TIER_STYLES[b.tier]
+                      return (
+                        <div
+                          key={b.id}
+                          style={{
+                            ...s.badgeCard,
+                            background:   b.earned ? ts.bg     : theme.bgSubtle,
+                            borderColor:  b.earned ? ts.border : theme.borderLight,
+                            opacity:      b.earned ? 1 : 0.72,
+                          }}
+                          title={b.desc}
+                        >
+                          <div style={s.badgeEmoji}>{b.earned ? b.emoji : '🔒'}</div>
+                          <div style={s.badgeCardName}>{b.name}</div>
+                          <div style={s.badgeCardDesc}>{b.desc}</div>
+                          {b.earned ? (
+                            <div style={{ ...s.badgeTierPill, background: ts.bg, color: ts.text, border: `1px solid ${ts.border}` }}>
+                              {ts.label}
+                            </div>
+                          ) : (
+                            <div style={s.badgeProgressWrap}>
+                              <div style={s.badgeProgressBg}>
+                                <div style={{ ...s.badgeProgressFill, width: `${b.pct}%`, background: ts.text }} />
+                              </div>
+                              <span style={s.badgeProgressLabel}>{b.prog.value.toLocaleString()} / {b.prog.max.toLocaleString()} {b.prog.label}</span>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
-              ))}
-            </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -1107,14 +1127,21 @@ function makeStyles(theme, accentColor = '#c0521e', isMobile = false) {
 
     // Badges strip — directly below hero, still dark
     badgesSection:      { background: 'rgba(26,18,8,0.35)', borderBottom: '1px solid rgba(255,255,255,0.05)' },
-    badgesSectionInner: { maxWidth: 960, margin: '0 auto', padding: isMobile ? '12px 16px' : '14px 32px' },
-    badgesHeadRow:      { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 },
-    badgesTitle:        { fontFamily: 'Georgia, serif', fontSize: 14, fontWeight: 700, color: 'rgba(253,248,240,0.75)' },
-    badgesEarned:       { fontSize: 11, color: 'rgba(253,248,240,0.35)', background: 'rgba(255,255,255,0.06)', padding: '2px 9px', borderRadius: 20 },
-    badgeRow:           { display: 'flex', flexWrap: 'wrap', gap: 8 },
-    badgeChip:          { display: 'flex', alignItems: 'center', padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: 'default' },
-    badgeChipEarned:    { background: theme.bgSubtle, color: theme.text, border: `1px solid ${theme.border}` },
-    badgeChipLocked:    { background: 'rgba(255,255,255,0.05)', color: '#6a6258', border: '1px solid rgba(255,255,255,0.06)' },
+    badgesSectionInner: { maxWidth: 960, margin: '0 auto', padding: isMobile ? '16px 16px' : '20px 32px' },
+    badgesHeadRow:      { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 },
+    badgesTitle:        { fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 700, color: 'rgba(253,248,240,0.85)' },
+    badgesEarned:       { fontSize: 11, color: 'rgba(253,248,240,0.45)', background: 'rgba(255,255,255,0.08)', padding: '2px 10px', borderRadius: 20 },
+    badgeCatLabel:      { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(253,248,240,0.35)', marginBottom: 8 },
+    badgeGrid:          { display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(auto-fill,minmax(160px,1fr))', gap: 10 },
+    badgeCard:          { borderRadius: 10, border: '1px solid', padding: '12px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, textAlign: 'center', transition: 'opacity 0.2s' },
+    badgeEmoji:         { fontSize: 28, lineHeight: 1, marginBottom: 2 },
+    badgeCardName:      { fontSize: 12, fontWeight: 700, color: 'rgba(253,248,240,0.85)', lineHeight: 1.2 },
+    badgeCardDesc:      { fontSize: 10, color: 'rgba(253,248,240,0.45)', lineHeight: 1.3 },
+    badgeTierPill:      { marginTop: 4, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 8px', borderRadius: 20 },
+    badgeProgressWrap:  { marginTop: 4, width: '100%' },
+    badgeProgressBg:    { height: 3, background: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden', marginBottom: 3 },
+    badgeProgressFill:  { height: '100%', borderRadius: 2, transition: 'width 0.4s' },
+    badgeProgressLabel: { fontSize: 9, color: 'rgba(253,248,240,0.35)' },
 
     // Content
     content:     { maxWidth: 960, margin: '0 auto', padding: isMobile ? '16px' : '36px 32px' },

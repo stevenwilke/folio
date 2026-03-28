@@ -11,6 +11,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
+import BadgesSection from '../components/BadgesSection';
 
 // ---- Types ----
 
@@ -177,18 +178,30 @@ export default function StatsScreen() {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [rawEntries, setRawEntries] = useState<any[]>([]);
+  const [friendCount, setFriendCount] = useState(0);
 
   async function fetchStats() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: entries } = await supabase
-      .from('collection_entries')
-      .select(`
-        id, read_status, user_rating, added_at,
-        books ( id, title, author, genre, pages, published_year )
-      `)
-      .eq('user_id', user.id);
+    const [{ data: entries }, { count: fc }] = await Promise.all([
+      supabase
+        .from('collection_entries')
+        .select(`
+          id, read_status, user_rating, review_text, added_at,
+          books ( id, title, author, genre, pages, published_year, series_name )
+        `)
+        .eq('user_id', user.id),
+      supabase
+        .from('friendships')
+        .select('id', { count: 'exact', head: true })
+        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+        .eq('status', 'accepted'),
+    ]);
+
+    setRawEntries(entries || []);
+    setFriendCount(fc || 0);
 
     if (!entries) return;
 
@@ -375,6 +388,10 @@ export default function StatsScreen() {
           </Text>
         </View>
       )}
+
+      {/* Badges */}
+      <BadgesSection entries={rawEntries} friendCount={friendCount} />
+
     </ScrollView>
   );
 }

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { computeBadges, BADGE_CATEGORIES, TIER_STYLES } from '../lib/badges'
 
 const CHART_COLORS = ['#c0521e', '#5a7a5a', '#b8860b', '#4a6b8a', '#7b4f3a', '#8b5e83', '#3d6b6b']
 
@@ -43,17 +44,24 @@ export default function Stats({ session }) {
   const [entries,      setEntries]      = useState([])
   const [valuations,   setValuations]   = useState([])
   const [loading,      setLoading]      = useState(true)
+  const [friendCount,  setFriendCount]  = useState(0)
+  const [badges,       setBadges]       = useState([])
 
   useEffect(() => { fetchData() }, [])
 
   async function fetchData() {
     setLoading(true)
-    const { data } = await supabase
-      .from('collection_entries')
-      .select('*, books(*)')
-      .eq('user_id', session.user.id)
+    const { data: { user } } = await supabase.auth.getUser()
+
+    const [{ data }, { count: fc }] = await Promise.all([
+      supabase.from('collection_entries').select('*, books(*)').eq('user_id', session.user.id),
+      supabase.from('friendships').select('id', { count: 'exact', head: true })
+        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`).eq('status', 'accepted'),
+    ])
     const rows = data || []
     setEntries(rows)
+    setFriendCount(fc || 0)
+    setBadges(computeBadges(rows, fc || 0))
 
     // Fetch valuations for all books in collection
     const bookIds = rows.map(e => e.book_id).filter(Boolean)
@@ -212,6 +220,21 @@ export default function Stats({ session }) {
     highlightSub:   { fontSize: 12, color: theme.rust, marginTop: 3 },
 
     empty:   { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '80px 0', color: theme.textSubtle, fontSize: 15 },
+
+    section:         { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, padding: isMobile ? '18px 16px' : '24px 28px', marginBottom: 24 },
+    sectionHeadRow:  { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 },
+    sectionTitle:    { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 20, fontWeight: 700, color: theme.text, margin: 0 },
+    badgesEarnedPill:{ fontSize: 11, color: theme.textSubtle, background: theme.bgSubtle, border: `1px solid ${theme.border}`, padding: '2px 10px', borderRadius: 20 },
+    badgeCatLabel:   { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: theme.textSubtle, marginBottom: 10 },
+    badgeGrid:       { display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(auto-fill,minmax(155px,1fr))', gap: 10 },
+    badgeCard:       { borderRadius: 10, border: '1px solid', padding: '14px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, textAlign: 'center' },
+    badgeEmoji:      { fontSize: 30, lineHeight: 1, marginBottom: 2 },
+    badgeCardName:   { fontSize: 12, fontWeight: 700, color: theme.text, lineHeight: 1.2 },
+    badgeCardDesc:   { fontSize: 10, color: theme.textSubtle, lineHeight: 1.3 },
+    badgeTierPill:   { marginTop: 4, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 8px', borderRadius: 20 },
+    badgeProgressBg: { height: 3, background: theme.bgSubtle, borderRadius: 2, overflow: 'hidden', marginBottom: 3 },
+    badgeProgressFill: { height: '100%', borderRadius: 2, transition: 'width 0.4s' },
+    badgeProgressLabel: { fontSize: 9, color: theme.textSubtle },
   }
 
   return (
@@ -425,6 +448,60 @@ export default function Stats({ session }) {
 
               </div>
             </div>
+
+            {/* ── BADGES ── */}
+            <div style={s.section}>
+              <div style={s.sectionHeadRow}>
+                <h2 style={s.sectionTitle}>🏅 Badges & Trophies</h2>
+                <span style={s.badgesEarnedPill}>
+                  {badges.filter(b => b.earned).length} / {badges.length} earned
+                </span>
+              </div>
+              {BADGE_CATEGORIES.map(cat => {
+                const catBadges = badges.filter(b => b.category === cat)
+                if (!catBadges.length) return null
+                return (
+                  <div key={cat} style={{ marginBottom: 24 }}>
+                    <div style={s.badgeCatLabel}>{cat}</div>
+                    <div style={s.badgeGrid}>
+                      {catBadges.map(b => {
+                        const ts = TIER_STYLES[b.tier]
+                        return (
+                          <div
+                            key={b.id}
+                            style={{
+                              ...s.badgeCard,
+                              background:  b.earned ? ts.bg      : theme.bgSubtle,
+                              borderColor: b.earned ? ts.border  : theme.borderLight,
+                              opacity:     b.earned ? 1 : 0.7,
+                            }}
+                          >
+                            <div style={s.badgeEmoji}>{b.earned ? b.emoji : '🔒'}</div>
+                            <div style={s.badgeCardName}>{b.name}</div>
+                            <div style={s.badgeCardDesc}>{b.desc}</div>
+                            {b.earned ? (
+                              <div style={{ ...s.badgeTierPill, background: ts.bg, color: ts.text, border: `1px solid ${ts.border}` }}>
+                                {ts.label}
+                              </div>
+                            ) : (
+                              <div style={{ width: '100%', marginTop: 4 }}>
+                                <div style={s.badgeProgressBg}>
+                                  <div style={{ ...s.badgeProgressFill, width: `${b.pct}%`, background: ts.text }} />
+                                </div>
+                                <div style={s.badgeProgressLabel}>
+                                  {b.prog.value.toLocaleString()} / {b.prog.max.toLocaleString()} {b.prog.label}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
           </>
         )}
       </div>

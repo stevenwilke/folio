@@ -408,6 +408,35 @@ function RecommendationCard({ book, theme, onView }) {
   )
 }
 
+function AIPickCard({ book, theme, myBookIds, onPreview }) {
+  const [hover, setHover] = useState(false)
+  const have = myBookIds.has(titleKey(book.title, book.author))
+  const colors = ['#5a3e7a','#1e5f74','#7a3b3b','#3a6b4a','#6b4a1e','#3a4a6b']
+  const c  = colors[Math.abs((book.title||'').charCodeAt(0)) % colors.length]
+  const c2 = colors[(Math.abs((book.title||'').charCodeAt(0)) + 3) % colors.length]
+  return (
+    <div
+      onClick={onPreview}
+      onTouchEnd={e => { e.preventDefault(); onPreview() }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ flexShrink: 0, width: 130, cursor: 'pointer', transform: hover ? 'translateY(-3px)' : 'none', transition: 'transform 0.15s' }}
+    >
+      <div style={{ width: 130, height: 175, borderRadius: 10, overflow: 'hidden', background: `linear-gradient(135deg,${c},${c2})`, marginBottom: 8, boxShadow: hover ? '0 8px 22px rgba(0,0,0,0.22)' : '0 2px 8px rgba(0,0,0,0.12)', position: 'relative' }}>
+        {book.coverUrl && <img src={book.coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none' }} />}
+        {have && (
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(90,122,90,0.9)', color: '#fff', fontSize: 10, fontWeight: 700, textAlign: 'center', padding: '3px 0' }}>In Library</div>
+        )}
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: theme.text, lineHeight: 1.35, marginBottom: 3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{book.title}</div>
+      {book.author && <div style={{ fontSize: 11, color: theme.textSubtle, marginBottom: 5 }}>{book.author}</div>}
+      {book._aiReason && (
+        <div style={{ fontSize: 10, background: 'rgba(80,60,120,0.1)', color: '#7b5ea8', borderRadius: 10, padding: '2px 8px', display: 'inline-block', lineHeight: 1.4 }}>{book._aiReason}</div>
+      )}
+    </div>
+  )
+}
+
 function BookRow({ books, myBookIds, onPreview, loading }) {
   const { theme } = useTheme()
   const s = makeStyles(theme)
@@ -458,6 +487,10 @@ export default function Discover({ session }) {
   const [recsLoading,     setRecsLoading]     = useState(true)
   const [hasEnoughData,   setHasEnoughData]   = useState(true)
 
+  const [aiRecs,        setAiRecs]        = useState([])
+  const [aiRecsLoad,    setAiRecsLoad]    = useState(true)
+  const [aiRecsError,   setAiRecsError]   = useState(false)
+
   const [previewBook,  setPreviewBook]  = useState(null)   // OL book object for quick preview
   const [selectedBook, setSelectedBook] = useState(null)   // Supabase UUID for full detail
 
@@ -475,7 +508,7 @@ export default function Discover({ session }) {
   useEffect(() => {
     async function init() {
       const { data: entries } = await supabase.from('collection_entries')
-        .select('read_status, rating, books(title, author)')
+        .select('read_status, rating, user_rating, books(title, author, genre)')
         .eq('user_id', session.user.id)
       const books = (entries ?? []).map(e => e.books).filter(Boolean)
       setMyBookIds(new Set(books.map(b => titleKey(b.title, b.author))))
@@ -484,6 +517,7 @@ export default function Discover({ session }) {
       buildNewReleases(new Set(books.map(b => titleKey(b.title, b.author))))
       buildTrending()
       buildFromFavoriteAuthors(entries ?? [], new Set(books.map(b => titleKey(b.title, b.author))))
+      buildAIRecs(entries ?? [])
     }
     init()
   }, [session.user.id])
@@ -671,6 +705,63 @@ export default function Discover({ session }) {
     finally { setFromAuthLoad(false) }
   }
 
+  async function buildAIRecs(entries) {
+    setAiRecsLoad(true)
+    setAiRecsError(false)
+    try {
+      // Send user's library to the edge function
+      const books = entries.map(e => ({
+        title:       e.books?.title   ?? '',
+        author:      e.books?.author  ?? null,
+        genre:       e.books?.genre   ?? null,
+        user_rating: e.user_rating    ?? null,
+        read_status: e.read_status    ?? 'owned',
+      })).filter(b => b.title)
+
+      if (books.length < 3) { setAiRecsLoad(false); return }
+
+      const { data, error } = await supabase.functions.invoke('ai-book-recommendations', {
+        body: { books },
+      })
+
+      if (error || !data?.recommendations?.length) {
+        setAiRecsLoad(false)
+        return
+      }
+
+      // For each AI recommendation, search Open Library to get cover + key
+      const ownedKeys = new Set(entries.map(e => titleKey(e.books?.title, e.books?.author)))
+      const enriched = await Promise.all(
+        data.recommendations.map(async (rec) => {
+          try {
+            const q = encodeURIComponent(`${rec.title} ${rec.author ?? ''}`)
+            const r = await fetch(`https://openlibrary.org/search.json?q=${q}&limit=3&fields=key,title,author_name,cover_i,first_publish_year`)
+            const j = await r.json()
+            const match = (j.docs ?? []).find(d => d.cover_i) ?? j.docs?.[0]
+            return {
+              olKey:    match?.key ?? titleKey(rec.title, rec.author),
+              title:    rec.title,
+              author:   rec.author,
+              coverUrl: match?.cover_i ? `https://covers.openlibrary.org/b/id/${match.cover_i}-M.jpg` : null,
+              year:     match?.first_publish_year ?? null,
+              _aiReason: rec.reason,
+            }
+          } catch {
+            return { olKey: titleKey(rec.title, rec.author), title: rec.title, author: rec.author, coverUrl: null, year: null, _aiReason: rec.reason }
+          }
+        })
+      )
+
+      // Filter out any that match owned books
+      const fresh = enriched.filter(b => !ownedKeys.has(titleKey(b.title, b.author)))
+      setAiRecs(fresh)
+    } catch {
+      setAiRecsError(true)
+    } finally {
+      setAiRecsLoad(false)
+    }
+  }
+
   async function handleGenre(genre) {
     if (activeGenre?.slug === genre.slug) { setActiveGenre(null); setGenreBooks([]); return }
     setActiveGenre(genre); setGenreLoad(true); setGenreBooks([])
@@ -766,23 +857,47 @@ export default function Discover({ session }) {
           <p  style={s.pageSub}>Find your next great read</p>
         </div>
 
-        {/* Recommendations */}
+        {/* AI Picks */}
+        <section style={{ marginBottom: 40 }}>
+          <div style={{ marginBottom: 14 }}>
+            <h2 style={{ ...s.secTitle, display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 4px' }}>
+              <span>✨</span>
+              <span>AI Picks For You</span>
+              <span style={{ fontSize: 11, fontWeight: 500, background: 'rgba(192,82,30,0.12)', color: '#c0521e', borderRadius: 20, padding: '2px 9px', letterSpacing: 0.3 }}>Powered by Claude</span>
+            </h2>
+            <p style={s.secSub}>Personalized suggestions based on your reading taste</p>
+          </div>
+          {aiRecsLoad ? (
+            <div style={{ ...s.row }}>
+              {[...Array(6)].map((_, i) => (
+                <div key={i} style={{ ...s.skeleton, opacity: 0.6 + i * 0.05 }} />
+              ))}
+            </div>
+          ) : aiRecs.length > 0 ? (
+            <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8, WebkitOverflowScrolling: 'touch', scrollbarWidth: 'thin', scrollbarColor: `${theme.border} transparent` }}>
+              {aiRecs.map((book, i) => (
+                <AIPickCard key={book.olKey ?? i} book={book} theme={theme} myBookIds={myBookIds} onPreview={() => setPreviewBook(book)} />
+              ))}
+            </div>
+          ) : (
+            <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '18px 22px', fontSize: 14, color: theme.textSubtle }}>
+              ✨ Add at least 3 books to your library to unlock AI-powered recommendations!
+            </div>
+          )}
+        </section>
+
+        {/* Collaborative Recommendations */}
         {!recsLoading && hasEnoughData && recommendations.length > 0 && (
           <div style={{ marginBottom: 32 }}>
             <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text, marginBottom: 4 }}>
-              🔮 Recommended For You
+              🔮 Popular With Readers Like You
             </div>
-            <div style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 14 }}>Based on your reading history</div>
+            <div style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 14 }}>Highly-rated by readers who share your taste</div>
             <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8, WebkitOverflowScrolling: 'touch' }}>
               {recommendations.map(book => (
                 <RecommendationCard key={book.id} book={book} theme={theme} onView={() => setSelectedBook(book.id)} />
               ))}
             </div>
-          </div>
-        )}
-        {!recsLoading && !hasEnoughData && (
-          <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '20px 24px', marginBottom: 28, fontSize: 14, color: theme.textSubtle }}>
-            🔮 Add at least 3 books to your library to get personalized recommendations!
           </div>
         )}
 

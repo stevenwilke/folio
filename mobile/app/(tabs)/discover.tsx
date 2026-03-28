@@ -110,6 +110,23 @@ async function searchOL(query: string, limit = 8): Promise<DiscoverBook[]> {
   } catch { return []; }
 }
 
+function MobileFriendStats({ stats }: { stats: any[] | null }) {
+  if (stats === null) return <Text style={{ fontSize: 11, color: Colors.muted, marginTop: 6, fontStyle: 'italic' }}>Checking friends…</Text>;
+  if (!stats.length) return <Text style={{ fontSize: 11, color: Colors.muted, marginTop: 6 }}>👥 No friends have read this yet</Text>;
+  const withRating = stats.filter(s => s.user_rating);
+  const avg = withRating.length
+    ? (withRating.reduce((sum: number, s: any) => sum + s.user_rating, 0) / withRating.length).toFixed(1) : null;
+  const names = stats.map((s: any) => s.profiles?.username).filter(Boolean);
+  const display = names.length === 1 ? names[0]
+    : names.length === 2 ? `${names[0]} and ${names[1]}`
+    : `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length - 2 > 1 ? 's' : ''}`;
+  return (
+    <Text style={{ fontSize: 11, color: Colors.ink, marginTop: 6 }}>
+      👥 <Text style={{ fontWeight: '700' }}>{display}</Text> {stats.length === 1 ? 'has' : 'have'} read this{avg ? <Text style={{ color: Colors.gold }}> · avg ★{avg}</Text> : null}
+    </Text>
+  );
+}
+
 function BookCard({ book, myKeys, onPreview }: {
   book: DiscoverBook;
   myKeys: Set<string>;
@@ -277,6 +294,37 @@ function HorizontalSection({ title, subtitle, books, myKeys, onPreview, loading 
   );
 }
 
+interface AIRec extends DiscoverBook { _aiReason?: string }
+
+function AIPickCard({ book, myKeys, onPreview }: { book: AIRec; myKeys: Set<string>; onPreview: (b: DiscoverBook) => void }) {
+  const have = myKeys.has(titleKey(book.title, book.author));
+  const colors = ['#5a3e7a','#1e5f74','#7a3b3b','#3a6b4a','#6b4a1e','#3a4a6b'];
+  const c  = colors[Math.abs((book.title || '').charCodeAt(0)) % colors.length];
+  const c2 = colors[(Math.abs((book.title || '').charCodeAt(0)) + 3) % colors.length];
+  return (
+    <TouchableOpacity style={styles.aiCard} activeOpacity={0.75} onPress={() => onPreview(book)}>
+      <View style={[styles.aiCardCover, { backgroundColor: c }]}>
+        {book.coverUrl
+          ? <Image source={{ uri: book.coverUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" onError={() => {}} />
+          : <FakeCover title={book.title} author={book.author ?? ''} width={110} height={160} />
+        }
+        {have && (
+          <View style={styles.haveBadge}><Text style={styles.haveBadgeText}>In Library</Text></View>
+        )}
+      </View>
+      <View style={styles.aiCardMeta}>
+        <Text style={styles.cardTitle} numberOfLines={2}>{book.title}</Text>
+        {book.author && <Text style={styles.cardAuthor} numberOfLines={1}>{book.author}</Text>}
+        {book._aiReason && (
+          <View style={styles.aiReasonPill}>
+            <Text style={styles.aiReasonText}>{book._aiReason}</Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 export default function DiscoverScreen() {
   const router = useRouter();
   const [myKeys,        setMyKeys]        = useState(new Set<string>());
@@ -292,6 +340,8 @@ export default function DiscoverScreen() {
   const [genreBooks,    setGenreBooks]    = useState<DiscoverBook[]>([]);
   const [genreLoad,     setGenreLoad]     = useState(false);
   const [previewBook,   setPreviewBook]   = useState<DiscoverBook | null>(null);
+  const [aiRecs,        setAiRecs]        = useState<AIRec[]>([]);
+  const [aiRecsLoad,    setAiRecsLoad]    = useState(true);
 
   useEffect(() => { init(); }, []);
 
@@ -301,7 +351,7 @@ export default function DiscoverScreen() {
 
     const { data: entries } = await supabase
       .from('collection_entries')
-      .select('read_status, rating, books(title, author)')
+      .select('read_status, rating, user_rating, books(title, author, genre)')
       .eq('user_id', user.id);
 
     const books = (entries ?? []).map((e: any) => e.books).filter(Boolean);
@@ -311,6 +361,7 @@ export default function DiscoverScreen() {
     buildForYou(entries ?? [], books, keys, user.id);
     buildFriends(user.id, keys);
     buildNewReleases(keys);
+    buildAIRecs(entries ?? [], keys);
   }
 
   async function buildForYou(entries: any[], books: any[], ownedKeys: Set<string>, userId: string) {
@@ -379,6 +430,51 @@ export default function DiscoverScreen() {
     finally { setFriendsLoad(false); }
   }
 
+  async function buildAIRecs(entries: any[], ownedKeys: Set<string>) {
+    setAiRecsLoad(true);
+    try {
+      const books = entries.map((e: any) => ({
+        title:       e.books?.title   ?? '',
+        author:      e.books?.author  ?? null,
+        genre:       e.books?.genre   ?? null,
+        user_rating: e.user_rating    ?? null,
+        read_status: e.read_status    ?? 'owned',
+      })).filter((b: any) => b.title);
+
+      if (books.length < 3) { setAiRecsLoad(false); return; }
+
+      const { data, error } = await supabase.functions.invoke('ai-book-recommendations', { body: { books } });
+      if (error || !data?.recommendations?.length) { setAiRecsLoad(false); return; }
+
+      const enriched: AIRec[] = await Promise.all(
+        (data.recommendations as { title: string; author: string; reason: string }[]).map(async (rec) => {
+          try {
+            const q = encodeURIComponent(`${rec.title} ${rec.author ?? ''}`);
+            const r = await fetch(`https://openlibrary.org/search.json?q=${q}&limit=3&fields=key,title,author_name,cover_i,first_publish_year`);
+            const j = await r.json();
+            const match = (j.docs ?? []).find((d: any) => d.cover_i) ?? j.docs?.[0];
+            return {
+              olKey:      match?.key ?? titleKey(rec.title, rec.author),
+              title:      rec.title,
+              author:     rec.author,
+              coverUrl:   match?.cover_i ? `https://covers.openlibrary.org/b/id/${match.cover_i}-M.jpg` : null,
+              year:       match?.first_publish_year ?? null,
+              _aiReason:  rec.reason,
+            };
+          } catch {
+            return { olKey: titleKey(rec.title, rec.author), title: rec.title, author: rec.author, coverUrl: null, year: null, _aiReason: rec.reason };
+          }
+        })
+      );
+
+      setAiRecs(enriched.filter(b => !ownedKeys.has(titleKey(b.title, b.author))));
+    } catch {
+      // silently fail — not critical
+    } finally {
+      setAiRecsLoad(false);
+    }
+  }
+
   async function handleGenre(genre: typeof GENRES[0]) {
     if (activeGenre?.slug === genre.slug) { setActiveGenre(null); setGenreBooks([]); return; }
     setActiveGenre(genre); setGenreLoad(true); setGenreBooks([]);
@@ -418,6 +514,31 @@ export default function DiscoverScreen() {
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+
+      {/* AI Picks */}
+      <View style={styles.section}>
+        <View style={styles.aiSectionHead}>
+          <Text style={styles.sectionTitle}>✨ AI Picks For You</Text>
+          <View style={styles.claudePill}><Text style={styles.claudePillText}>Claude AI</Text></View>
+        </View>
+        <Text style={styles.sectionSub}>Personalized suggestions based on your reading taste</Text>
+        {aiRecsLoad ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+            {[...Array(4)].map((_, i) => <View key={i} style={styles.skeleton} />)}
+          </ScrollView>
+        ) : aiRecs.length > 0 ? (
+          <FlatList
+            horizontal
+            data={aiRecs}
+            keyExtractor={(b, i) => b.olKey ?? String(i)}
+            renderItem={({ item }) => <AIPickCard book={item} myKeys={myKeys} onPreview={setPreviewBook} />}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.row}
+          />
+        ) : (
+          <Text style={styles.emptyText}>Add at least 3 books to unlock AI picks!</Text>
+        )}
+      </View>
 
       {/* For You */}
       <HorizontalSection
@@ -520,6 +641,16 @@ const styles = StyleSheet.create({
   cardActions:{ paddingHorizontal: 6, paddingBottom: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   addBtn:    { paddingHorizontal: 5, paddingVertical: 3, borderRadius: 4, borderWidth: 1, backgroundColor: Colors.background },
   addBtnText:{ fontSize: 9, fontWeight: '600', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+
+  // AI Picks
+  aiSectionHead:  { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, marginBottom: 2 },
+  claudePill:     { backgroundColor: 'rgba(123,94,168,0.12)', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
+  claudePillText: { fontSize: 10, fontWeight: '600', color: '#7b5ea8', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  aiCard:         { width: 130, flexShrink: 0, backgroundColor: Colors.card, borderRadius: 10, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden' },
+  aiCardCover:    { width: 130, height: 175, position: 'relative', overflow: 'hidden' },
+  aiCardMeta:     { padding: 8, gap: 3 },
+  aiReasonPill:   { backgroundColor: 'rgba(123,94,168,0.10)', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start', marginTop: 2 },
+  aiReasonText:   { fontSize: 9, color: '#7b5ea8', fontWeight: '600', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
 
   genreGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, marginBottom: 16 },
   genreChip:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border },

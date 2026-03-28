@@ -97,8 +97,8 @@ export default function Library({ session }) {
     const { data, error } = await supabase
       .from('collection_entries')
       .select(`
-        id, read_status, user_rating, added_at,
-        books ( id, title, author, cover_image_url, isbn_13, isbn_10, genre, published_year )
+        id, read_status, user_rating, added_at, current_page,
+        books ( id, title, author, cover_image_url, isbn_13, isbn_10, genre, published_year, pages )
       `)
       .eq('user_id', session.user.id)
       .order('added_at', { ascending: false })
@@ -893,6 +893,18 @@ function ListRow({ entry, isLast, selectMode, isSelected, onSelect, theme, isMob
             {[book.genre, book.published_year].filter(Boolean).join(' · ')}
           </div>
         )}
+        {status === 'reading' && entry.current_page > 0 && (
+          <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {book.pages && (
+              <div style={{ width: 80, height: 3, background: theme.bgSubtle, borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.min(100, Math.round((entry.current_page / book.pages) * 100))}%`, background: theme.rust, borderRadius: 2 }} />
+              </div>
+            )}
+            <span style={{ fontSize: 10, color: theme.rust }}>
+              {book.pages ? `Pg ${entry.current_page} / ${book.pages}` : `Pg ${entry.current_page}`}
+            </span>
+          </div>
+        )}
       </div>
       {/* Rating */}
       {!isMobile && entry.user_rating > 0 && (
@@ -911,9 +923,21 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
   const { theme } = useTheme()
   const book   = entry.books
   const status = entry.read_status
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [hover, setHover] = useState(false)
-  const [imgError, setImgError] = useState(false)
+  const [menuOpen,     setMenuOpen]     = useState(false)
+  const [hover,        setHover]        = useState(false)
+  const [imgError,     setImgError]     = useState(false)
+  const [currentPage,  setCurrentPage]  = useState(entry.current_page || 0)
+  const [editingPage,  setEditingPage]  = useState(false)
+  const [pageInput,    setPageInput]    = useState('')
+
+  const pct = book.pages && currentPage ? Math.min(100, Math.round((currentPage / book.pages) * 100)) : 0
+
+  async function savePage(val) {
+    const p = Math.max(0, parseInt(val) || 0)
+    setCurrentPage(p)
+    setEditingPage(false)
+    await supabase.from('collection_entries').update({ current_page: p || null }).eq('id', entry.id)
+  }
 
   async function changeStatus(newStatus) {
     await supabase
@@ -1004,6 +1028,14 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
         {listing && (
           <div style={s.forSaleBadge}>${Number(listing.price).toFixed(2)}</div>
         )}
+        {/* Reading progress bar at bottom of cover */}
+        {status === 'reading' && (book.pages || currentPage > 0) && (
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 4, background: 'rgba(255,255,255,0.25)', borderRadius: '0 0 5px 5px', overflow: 'hidden', zIndex: 3 }}
+            onClick={e => { e.stopPropagation(); setPageInput(currentPage || ''); setEditingPage(true) }}
+          >
+            <div style={{ height: '100%', width: `${pct}%`, background: theme.rust, transition: 'width 0.3s' }} />
+          </div>
+        )}
         {/* Status badge overlaid at bottom of cover */}
         {!selectMode && (
           <div style={{ position: 'absolute', bottom: 6, left: 6, zIndex: 2 }} onClick={e => { e.stopPropagation(); setMenuOpen(!menuOpen) }}>
@@ -1043,6 +1075,35 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
       <div style={{ marginTop: 8 }}>
         <div style={s.bookTitle}>{book.title}</div>
         <div style={s.bookAuthor}>{book.author}</div>
+        {status === 'reading' && (
+          <div style={{ marginTop: 5 }} onClick={e => e.stopPropagation()}>
+            {editingPage ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  type="number"
+                  min="0"
+                  max={book.pages || undefined}
+                  autoFocus
+                  value={pageInput}
+                  onChange={e => setPageInput(e.target.value)}
+                  onBlur={() => savePage(pageInput)}
+                  onKeyDown={e => { if (e.key === 'Enter') savePage(pageInput); if (e.key === 'Escape') setEditingPage(false) }}
+                  style={{ width: 52, padding: '2px 6px', fontSize: 11, border: `1px solid ${theme.rust}`, borderRadius: 4, outline: 'none', fontFamily: "'DM Sans', sans-serif", color: theme.text, background: theme.bgCard }}
+                />
+                {book.pages && <span style={{ fontSize: 10, color: theme.textSubtle }}>/ {book.pages}</span>}
+              </div>
+            ) : (
+              <div
+                style={{ fontSize: 11, color: theme.rust, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                onClick={() => { setPageInput(currentPage || ''); setEditingPage(true) }}
+              >
+                {currentPage > 0
+                  ? (book.pages ? `Pg ${currentPage} / ${book.pages}` : `Pg ${currentPage}`)
+                  : '+ Update page'}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

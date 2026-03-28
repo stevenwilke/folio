@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
@@ -94,6 +94,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [valuationLoading, setValuationLoading] = useState(true)
   const [friendStats, setFriendStats]   = useState(null)   // null = loading, [] = none
   const [currentPage, setCurrentPage]   = useState(0)
+  const savePageTimer = useRef(null)
   const [removeConfirm, setRemoveConfirm] = useState(false)
 
   // Journal state
@@ -411,15 +412,18 @@ export default function BookDetail({ bookId, session, onBack }) {
     fetchCommunityRating()
   }
 
-  async function saveProgress(page) {
+  function saveProgress(page) {
     if (!entry) return
     const p = Math.max(0, parseInt(page) || 0)
     setCurrentPage(p)
-    await supabase
-      .from('collection_entries')
-      .update({ current_page: p > 0 ? p : null })
-      .eq('id', entry.id)
-      .eq('user_id', session.user.id)
+    clearTimeout(savePageTimer.current)
+    savePageTimer.current = setTimeout(async () => {
+      await supabase
+        .from('collection_entries')
+        .update({ current_page: p > 0 ? p : null })
+        .eq('id', entry.id)
+        .eq('user_id', session.user.id)
+    }, 600)
   }
 
   async function saveReview() {
@@ -745,33 +749,38 @@ export default function BookDetail({ bookId, session, onBack }) {
             )}
 
             {/* Reading progress */}
-            {entry?.read_status === 'reading' && book.pages && (
+            {entry?.read_status === 'reading' && (
               <div style={{ marginTop: 16 }}>
                 <div style={s.ratingLabel}>Reading Progress</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={s.progressBarBg}>
-                    <div style={{
-                      ...s.progressBarFill,
-                      width: `${Math.min(100, Math.round((currentPage / book.pages) * 100))}%`
-                    }} />
+                {book.pages ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={s.progressBarBg}>
+                      <div style={{
+                        ...s.progressBarFill,
+                        width: `${Math.min(100, Math.round((currentPage / book.pages) * 100))}%`
+                      }} />
+                    </div>
+                    <span style={s.progressPct}>
+                      {currentPage > 0
+                        ? `${Math.min(100, Math.round((currentPage / book.pages) * 100))}%`
+                        : '0%'}
+                    </span>
                   </div>
-                  <span style={s.progressPct}>
-                    {currentPage > 0
-                      ? `${Math.min(100, Math.round((currentPage / book.pages) * 100))}%`
-                      : '0%'}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                ) : null}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: book.pages ? 8 : 0 }}>
                   <input
                     type="number"
                     min="0"
-                    max={book.pages}
+                    max={book.pages || undefined}
                     value={currentPage || ''}
                     onChange={e => saveProgress(e.target.value)}
-                    placeholder="0"
+                    placeholder="Current page"
                     style={s.pageInput}
                   />
-                  <span style={{ fontSize: 13, color: theme.textSubtle }}>of {book.pages} pages</span>
+                  {book.pages
+                    ? <span style={{ fontSize: 13, color: theme.textSubtle }}>of {book.pages} pages</span>
+                    : <span style={{ fontSize: 13, color: theme.textSubtle }}>page</span>
+                  }
                 </div>
               </div>
             )}

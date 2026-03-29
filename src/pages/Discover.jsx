@@ -718,14 +718,17 @@ export default function Discover({ session }) {
         read_status: e.read_status    ?? 'owned',
       })).filter(b => b.title)
 
-      if (books.length < 3) { setAiRecsLoad(false); return }
+      console.log('[AI Recs] entries:', entries.length, 'valid books:', books.length)
+      if (books.length < 3) { console.log('[AI Recs] not enough books'); setAiRecsLoad(false); return }
 
       const { data, error } = await supabase.functions.invoke('ai-book-recommendations', {
         body: { books },
       })
 
+      console.log('[AI Recs] response:', { data, error })
+
       if (error) {
-        console.error('AI recs error:', error)
+        console.error('[AI Recs] invoke error:', error)
         setAiRecsError(true)
         setAiRecsLoad(false)
         return

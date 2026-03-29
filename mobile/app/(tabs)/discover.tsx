@@ -351,7 +351,7 @@ export default function DiscoverScreen() {
 
     const { data: entries } = await supabase
       .from('collection_entries')
-      .select('read_status, rating, user_rating, books(title, author, genre)')
+      .select('read_status, user_rating, books(title, author)')
       .eq('user_id', user.id);
 
     const books = (entries ?? []).map((e: any) => e.books).filter(Boolean);
@@ -367,7 +367,7 @@ export default function DiscoverScreen() {
   async function buildForYou(entries: any[], books: any[], ownedKeys: Set<string>, userId: string) {
     setForYouLoad(true);
     try {
-      const loved = entries.filter((e: any) => e.rating >= 4 || ['read','owned'].includes(e.read_status));
+      const loved = entries.filter((e: any) => e.user_rating >= 4 || ['read','owned'].includes(e.read_status));
       const authorCount: Record<string, number> = {};
       loved.forEach((e: any) => {
         const a = e.books?.author;

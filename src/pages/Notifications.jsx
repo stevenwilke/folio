@@ -143,7 +143,7 @@ export default function Notifications({ session }) {
       // Pending marketplace orders (I'm seller)
       supabase
         .from('orders')
-        .select('id, price, created_at, listings(books(title)), profiles!orders_buyer_id_fkey(username)')
+        .select('id, price, created_at, buyer_id, listings(books(title))')
         .eq('seller_id', uid)
         .eq('status', 'pending')
         .order('created_at', { ascending: false }),
@@ -151,19 +151,31 @@ export default function Notifications({ session }) {
       // Recent orders (I'm buyer, confirmed/shipped/completed)
       supabase
         .from('orders')
-        .select('id, price, created_at, updated_at, status, listings(books(title)), profiles!orders_seller_id_fkey(username)')
+        .select('id, price, created_at, updated_at, status, seller_id, listings(books(title))')
         .eq('buyer_id', uid)
         .in('status', ['confirmed', 'shipped', 'completed'])
         .order('updated_at', { ascending: false })
         .limit(20),
     ])
 
-    setPendingFriends(pendFriends   || [])
-    setRecentFriends(recFriends     || [])
-    setPendingBorrows(pendBorrows   || [])
-    setActiveBorrows(actBorrows     || [])
-    setPendingOrders(pendOrd        || [])
-    setRecentOrders(recOrd          || [])
+    // Resolve order usernames separately (orders references auth.users, not profiles)
+    const allOrderUserIds = [
+      ...(pendOrd || []).map(o => o.buyer_id),
+      ...(recOrd  || []).map(o => o.seller_id),
+    ].filter(Boolean)
+    let orderProfileMap = {}
+    if (allOrderUserIds.length) {
+      const { data: ops } = await supabase
+        .from('profiles').select('id, username').in('id', [...new Set(allOrderUserIds)])
+      orderProfileMap = Object.fromEntries((ops || []).map(p => [p.id, p.username]))
+    }
+
+    setPendingFriends(pendFriends || [])
+    setRecentFriends(recFriends   || [])
+    setPendingBorrows(pendBorrows || [])
+    setActiveBorrows(actBorrows   || [])
+    setPendingOrders((pendOrd || []).map(o => ({ ...o, profiles: { username: orderProfileMap[o.buyer_id] } })))
+    setRecentOrders( (recOrd  || []).map(o => ({ ...o, profiles: { username: orderProfileMap[o.seller_id] } })))
     setLoading(false)
   }
 

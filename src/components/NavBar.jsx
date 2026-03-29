@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import SearchModal from './SearchModal'
+import GlobalSearchModal from './GlobalSearchModal'
 import GoodreadsImportModal from './GoodreadsImportModal'
 import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -31,8 +32,9 @@ export default function NavBar({ session, extra }) {
   const [profile, setProfile] = useState(
     session?.user?.id === _cachedId ? _cachedProfile : null
   )
-  const [showSearch,   setShowSearch]   = useState(false)
-  const [showBell,     setShowBell]     = useState(false)
+  const [showSearch,       setShowSearch]       = useState(false)
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false)
+  const [showBell,         setShowBell]         = useState(false)
   const [showMenu,     setShowMenu]     = useState(false)
   const [showAvatar,   setShowAvatar]   = useState(false)
   const [showImport,   setShowImport]   = useState(false)
@@ -44,6 +46,18 @@ export default function NavBar({ session, extra }) {
 
   // Close mobile menu when route changes
   useEffect(() => { setShowMenu(false) }, [location.pathname])
+
+  // Cmd+K / Ctrl+K opens global search
+  useEffect(() => {
+    function onKey(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setShowGlobalSearch(true)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
 
   // Fetch + cache profile (username + avatar)
   useEffect(() => {
@@ -68,7 +82,7 @@ export default function NavBar({ session, extra }) {
   }, [session?.user?.id])
 
   async function fetchNotifications() {
-    const [{ data: friends }, { data: borrows }, { data: orders }] = await Promise.all([
+    const [{ data: friends }, { data: borrows }, { data: orderRows }] = await Promise.all([
       supabase
         .from('friendships')
         .select('id, requester_id, created_at, profiles!friendships_requester_id_fkey(username)')
@@ -81,13 +95,24 @@ export default function NavBar({ session, extra }) {
         .eq('status', 'pending'),
       supabase
         .from('orders')
-        .select('id, price, created_at, listings(books(title)), profiles!orders_buyer_id_fkey(username)')
+        .select('id, price, created_at, buyer_id, listings(books(title))')
         .eq('seller_id', session.user.id)
         .eq('status', 'pending'),
     ])
+
+    // Resolve buyer usernames separately (orders.buyer_id references auth.users, not profiles)
+    let orders = orderRows || []
+    if (orders.length) {
+      const buyerIds = [...new Set(orders.map(o => o.buyer_id).filter(Boolean))]
+      const { data: buyerProfiles } = await supabase
+        .from('profiles').select('id, username').in('id', buyerIds)
+      const profileMap = Object.fromEntries((buyerProfiles || []).map(p => [p.id, p.username]))
+      orders = orders.map(o => ({ ...o, profiles: { username: profileMap[o.buyer_id] } }))
+    }
+
     setFriendReqs(friends || [])
     setBorrowNotifs(borrows || [])
-    setOrderNotifs(orders || [])
+    setOrderNotifs(orders)
   }
 
   async function respondToFriend(id, accept) {
@@ -134,6 +159,16 @@ export default function NavBar({ session, extra }) {
         {isMobile ? (
           /* ── MOBILE TOPBAR ── */
           <div style={s.right}>
+            {/* Global Search icon */}
+            <button
+              onClick={() => setShowGlobalSearch(true)}
+              title="Search books"
+              style={{ ...s.bellBtn, color: theme.navText, borderColor: theme.border }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </button>
             {/* Add Book button */}
             <button style={s.addBtn} onClick={() => setShowSearch(true)}>+ Add Book</button>
 
@@ -173,6 +208,17 @@ export default function NavBar({ session, extra }) {
                 {item.label}
               </button>
             ))}
+
+            {/* Global Search icon */}
+            <button
+              onClick={() => setShowGlobalSearch(true)}
+              title="Search books (⌘K)"
+              style={{ ...s.bellBtn, color: theme.navText, borderColor: theme.border, marginLeft: 4 }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </button>
 
             <button style={s.addBtn} onClick={() => setShowSearch(true)}>+ Add Book</button>
 
@@ -239,6 +285,12 @@ export default function NavBar({ session, extra }) {
           session={session}
           onClose={() => setShowSearch(false)}
           onAdded={() => setShowSearch(false)}
+        />
+      )}
+      {showGlobalSearch && (
+        <GlobalSearchModal
+          session={session}
+          onClose={() => setShowGlobalSearch(false)}
         />
       )}
       {showImport && (

@@ -173,7 +173,6 @@ function DiscoverCard({ book, onPreview, myBookIds }) {
     <div
       style={{ ...s.card, ...(hover ? s.cardHover : {}), cursor: 'pointer' }}
       onClick={() => onPreview(book)}
-      onTouchEnd={(e) => { e.preventDefault(); onPreview(book) }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
@@ -249,9 +248,16 @@ function QuickPreview({ book, myBookIds, onAdd, onViewDetail, onClose, session }
         .eq('status', 'accepted').or(`requester_id.eq.${session.user.id},addressee_id.eq.${session.user.id}`)
       const ids = (fs || []).map(f => f.requester_id === session.user.id ? f.addressee_id : f.requester_id)
       if (!ids.length) { setFriendStats([]); return }
-      const { data } = await supabase.from('collection_entries')
-        .select('user_rating, profiles(username)').eq('book_id', bookId).in('user_id', ids)
-      setFriendStats(data || [])
+      const { data: statRows } = await supabase.from('collection_entries')
+        .select('user_rating, user_id').eq('book_id', bookId).in('user_id', ids)
+      let friendStatsData = statRows || []
+      if (friendStatsData.length) {
+        const uids = [...new Set(friendStatsData.map(e => e.user_id).filter(Boolean))]
+        const { data: ps } = await supabase.from('profiles').select('id, username').in('id', uids)
+        const pm = Object.fromEntries((ps || []).map(p => [p.id, p.username]))
+        friendStatsData = friendStatsData.map(e => ({ ...e, profiles: { username: pm[e.user_id] } }))
+      }
+      setFriendStats(friendStatsData)
     }
     load()
   }, [book.title, session])
@@ -322,7 +328,6 @@ function TrendingCard({ book, onPreview, myBookIds }) {
     <div
       style={{ ...s.card, ...(hover ? s.cardHover : {}), cursor: 'pointer' }}
       onClick={() => onPreview(book)}
-      onTouchEnd={(e) => { e.preventDefault(); onPreview(book) }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
@@ -359,7 +364,6 @@ function AuthorCard({ book, onPreview, myBookIds }) {
     <div
       style={{ ...s.card, ...(hover ? s.cardHover : {}), cursor: 'pointer' }}
       onClick={() => onPreview(book)}
-      onTouchEnd={(e) => { e.preventDefault(); onPreview(book) }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
@@ -394,7 +398,7 @@ function RecommendationCard({ book, theme, onView }) {
   const c = colors[(book.title||'').charCodeAt(0) % colors.length]
   const c2 = colors[((book.title||'').charCodeAt(0)+3) % colors.length]
   return (
-    <div onClick={onView} onTouchEnd={(e) => { e.preventDefault(); onView?.() }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+    <div onClick={onView} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{ flexShrink: 0, width: 120, cursor: 'pointer', transform: hover ? 'translateY(-2px)' : 'none', transition: 'transform 0.15s' }}>
       <div style={{ width: 120, height: 160, borderRadius: 8, overflow: 'hidden', background: `linear-gradient(135deg,${c},${c2})`, marginBottom: 8, boxShadow: hover ? '0 6px 18px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.1)' }}>
         {url && <img src={url} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => e.target.style.display = 'none'} />}
@@ -417,7 +421,6 @@ function AIPickCard({ book, theme, myBookIds, onPreview }) {
   return (
     <div
       onClick={onPreview}
-      onTouchEnd={e => { e.preventDefault(); onPreview() }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{ flexShrink: 0, width: 130, cursor: 'pointer', transform: hover ? 'translateY(-3px)' : 'none', transition: 'transform 0.15s' }}
@@ -573,8 +576,15 @@ export default function Discover({ session }) {
       if (!ids.length) { setHasFriends(false); setFriendsLoad(false); return }
 
       const { data: entries } = await supabase.from('collection_entries')
-        .select('read_status, books(title, author, cover_image_url, published_year), profiles(username)')
+        .select('read_status, user_id, books(title, author, cover_image_url, published_year)')
         .in('user_id', ids).order('updated_at', { ascending: false }).limit(40)
+
+      const entryUserIds = [...new Set((entries ?? []).map(e => e.user_id).filter(Boolean))]
+      let profileMap = {}
+      if (entryUserIds.length) {
+        const { data: ps } = await supabase.from('profiles').select('id, username').in('id', entryUserIds)
+        profileMap = Object.fromEntries((ps || []).map(p => [p.id, p.username]))
+      }
 
       const seen = new Set()
       const unique = (entries ?? []).filter(e => {
@@ -584,7 +594,7 @@ export default function Discover({ session }) {
         olKey: titleKey(e.books?.title, e.books?.author),
         title: e.books?.title, author: e.books?.author,
         coverUrl: e.books?.cover_image_url, year: e.books?.published_year,
-        friendName: e.profiles?.username, status: e.read_status,
+        friendName: profileMap[e.user_id], status: e.read_status,
       }))
       setFriends(unique)
     } catch { setFriends([]) }
@@ -613,7 +623,7 @@ export default function Discover({ session }) {
       const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
       const { data } = await supabase
         .from('collection_entries')
-        .select('book_id, books(id, title, author, cover_image_url, isbn_13, isbn_10, genre), profiles(username)')
+        .select('book_id, books(id, title, author, cover_image_url, isbn_13, isbn_10, genre)')
         .in('user_id', friendIds)
         .gte('updated_at', oneWeekAgo)
         .order('updated_at', { ascending: false })
@@ -718,15 +728,11 @@ export default function Discover({ session }) {
         read_status: e.read_status   ?? 'owned',
       })).filter(b => b.title)
 
-      console.log('[AI Recs] entries:', entries.length, 'valid books:', books.length)
-      if (books.length < 3) { console.log('[AI Recs] not enough books'); setAiRecsLoad(false); return }
+      if (books.length < 3) { setAiRecsLoad(false); return }
 
       const { data, error } = await supabase.functions.invoke('ai-book-recommendations', {
         body: { books },
       })
-
-      console.log('[AI Recs] response:', { data, error })
-      console.log('[AI Recs] data full:', JSON.stringify(data))
 
       if (error) {
         console.error('[AI Recs] invoke error:', error)

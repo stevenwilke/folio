@@ -409,7 +409,7 @@ export default function Library({ session }) {
     modalTitle:     { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text },
     closeBtn:       { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textSubtle, padding: 4 },
     searchRow:      { display: 'flex', gap: 10, padding: '16px 24px' },
-    searchInput:    { flex: 1, padding: '9px 14px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgCard, color: theme.text },
+    searchInput:    { flex: 1, padding: '9px 14px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 16, fontFamily: "'DM Sans', sans-serif", outline: 'none', background: theme.bgCard, color: theme.text },
     results:        { overflowY: 'auto', padding: '0 24px 20px', flex: 1 },
     resultRow:      { display: 'flex', gap: 14, alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${theme.borderLight}` },
     resultCover:    { width: 36, height: 54, flexShrink: 0, borderRadius: 3, overflow: 'hidden', background: theme.border },

@@ -77,9 +77,8 @@ export default function Marketplace({ session }) {
         .from('orders')
         .select(`
           id, price, status, buyer_message, shipping_address, created_at, updated_at,
-          listing_id,
-          listings ( id, condition, books ( title, author, cover_image_url ) ),
-          profiles!orders_seller_id_fkey ( username )
+          listing_id, seller_id,
+          listings ( id, condition, books ( title, author, cover_image_url ) )
         `)
         .eq('buyer_id', session.user.id)
         .order('created_at', { ascending: false }),
@@ -88,19 +87,30 @@ export default function Marketplace({ session }) {
         .from('orders')
         .select(`
           id, price, status, buyer_message, shipping_address, created_at, updated_at,
-          listing_id,
-          listings ( id, condition, books ( title, author, cover_image_url ) ),
-          profiles!orders_buyer_id_fkey ( username )
+          listing_id, buyer_id,
+          listings ( id, condition, books ( title, author, cover_image_url ) )
         `)
         .eq('seller_id', session.user.id)
         .in('status', ['pending', 'confirmed', 'shipped'])
         .order('created_at', { ascending: false }),
     ])
 
+    // Resolve usernames separately (orders references auth.users, not profiles)
+    const allOrderUserIds = [
+      ...(myPurchases   || []).map(o => o.seller_id),
+      ...(incomingOrders || []).map(o => o.buyer_id),
+    ].filter(Boolean)
+    let orderProfileMap = {}
+    if (allOrderUserIds.length) {
+      const { data: ops } = await supabase
+        .from('profiles').select('id, username').in('id', [...new Set(allOrderUserIds)])
+      orderProfileMap = Object.fromEntries((ops || []).map(p => [p.id, p.username]))
+    }
+
     setListings(all || [])
     setMyListings(mine || [])
-    setPurchases(myPurchases || [])
-    setSellingOrders(incomingOrders || [])
+    setPurchases((myPurchases    || []).map(o => ({ ...o, profiles: { username: orderProfileMap[o.seller_id] } })))
+    setSellingOrders((incomingOrders || []).map(o => ({ ...o, profiles: { username: orderProfileMap[o.buyer_id] } })))
     setLoading(false)
   }, [session.user.id])
 

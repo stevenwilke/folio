@@ -74,13 +74,13 @@ Respond with ONLY a valid JSON array — no markdown, no explanation, just the a
 
     // Call Google Gemini API (free tier)
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+          generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
         }),
       }
     )
@@ -95,12 +95,21 @@ Respond with ONLY a valid JSON array — no markdown, no explanation, just the a
     }
 
     const data = await response.json()
-    const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+
+    // Gemini 2.5 thinking models mark thought parts with `thought: true` — skip those
+    const parts: any[] = data.candidates?.[0]?.content?.parts ?? []
+    const nonThoughtParts = parts.filter((p: any) => !p.thought && p.text)
+    const text: string = nonThoughtParts.length > 0
+      ? nonThoughtParts.map((p: any) => p.text as string).join('')
+      : parts.map((p: any) => p.text ?? '').join('')
+
+    // Strip markdown code fences if present (```json ... ```)
+    const stripped = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
 
     // Extract JSON array from the response
-    const jsonMatch = text.match(/\[[\s\S]*\]/)
+    const jsonMatch = stripped.match(/\[[\s\S]*\]/)
     if (!jsonMatch) {
-      console.error('Could not find JSON array in response:', text)
+      console.error('No JSON array found in Gemini response')
       return new Response(
         JSON.stringify({ recommendations: [], reason: 'parse_error' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -110,7 +119,8 @@ Respond with ONLY a valid JSON array — no markdown, no explanation, just the a
     let recommendations: { title: string; author: string; reason: string }[]
     try {
       recommendations = JSON.parse(jsonMatch[0])
-    } catch {
+    } catch (e) {
+      console.error('JSON parse failed:', String(e))
       return new Response(
         JSON.stringify({ recommendations: [], reason: 'parse_error' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -726,6 +726,7 @@ export default function Discover({ session }) {
       })
 
       console.log('[AI Recs] response:', { data, error })
+      console.log('[AI Recs] data full:', JSON.stringify(data))
 
       if (error) {
         console.error('[AI Recs] invoke error:', error)

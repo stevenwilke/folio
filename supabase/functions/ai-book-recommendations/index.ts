@@ -92,7 +92,7 @@ Respond with ONLY a valid JSON array — no markdown, no explanation, just the a
       const err = await response.text()
       console.error('Anthropic API error:', err)
       return new Response(
-        JSON.stringify({ recommendations: [], reason: 'api_error' }),
+        JSON.stringify({ recommendations: [], reason: 'api_error', detail: err }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }

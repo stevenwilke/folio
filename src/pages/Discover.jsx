@@ -508,7 +508,7 @@ export default function Discover({ session }) {
   useEffect(() => {
     async function init() {
       const { data: entries } = await supabase.from('collection_entries')
-        .select('read_status, rating, user_rating, books(title, author, genre)')
+        .select('read_status, rating, books(title, author)')
         .eq('user_id', session.user.id)
       const books = (entries ?? []).map(e => e.books).filter(Boolean)
       setMyBookIds(new Set(books.map(b => titleKey(b.title, b.author))))
@@ -711,11 +711,11 @@ export default function Discover({ session }) {
     try {
       // Send user's library to the edge function
       const books = entries.map(e => ({
-        title:       e.books?.title   ?? '',
-        author:      e.books?.author  ?? null,
-        genre:       e.books?.genre   ?? null,
-        user_rating: e.user_rating    ?? null,
-        read_status: e.read_status    ?? 'owned',
+        title:       e.books?.title  ?? '',
+        author:      e.books?.author ?? null,
+        genre:       null,
+        user_rating: e.rating        ?? null,
+        read_status: e.read_status   ?? 'owned',
       })).filter(b => b.title)
 
       console.log('[AI Recs] entries:', entries.length, 'valid books:', books.length)

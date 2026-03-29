@@ -724,7 +724,14 @@ export default function Discover({ session }) {
         body: { books },
       })
 
-      if (error || !data?.recommendations?.length) {
+      if (error) {
+        console.error('AI recs error:', error)
+        setAiRecsError(true)
+        setAiRecsLoad(false)
+        return
+      }
+
+      if (!data?.recommendations?.length) {
         setAiRecsLoad(false)
         return
       }
@@ -878,6 +885,10 @@ export default function Discover({ session }) {
               {aiRecs.map((book, i) => (
                 <AIPickCard key={book.olKey ?? i} book={book} theme={theme} myBookIds={myBookIds} onPreview={() => setPreviewBook(book)} />
               ))}
+            </div>
+          ) : aiRecsError ? (
+            <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '18px 22px', fontSize: 14, color: theme.textSubtle }}>
+              ⚠️ Couldn't load AI recommendations right now — try refreshing the page.
             </div>
           ) : (
             <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '18px 22px', fontSize: 14, color: theme.textSubtle }}>

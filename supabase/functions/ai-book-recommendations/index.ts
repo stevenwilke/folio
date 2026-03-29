@@ -28,7 +28,7 @@ serve(async (req) => {
       )
     }
 
-    const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
+    const apiKey = Deno.env.get('GEMINI_API_KEY')
     if (!apiKey) {
       return new Response(
         JSON.stringify({ recommendations: [], reason: 'no_api_key' }),
@@ -36,13 +36,12 @@ serve(async (req) => {
       )
     }
 
-    // Build reading profile — prioritise read + rated books, cap at 40 so the prompt isn't huge
+    // Build reading profile — prioritise read + rated books, cap at 40
     const readBooks = books
       .filter(b => b.read_status === 'read' || (b.user_rating ?? 0) > 0)
       .sort((a, b) => (b.user_rating ?? 0) - (a.user_rating ?? 0))
       .slice(0, 40)
 
-    // If the user hasn't marked anything as read, fall back to the full collection
     const profileBooks = readBooks.length >= 3 ? readBooks : books.slice(0, 40)
 
     const lines = profileBooks.map(b => {
@@ -52,7 +51,6 @@ serve(async (req) => {
       return line
     })
 
-    // Titles already in library so Claude avoids them
     const ownedTitles = books.map(b => b.title.toLowerCase())
 
     const prompt = `You are a passionate book recommendation expert with deep knowledge of literature across all genres.
@@ -74,23 +72,22 @@ Respond with ONLY a valid JSON array — no markdown, no explanation, just the a
   ...
 ]`
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-haiku-20241022',
-        max_tokens: 1024,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    })
+    // Call Google Gemini API (free tier)
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+        }),
+      }
+    )
 
     if (!response.ok) {
       const err = await response.text()
-      console.error('Anthropic API error:', err)
+      console.error('Gemini API error:', err)
       return new Response(
         JSON.stringify({ recommendations: [], reason: 'api_error', detail: err }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -98,7 +95,7 @@ Respond with ONLY a valid JSON array — no markdown, no explanation, just the a
     }
 
     const data = await response.json()
-    const text: string = data.content?.[0]?.text ?? ''
+    const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
 
     // Extract JSON array from the response
     const jsonMatch = text.match(/\[[\s\S]*\]/)
@@ -120,7 +117,6 @@ Respond with ONLY a valid JSON array — no markdown, no explanation, just the a
       )
     }
 
-    // Filter out anything that slipped through that's already in their library
     const filtered = recommendations.filter(
       r => !ownedTitles.includes(r.title.toLowerCase())
     ).slice(0, 8)

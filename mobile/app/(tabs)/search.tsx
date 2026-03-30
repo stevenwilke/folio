@@ -21,6 +21,7 @@ import { ReadStatus } from '../../components/BookCard';
 // Unified result shape for both sources
 interface SearchResult {
   key: string;
+  type?: 'result';
   title: string;
   author: string;
   coverUrl: string | null;
@@ -33,7 +34,17 @@ interface SearchResult {
   bookId: string | null;
   addedStatus?: ReadStatus | null;
   adding?: boolean;
+  inLibrary?: boolean;
+  readStatus?: ReadStatus | null;
 }
+
+interface SectionHeaderItem {
+  key: string;
+  type: 'sectionHeader';
+  label: string;
+}
+
+type ListItem = SearchResult | SectionHeaderItem;
 
 const STATUS_OPTIONS: { key: ReadStatus; label: string }[] = [
   { key: 'owned', label: 'In Library' },
@@ -45,7 +56,7 @@ const STATUS_OPTIONS: { key: ReadStatus; label: string }[] = [
 export default function SearchScreen() {
   const router = useRouter();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [results, setResults] = useState<ListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -155,7 +166,49 @@ export default function SearchScreen() {
           adding:       false,
         }));
 
-      setResults([...folioResults, ...isbndbResults, ...olResults]);
+      // Check which folio books are in the user's library
+      const { data: { user } } = await supabase.auth.getUser();
+      let libraryBookIds = new Set<string>();
+      let libraryStatusMap: Record<string, ReadStatus> = {};
+      if (user && folioResults.length > 0) {
+        const bookIds = folioResults.map(r => r.bookId).filter(Boolean) as string[];
+        const { data: entries } = await supabase
+          .from('collection_entries')
+          .select('book_id, read_status')
+          .eq('user_id', user.id)
+          .in('book_id', bookIds);
+        (entries || []).forEach((e: any) => {
+          libraryBookIds.add(e.book_id);
+          libraryStatusMap[e.book_id] = e.read_status;
+        });
+      }
+
+      // Tag folio results with library info
+      const taggedFolio = folioResults.map(r => ({
+        ...r,
+        inLibrary: r.bookId ? libraryBookIds.has(r.bookId) : false,
+        readStatus: r.bookId ? (libraryStatusMap[r.bookId] || null) : null,
+      }));
+
+      const allResults: SearchResult[] = [...taggedFolio, ...isbndbResults, ...olResults];
+
+      // Build sectioned list with header items
+      const libraryBooks = allResults.filter(r => r.inLibrary);
+      const otherBooks   = allResults.filter(r => !r.inLibrary);
+
+      const sectioned: ListItem[] = [];
+      if (libraryBooks.length > 0) {
+        sectioned.push({ key: '__header_library', type: 'sectionHeader', label: 'In Your Library' });
+        sectioned.push(...libraryBooks);
+      }
+      if (otherBooks.length > 0) {
+        if (libraryBooks.length > 0) {
+          sectioned.push({ key: '__header_all', type: 'sectionHeader', label: 'All Books' });
+        }
+        sectioned.push(...otherBooks);
+      }
+
+      setResults(sectioned);
     } catch {
       Alert.alert('Error', 'Failed to search. Check your connection.');
     } finally {
@@ -171,7 +224,7 @@ export default function SearchScreen() {
 
   async function addBook(index: number, status: ReadStatus) {
     const item = results[index];
-    if (!item) return;
+    if (!item || item.type === 'sectionHeader') return;
 
     setResults((prev) =>
       prev.map((r, i) => (i === index ? { ...r, adding: true } : r))
@@ -181,21 +234,22 @@ export default function SearchScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      let bookId: string = item.bookId ?? '';
+      const bookItem = item as SearchResult;
+      let bookId: string = bookItem.bookId ?? '';
 
       if (!bookId) {
         // Try to find existing book by ISBN then title+author
-        if (item.isbn13) {
-          const { data } = await supabase.from('books').select('id').eq('isbn_13', item.isbn13).maybeSingle();
+        if (bookItem.isbn13) {
+          const { data } = await supabase.from('books').select('id').eq('isbn_13', bookItem.isbn13).maybeSingle();
           if (data) bookId = data.id;
         }
-        if (!bookId && item.isbn10) {
-          const { data } = await supabase.from('books').select('id').eq('isbn_10', item.isbn10).maybeSingle();
+        if (!bookId && bookItem.isbn10) {
+          const { data } = await supabase.from('books').select('id').eq('isbn_10', bookItem.isbn10).maybeSingle();
           if (data) bookId = data.id;
         }
         if (!bookId) {
           const { data } = await supabase.from('books').select('id')
-            .eq('title', item.title).eq('author', item.author).maybeSingle();
+            .eq('title', bookItem.title).eq('author', bookItem.author).maybeSingle();
           if (data) bookId = data.id;
         }
 
@@ -204,13 +258,13 @@ export default function SearchScreen() {
           const { data: newBook, error: bookError } = await supabase
             .from('books')
             .insert({
-              title:           item.title,
-              author:          item.author,
-              isbn_13:         item.isbn13,
-              isbn_10:         item.isbn10,
-              cover_image_url: item.saveCoverUrl,
-              published_year:  item.year,
-              genre:           item.genre,
+              title:           bookItem.title,
+              author:          bookItem.author,
+              isbn_13:         bookItem.isbn13,
+              isbn_10:         bookItem.isbn10,
+              cover_image_url: bookItem.saveCoverUrl,
+              published_year:  bookItem.year,
+              genre:           bookItem.genre,
             })
             .select('id')
             .single();
@@ -241,48 +295,60 @@ export default function SearchScreen() {
     }
   }
 
-  function renderItem({ item, index }: { item: SearchResult; index: number }) {
+  const STATUS_LABELS: Record<ReadStatus, string> = {
+    owned:   'In Library',
+    read:    'Read',
+    reading: 'Reading',
+    want:    'Want to Read',
+  };
+
+  function renderItem({ item, index }: { item: ListItem; index: number }) {
+    // Section header
+    if (item.type === 'sectionHeader') {
+      return (
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionHeaderText}>{item.label}</Text>
+        </View>
+      );
+    }
+
+    const result = item as SearchResult;
+    const libraryStatus = result.addedStatus || result.readStatus;
+
     return (
       <View style={styles.resultCard}>
         <View style={styles.resultCover}>
-          {item.coverUrl ? (
+          {result.coverUrl ? (
             <Image
-              source={{ uri: item.coverUrl }}
+              source={{ uri: result.coverUrl }}
               style={styles.coverImage}
               resizeMode="cover"
             />
           ) : (
-            <FakeCover title={item.title} author={item.author} width={56} height={80} />
+            <FakeCover title={result.title} author={result.author} width={56} height={80} />
           )}
         </View>
 
         <View style={styles.resultInfo}>
-          <View style={styles.titleRow}>
-            <Text style={styles.resultTitle} numberOfLines={2}>
-              {item.title}
-            </Text>
-            {item.source === 'folio' && (
-              <View style={styles.folioBadge}>
-                <Text style={styles.folioBadgeText}>📚 In Ex Libris</Text>
-              </View>
-            )}
-          </View>
-          <Text style={styles.resultAuthor} numberOfLines={1}>
-            {item.author}
+          <Text style={styles.resultTitle} numberOfLines={2}>
+            {result.title}
           </Text>
-          {item.year ? (
-            <Text style={styles.resultYear}>{item.year}</Text>
+          <Text style={styles.resultAuthor} numberOfLines={1}>
+            {result.author}
+          </Text>
+          {result.year ? (
+            <Text style={styles.resultYear}>{result.year}</Text>
           ) : null}
 
-          {item.addedStatus ? (
-            <View style={styles.addedBadge}>
-              <Text style={styles.addedBadgeText}>
-                Added as {STATUS_OPTIONS.find((s) => s.key === item.addedStatus)?.label} ✓
+          {libraryStatus ? (
+            <View style={[styles.addedBadge, { backgroundColor: Colors.statusBg[libraryStatus] }]}>
+              <Text style={[styles.addedBadgeText, { color: Colors.status[libraryStatus] }]}>
+                {STATUS_LABELS[libraryStatus]} ✓
               </Text>
             </View>
           ) : (
             <View style={styles.addButtons}>
-              {item.adding ? (
+              {result.adding ? (
                 <ActivityIndicator size="small" color={Colors.rust} />
               ) : (
                 STATUS_OPTIONS.map((opt) => (
@@ -340,7 +406,7 @@ export default function SearchScreen() {
           <ActivityIndicator size="large" color={Colors.rust} />
         </View>
       ) : (
-        <FlatList
+        <FlatList<ListItem>
           data={results}
           keyExtractor={(item) => item.key}
           renderItem={renderItem}
@@ -446,6 +512,20 @@ const styles = StyleSheet.create({
   listContentEmpty: {
     flexGrow: 1,
   },
+  sectionHeader: {
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  sectionHeaderText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
   resultCard: {
     flexDirection: 'row',
     backgroundColor: Colors.card,
@@ -468,34 +548,12 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 3,
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
   resultTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: Colors.ink,
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
     lineHeight: 18,
-    flexShrink: 1,
-  },
-  folioBadge: {
-    backgroundColor: 'rgba(90,122,90,0.12)',
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    flexShrink: 0,
-    alignSelf: 'flex-start',
-    marginTop: 1,
-  },
-  folioBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: Colors.sage,
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
   resultAuthor: {
     fontSize: 12,

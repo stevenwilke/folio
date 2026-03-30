@@ -65,27 +65,31 @@ export default function GlobalSearchModal({ session, onClose }) {
     setInterp('')
     setHasSearched(true)
 
-    // Run local DB search and external search independently so neither blocks the other
-    const localPromise = supabase
-      .from('books')
-      .select('id, title, author, cover_image_url, published_year, genre, isbn_13, isbn_10, pages, publisher')
-      .ilike('title', `%${q}%`)
-      .limit(12)
-      .then(async ({ data: byTitle }) => {
-        // Also search by author, merge, dedupe
-        const { data: byAuthor } = await supabase
-          .from('books')
-          .select('id, title, author, cover_image_url, published_year, genre, isbn_13, isbn_10, pages, publisher')
-          .ilike('author', `%${q}%`)
-          .limit(12)
+    // Run local DB search in parallel for title + author, then check library status
+    const localPromise = (async () => {
+      try {
+        const [{ data: byTitle }, { data: byAuthor }] = await Promise.all([
+          supabase.from('books').select('id, title, author, cover_image_url, published_year, genre, isbn_13, isbn_10, pages, publisher').ilike('title', `%${q}%`).limit(12),
+          supabase.from('books').select('id, title, author, cover_image_url, published_year, genre, isbn_13, isbn_10, pages, publisher').ilike('author', `%${q}%`).limit(12),
+        ])
         const seen = new Set()
         const all = [...(byTitle || []), ...(byAuthor || [])].filter(b => {
           if (seen.has(b.id)) return false
           seen.add(b.id); return true
         })
+        // Check which books are in the user's library
+        if (all.length && session?.user?.id) {
+          const { data: entries } = await supabase
+            .from('collection_entries')
+            .select('book_id, read_status')
+            .eq('user_id', session.user.id)
+            .in('book_id', all.map(b => b.id))
+          const entryMap = Object.fromEntries((entries || []).map(e => [e.book_id, e.read_status]))
+          return all.map(b => ({ ...b, _userStatus: entryMap[b.id] || null }))
+        }
         return all
-      })
-      .catch(() => [])
+      } catch { return [] }
+    })()
 
     try {
       if (aiMode) {
@@ -140,10 +144,12 @@ export default function GlobalSearchModal({ session, onClose }) {
       if (b.isbn_10) seenIsbns.add(b.isbn_10)
       seenKeys.add(titleAuthorKey(b.title, b.author))
       return {
-        id:         `local:${b.id}`,
-        _dbId:      b.id,
-        _inApp:     true,
-        title:      b.title,
+        id:          `local:${b.id}`,
+        _dbId:       b.id,
+        _inApp:      true,
+        _inLibrary:  !!b._userStatus,
+        _readStatus: b._userStatus || null,
+        title:       b.title,
         author:     b.author,
         year:       b.published_year ? String(b.published_year) : null,
         cover:      b.cover_image_url || null,
@@ -382,29 +388,47 @@ export default function GlobalSearchModal({ session, onClose }) {
             </div>
           )}
 
-          {!loading && results.length > 0 && (
-            <div style={{ padding: '8px 0' }}>
-              {results.map((book, i) => (
-                <BookResultRow
-                  key={book.id}
-                  book={book}
-                  isDark={isDark}
-                  card={card}
-                  border={border}
-                  text={text}
-                  muted={muted}
-                  accent={accent}
-                  isAdded={addedIds.has(book.id)}
-                  isAdding={addingId === book.id}
-                  menuOpen={openMenuId === book.id}
-                  onToggleMenu={() => setOpenMenuId(prev => prev === book.id ? null : book.id)}
-                  onAdd={status => addToLibrary(book, status)}
-                  session={session}
-                  inApp={!!book._inApp}
-                />
-              ))}
-            </div>
-          )}
+          {!loading && results.length > 0 && (() => {
+            const libraryBooks = results.filter(b => b._inLibrary)
+            const otherBooks   = results.filter(b => !b._inLibrary)
+            const sectionLabel = { padding: '8px 20px 4px', fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: muted, fontFamily: "'DM Sans', sans-serif" }
+            const renderRow = book => (
+              <BookResultRow
+                key={book.id}
+                book={book}
+                isDark={isDark}
+                card={card}
+                border={border}
+                text={text}
+                muted={muted}
+                accent={accent}
+                isAdded={addedIds.has(book.id)}
+                isAdding={addingId === book.id}
+                menuOpen={openMenuId === book.id}
+                onToggleMenu={() => setOpenMenuId(prev => prev === book.id ? null : book.id)}
+                onAdd={status => addToLibrary(book, status)}
+                session={session}
+                inApp={!!book._inApp}
+                readStatus={book._readStatus || null}
+              />
+            )
+            return (
+              <div style={{ padding: '8px 0' }}>
+                {libraryBooks.length > 0 && (
+                  <>
+                    <div style={sectionLabel}>In Your Library</div>
+                    {libraryBooks.map(renderRow)}
+                  </>
+                )}
+                {otherBooks.length > 0 && (
+                  <>
+                    {libraryBooks.length > 0 && <div style={sectionLabel}>All Books</div>}
+                    {otherBooks.map(renderRow)}
+                  </>
+                )}
+              </div>
+            )
+          })()}
         </div>
 
         {/* ── Footer ── */}
@@ -424,8 +448,17 @@ export default function GlobalSearchModal({ session, onClose }) {
   )
 }
 
-function BookResultRow({ book, isDark, card, border, text, muted, accent, isAdded, isAdding, menuOpen, onToggleMenu, onAdd, session, inApp }) {
+const STATUS_BADGE_CONFIG = {
+  owned:   { label: 'In Library ✓', bg: 'rgba(74,160,80,0.12)',  color: '#4aa050' },
+  read:    { label: 'Read ✓',       bg: 'rgba(74,160,80,0.12)',  color: '#4aa050' },
+  reading: { label: 'Reading ✓',    bg: 'rgba(74,120,200,0.12)', color: '#4a78c8' },
+  want:    { label: 'Want to Read', bg: 'rgba(192,82,30,0.10)',  color: '#c0521e' },
+}
+
+function BookResultRow({ book, isDark, card, border, text, muted, accent, isAdded, isAdding, menuOpen, onToggleMenu, onAdd, session, inApp, readStatus }) {
   const [hover, setHover] = useState(false)
+
+  const statusBadge = readStatus ? STATUS_BADGE_CONFIG[readStatus] : null
 
   return (
     <div
@@ -476,7 +509,16 @@ function BookResultRow({ book, isDark, card, border, text, muted, accent, isAdde
           </div>
         )}
         <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-          {inApp && (
+          {statusBadge ? (
+            <span style={{
+              display: 'inline-block', padding: '2px 8px',
+              background: isDark ? statusBadge.bg.replace(')', ', 0.2)').replace('rgba', 'rgba') : statusBadge.bg,
+              color: statusBadge.color, borderRadius: 20,
+              fontSize: 11, fontWeight: 600, fontFamily: "'DM Sans', sans-serif",
+            }}>
+              {statusBadge.label}
+            </span>
+          ) : inApp ? (
             <span style={{
               display: 'inline-block', padding: '2px 8px',
               background: isDark ? 'rgba(74,160,80,0.15)' : 'rgba(74,160,80,0.1)',
@@ -485,7 +527,7 @@ function BookResultRow({ book, isDark, card, border, text, muted, accent, isAdde
             }}>
               In App
             </span>
-          )}
+          ) : null}
           {book.categories?.length > 0 && (
             <span style={{
               display: 'inline-block', padding: '2px 8px',

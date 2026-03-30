@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { extractGenre } from '../lib/genres'
@@ -849,6 +849,7 @@ function ListRow({ entry, isLast, selectMode, isSelected, onSelect, theme, isMob
   const status  = entry.read_status
   const sc      = STATUS_COLORS[status] || {}
   const sl      = STATUS_LABELS[status] || status
+  const touchStartY = useRef(0)
   const [hover, setHover]       = useState(false)
   const [imgError, setImgError] = useState(false)
   const coverUrl = getCoverUrl(book)
@@ -859,7 +860,8 @@ function ListRow({ entry, isLast, selectMode, isSelected, onSelect, theme, isMob
   return (
     <div
       onClick={onSelect}
-      onTouchEnd={(e) => { e.preventDefault(); onSelect?.() }}
+      onTouchStart={(e) => { touchStartY.current = e.touches[0].clientY }}
+      onTouchEnd={(e) => { if (Math.abs(e.changedTouches[0].clientY - touchStartY.current) < 10) onSelect?.() }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -926,6 +928,7 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
   const book   = entry.books
   const status = entry.read_status
   const [menuOpen,     setMenuOpen]     = useState(false)
+  const touchStartY = useRef(0)
   const [hover,        setHover]        = useState(false)
   const [imgError,     setImgError]     = useState(false)
   const [currentPage,  setCurrentPage]  = useState(entry.current_page || 0)
@@ -980,7 +983,8 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
         touchAction: 'manipulation',
       }}
       onClick={onSelect}
-      onTouchEnd={(e) => { e.preventDefault(); onSelect?.() }}
+      onTouchStart={(e) => { touchStartY.current = e.touches[0].clientY }}
+      onTouchEnd={(e) => { if (Math.abs(e.changedTouches[0].clientY - touchStartY.current) < 10) onSelect?.() }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >

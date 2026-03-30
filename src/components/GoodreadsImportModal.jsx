@@ -76,7 +76,18 @@ function parseCSVLine(line) {
 }
 
 async function fetchCoverUrl(isbn13, isbn10, title, author) {
-  // 1. Open Library direct cover by ISBN (fast HEAD check)
+  // 1. ISBNDB via Edge Function (best quality)
+  try {
+    const isbn = isbn13 || isbn10
+    const body = isbn
+      ? { isbn }
+      : { q: `${title || ''} ${author || ''}`.trim(), pageSize: 1 }
+    const { data } = await supabase.functions.invoke('search-books', { body })
+    const cover = data?.books?.[0]?.cover
+    if (cover) return cover
+  } catch { /* skip */ }
+
+  // 2. Open Library fallback by ISBN
   for (const isbn of [isbn13, isbn10].filter(Boolean)) {
     try {
       const url = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false`
@@ -84,25 +95,6 @@ async function fetchCoverUrl(isbn13, isbn10, title, author) {
       if (res.ok) return `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`
     } catch { /* skip */ }
   }
-
-  // 2. Google Books API fallback — covers nearly all popular/in-print books
-  try {
-    const isbn = isbn13 || isbn10
-    const q = isbn
-      ? `isbn:${isbn}`
-      : `intitle:${encodeURIComponent(title || '')}+inauthor:${encodeURIComponent(author || '')}`
-    const res = await fetch(
-      `https://www.googleapis.com/books/v1/volumes?q=${q}&fields=items(volumeInfo/imageLinks)&maxResults=1`
-    )
-    if (res.ok) {
-      const data = await res.json()
-      const links = data?.items?.[0]?.volumeInfo?.imageLinks
-      const raw = links?.large || links?.medium || links?.thumbnail
-      if (raw) {
-        return raw.replace(/^http:/, 'https:').replace(/&edge=curl/, '').replace(/zoom=\d/, 'zoom=3')
-      }
-    }
-  } catch { /* skip */ }
 
   return null
 }

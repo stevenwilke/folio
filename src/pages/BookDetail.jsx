@@ -1200,18 +1200,19 @@ function LendOutModal({ session, book, theme, onClose }) {
     async function loadFriends() {
       const { data: fs } = await supabase
         .from('friendships')
-        .select('requester_id, addressee_id, profiles!friendships_requester_id_fkey(id,username), profiles!friendships_addressee_id_fkey(id,username)')
+        .select('requester_id, addressee_id')
         .eq('status', 'accepted')
         .or(`requester_id.eq.${session.user.id},addressee_id.eq.${session.user.id}`)
-      const list = (fs || []).map(f => {
-        const isRequester = f.requester_id === session.user.id
-        const p = isRequester
-          ? f['profiles!friendships_addressee_id_fkey']
-          : f['profiles!friendships_requester_id_fkey']
-        return p
-      }).filter(Boolean)
-      setFriends(list)
-      if (list.length) setFriendId(list[0].id)
+      const friendIds = (fs || []).map(f =>
+        f.requester_id === session.user.id ? f.addressee_id : f.requester_id
+      )
+      if (!friendIds.length) { setFriends([]); return }
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username')
+        .in('id', friendIds)
+      setFriends(profiles || [])
+      if (profiles?.length) setFriendId(profiles[0].id)
     }
     loadFriends()
   }, [])
@@ -1223,12 +1224,13 @@ function LendOutModal({ session, book, theme, onClose }) {
     const { error: err } = await supabase
       .from('borrow_requests')
       .insert({
-        requester_id: friendId,
-        owner_id:     session.user.id,
-        book_id:      book.id,
-        status:       'pending',
-        message:      message.trim() || `${session.user.email?.split('@')[0] || 'Someone'} wants to lend you this book!`,
-        return_date:  returnDate || null,
+        requester_id:    friendId,
+        owner_id:        session.user.id,
+        book_id:         book.id,
+        status:          'pending',
+        owner_initiated: true,
+        message:         message.trim() || null,
+        due_date:        returnDate || null,
       })
     if (err) {
       setError('Could not send request. Please try again.')

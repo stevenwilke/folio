@@ -24,7 +24,7 @@ export default function Friends({ session }) {
   async function fetchAll() {
     setLoading(true)
 
-    const [{ data: fs }, { data: inc }, { data: out }] = await Promise.all([
+    const [{ data: fs }, { data: incRaw }, { data: outRaw }] = await Promise.all([
       // Accepted friends
       supabase
         .from('friendships')
@@ -34,19 +34,30 @@ export default function Friends({ session }) {
       // Incoming pending
       supabase
         .from('friendships')
-        .select('id, requester_id, created_at, profiles!friendships_requester_id_fkey(id, username, avatar_url)')
+        .select('id, requester_id, created_at')
         .eq('addressee_id', session.user.id)
         .eq('status', 'pending'),
       // Outgoing pending
       supabase
         .from('friendships')
-        .select('id, addressee_id, created_at, profiles!friendships_addressee_id_fkey(id, username, avatar_url)')
+        .select('id, addressee_id, created_at')
         .eq('requester_id', session.user.id)
         .eq('status', 'pending'),
     ])
 
-    setIncoming(inc || [])
-    setOutgoing(out || [])
+    // Look up profiles for pending requests
+    const pendingIds = [...new Set([
+      ...(incRaw || []).map(f => f.requester_id),
+      ...(outRaw || []).map(f => f.addressee_id),
+    ])]
+    let pendingProfileMap = {}
+    if (pendingIds.length) {
+      const { data: ps } = await supabase.from('profiles').select('id, username, avatar_url').in('id', pendingIds)
+      pendingProfileMap = Object.fromEntries((ps || []).map(p => [p.id, p]))
+    }
+
+    setIncoming((incRaw || []).map(f => ({ ...f, profiles: pendingProfileMap[f.requester_id] || null })))
+    setOutgoing((outRaw || []).map(f => ({ ...f, profiles: pendingProfileMap[f.addressee_id] || null })))
 
     // For accepted friends, get profile + book counts
     const friendIds = (fs || []).map(f =>

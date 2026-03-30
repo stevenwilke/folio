@@ -100,8 +100,8 @@ export default function Notifications({ session }) {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000).toISOString()
 
     const [
-      { data: pendFriends },
-      { data: recFriends },
+      { data: pendFriendsRaw },
+      { data: recFriendsRaw },
       { data: pendBorrows },
       { data: actBorrows },
       { data: pendOrd },
@@ -110,7 +110,7 @@ export default function Notifications({ session }) {
       // Pending friend requests (I'm addressee)
       supabase
         .from('friendships')
-        .select('id, created_at, profiles!friendships_requester_id_fkey(id, username, avatar_url)')
+        .select('id, requester_id, created_at')
         .eq('addressee_id', uid)
         .eq('status', 'pending')
         .order('created_at', { ascending: false }),
@@ -118,7 +118,7 @@ export default function Notifications({ session }) {
       // Recently accepted friends (last 30 days)
       supabase
         .from('friendships')
-        .select('id, requester_id, addressee_id, updated_at, requester:profiles!friendships_requester_id_fkey(username), addressee:profiles!friendships_addressee_id_fkey(username)')
+        .select('id, requester_id, addressee_id, updated_at')
         .eq('status', 'accepted')
         .or(`requester_id.eq.${uid},addressee_id.eq.${uid}`)
         .gte('updated_at', thirtyDaysAgo)
@@ -127,7 +127,7 @@ export default function Notifications({ session }) {
       // Pending borrow requests (I'm owner)
       supabase
         .from('borrow_requests')
-        .select('id, created_at, books(title), profiles!borrow_requests_requester_id_fkey(username)')
+        .select('id, requester_id, created_at, books(title)')
         .eq('owner_id', uid)
         .eq('status', 'pending')
         .order('created_at', { ascending: false }),
@@ -135,7 +135,7 @@ export default function Notifications({ session }) {
       // Active borrows (I'm involved)
       supabase
         .from('borrow_requests')
-        .select('id, created_at, updated_at, owner_id, requester_id, books(title), owner:profiles!borrow_requests_owner_id_fkey(username), requester:profiles!borrow_requests_requester_id_fkey(username)')
+        .select('id, created_at, updated_at, owner_id, requester_id, books(title)')
         .eq('status', 'active')
         .or(`owner_id.eq.${uid},requester_id.eq.${uid}`)
         .order('updated_at', { ascending: false }),
@@ -158,6 +158,42 @@ export default function Notifications({ session }) {
         .limit(20),
     ])
 
+    // Resolve friend usernames separately
+    const allFriendUserIds = [...new Set([
+      ...(pendFriendsRaw || []).map(f => f.requester_id),
+      ...(recFriendsRaw  || []).map(f => f.requester_id),
+      ...(recFriendsRaw  || []).map(f => f.addressee_id),
+    ].filter(Boolean))]
+    let friendProfileMap = {}
+    if (allFriendUserIds.length) {
+      const { data: fps } = await supabase.from('profiles').select('id, username, avatar_url').in('id', allFriendUserIds)
+      friendProfileMap = Object.fromEntries((fps || []).map(p => [p.id, p]))
+    }
+    const pendFriends = (pendFriendsRaw || []).map(f => ({ ...f, profiles: friendProfileMap[f.requester_id] || null }))
+    const recFriends  = (recFriendsRaw  || []).map(f => ({
+      ...f,
+      requester: friendProfileMap[f.requester_id] || null,
+      addressee: friendProfileMap[f.addressee_id] || null,
+    }))
+
+    // Resolve borrow request usernames separately
+    const allBorrowUserIds = [...new Set([
+      ...(pendBorrows || []).map(r => r.requester_id),
+      ...(actBorrows  || []).map(r => r.owner_id),
+      ...(actBorrows  || []).map(r => r.requester_id),
+    ].filter(Boolean))]
+    let borrowProfileMap = {}
+    if (allBorrowUserIds.length) {
+      const { data: bps } = await supabase.from('profiles').select('id, username').in('id', allBorrowUserIds)
+      borrowProfileMap = Object.fromEntries((bps || []).map(p => [p.id, p]))
+    }
+    const pendBorrowsEnriched = (pendBorrows || []).map(r => ({ ...r, profiles: borrowProfileMap[r.requester_id] || null }))
+    const actBorrowsEnriched  = (actBorrows  || []).map(r => ({
+      ...r,
+      owner:     borrowProfileMap[r.owner_id]     || null,
+      requester: borrowProfileMap[r.requester_id] || null,
+    }))
+
     // Resolve order usernames separately (orders references auth.users, not profiles)
     const allOrderUserIds = [
       ...(pendOrd || []).map(o => o.buyer_id),
@@ -170,10 +206,10 @@ export default function Notifications({ session }) {
       orderProfileMap = Object.fromEntries((ops || []).map(p => [p.id, p.username]))
     }
 
-    setPendingFriends(pendFriends || [])
-    setRecentFriends(recFriends   || [])
-    setPendingBorrows(pendBorrows || [])
-    setActiveBorrows(actBorrows   || [])
+    setPendingFriends(pendFriends)
+    setRecentFriends(recFriends)
+    setPendingBorrows(pendBorrowsEnriched)
+    setActiveBorrows(actBorrowsEnriched)
     setPendingOrders((pendOrd || []).map(o => ({ ...o, profiles: { username: orderProfileMap[o.buyer_id] } })))
     setRecentOrders( (recOrd  || []).map(o => ({ ...o, profiles: { username: orderProfileMap[o.seller_id] } })))
     setLoading(false)

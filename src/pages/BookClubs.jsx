@@ -262,7 +262,7 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
       if (memberIds.length) {
         const { data: entries } = await supabase
           .from('collection_entries')
-          .select('user_id, current_page, read_status, books(page_count)')
+          .select('user_id, current_page, read_status, books(pages)')
           .in('user_id', memberIds)
           .eq('book_id', club.current_book_id)
         setMemberProgress(entries || [])
@@ -502,7 +502,7 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {members.map(m => {
                   const entry = progressMap[m.user_id]
-                  const pageCount = entry?.books?.page_count
+                  const pageCount = entry?.books?.pages
                   const currentPage = entry?.current_page
                   const pct = pageCount && currentPage ? Math.min(100, Math.round((currentPage / pageCount) * 100)) : null
                   const status = entry?.read_status

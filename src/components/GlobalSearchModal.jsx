@@ -68,14 +68,14 @@ export default function GlobalSearchModal({ session, onClose }) {
     // Run local DB search and external search independently so neither blocks the other
     const localPromise = supabase
       .from('books')
-      .select('id, title, author, cover_image_url, published_year, genre, isbn_13, isbn_10, page_count, publisher')
+      .select('id, title, author, cover_image_url, published_year, genre, isbn_13, isbn_10, pages, publisher')
       .ilike('title', `%${q}%`)
       .limit(12)
       .then(async ({ data: byTitle }) => {
         // Also search by author, merge, dedupe
         const { data: byAuthor } = await supabase
           .from('books')
-          .select('id, title, author, cover_image_url, published_year, genre, isbn_13, isbn_10, page_count, publisher')
+          .select('id, title, author, cover_image_url, published_year, genre, isbn_13, isbn_10, pages, publisher')
           .ilike('author', `%${q}%`)
           .limit(12)
         const seen = new Set()
@@ -97,24 +97,23 @@ export default function GlobalSearchModal({ session, onClose }) {
         setInterp(aiData?.interpretation || '')
         setResults(mergeResults(localBooks, aiData?.books || []))
       } else {
-        const [googleRes, localBooks] = await Promise.all([
-          fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=12&langRestrict=en&printType=books`),
+        const [isbndbResult, localBooks] = await Promise.all([
+          supabase.functions.invoke('search-books', { body: { q, pageSize: 12 } }),
           localPromise,
         ])
-        const googleData = googleRes.ok ? await googleRes.json() : {}
-        const externalBooks = (googleData.items || []).map(item => ({
-          id:          item.id,
-          title:       item.volumeInfo.title || 'Unknown Title',
-          author:      item.volumeInfo.authors?.[0] || null,
-          year:        item.volumeInfo.publishedDate?.slice(0, 4) || null,
-          cover:       item.volumeInfo.imageLinks?.thumbnail?.replace('http:', 'https:') || null,
-          description: item.volumeInfo.description?.slice(0, 240) || null,
-          isbn13:      item.volumeInfo.industryIdentifiers?.find(i => i.type === 'ISBN_13')?.identifier || null,
-          isbn10:      item.volumeInfo.industryIdentifiers?.find(i => i.type === 'ISBN_10')?.identifier || null,
-          categories:  item.volumeInfo.categories || [],
-          pageCount:   item.volumeInfo.pageCount || null,
-          publisher:   item.volumeInfo.publisher || null,
-          avgRating:   item.volumeInfo.averageRating || null,
+        const externalBooks = (isbndbResult.data?.books || []).map(book => ({
+          id:          `isbndb:${book.isbn13 || book.isbn10 || Math.random()}`,
+          title:       book.title,
+          author:      book.author,
+          year:        book.year,
+          cover:       book.cover,
+          description: book.description,
+          isbn13:      book.isbn13,
+          isbn10:      book.isbn10,
+          categories:  book.categories,
+          pageCount:   book.pageCount,
+          publisher:   book.publisher,
+          avgRating:   null,
         }))
         setResults(mergeResults(localBooks, externalBooks))
       }
@@ -152,7 +151,7 @@ export default function GlobalSearchModal({ session, onClose }) {
         isbn13:     b.isbn_13 || null,
         isbn10:     b.isbn_10 || null,
         categories: b.genre ? [b.genre] : [],
-        pageCount:  b.page_count || null,
+        pageCount:  b.pages || null,
         publisher:  b.publisher || null,
         avgRating:  null,
       }
@@ -205,7 +204,7 @@ export default function GlobalSearchModal({ session, onClose }) {
             published_year:  book.year   ? parseInt(book.year) : null,
             genre:           book.categories?.[0] || null,
             publisher:       book.publisher || null,
-            page_count:      book.pageCount || null,
+            pages:           book.pageCount || null,
           }).select('id').single()
           if (error) throw error
           bookId = data.id
@@ -417,7 +416,7 @@ export default function GlobalSearchModal({ session, onClose }) {
             fontSize: 11, color: muted,
             fontFamily: "'DM Sans', sans-serif",
           }}>
-            Powered by Google Books{aiMode ? ' · AI by Gemini' : ''}
+            Powered by ISBNDB{aiMode ? ' · AI by Gemini' : ''}
           </div>
         )}
       </div>

@@ -8,6 +8,7 @@ import SearchModal from '../components/SearchModal'
 import GoodreadsImportModal from '../components/GoodreadsImportModal'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
+import { uploadCoverToStorage } from '../lib/enrichBook'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const STATUS_LABELS = {
@@ -180,18 +181,13 @@ export default function Library({ session }) {
       return null
     }
 
-    async function fetchGoogleCover(isbn, title, author) {
+    async function fetchISBNDBCover(isbn, title, author) {
       try {
-        const q = isbn
-          ? `isbn:${isbn}`
-          : `intitle:${encodeURIComponent(title || '')} inauthor:${encodeURIComponent(author || '')}`
-        const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&fields=items(volumeInfo/imageLinks)&maxResults=1`)
-        if (!r.ok) return null
-        const d = await r.json()
-        const links = d?.items?.[0]?.volumeInfo?.imageLinks
-        const raw = links?.large || links?.medium || links?.thumbnail
-        if (!raw) return null
-        return raw.replace(/^http:/, 'https:').replace(/&edge=curl/, '').replace(/zoom=\d/, 'zoom=3')
+        const body = isbn
+          ? { isbn }
+          : { q: `${title || ''} ${author || ''}`.trim(), pageSize: 1 }
+        const { data } = await supabase.functions.invoke('search-books', { body })
+        return data?.books?.[0]?.cover || null
       } catch { return null }
     }
 
@@ -204,8 +200,9 @@ export default function Library({ session }) {
         const { id, isbn_13, isbn_10, title, author } = entry.books
         const isbn = isbn_13 || isbn_10 || null
         try {
-          const url = (await fetchOLCover(isbn, title, author)) || (await fetchGoogleCover(isbn, title, author))
-          if (url) {
+          const raw = (await fetchISBNDBCover(isbn, title, author)) || (await fetchOLCover(isbn, title, author))
+          if (raw) {
+            const url = await uploadCoverToStorage(raw, id)
             await supabase.from('books').update({ cover_image_url: url }).eq('id', id)
             setBooks(prev => prev.map(e =>
               e.books.id === id ? { ...e, books: { ...e.books, cover_image_url: url } } : e

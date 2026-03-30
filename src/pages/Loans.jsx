@@ -28,42 +28,50 @@ export default function Loans({ session }) {
 
   async function fetchLoans() {
     setLoading(true)
-    const [{ data: lendData }, { data: borrowData }] = await Promise.all([
+    const [{ data: lendRaw }, { data: borrowRaw }] = await Promise.all([
       supabase
         .from('borrow_requests')
-        .select(`
-          id, status, message, due_date, created_at, updated_at,
-          books ( id, title, author, cover_image_url ),
-          profiles!borrow_requests_requester_id_fkey ( id, username )
-        `)
+        .select('id, requester_id, owner_initiated, status, message, due_date, created_at, updated_at, books ( id, title, author, cover_image_url, isbn_13, isbn_10 )')
         .eq('owner_id', session.user.id)
         .order('created_at', { ascending: false }),
       supabase
         .from('borrow_requests')
-        .select(`
-          id, status, message, due_date, created_at, updated_at,
-          books ( id, title, author, cover_image_url ),
-          profiles!borrow_requests_owner_id_fkey ( id, username )
-        `)
+        .select('id, owner_id, status, message, due_date, created_at, updated_at, books ( id, title, author, cover_image_url, isbn_13, isbn_10 )')
         .eq('requester_id', session.user.id)
         .order('created_at', { ascending: false }),
     ])
-    setLending(lendData || [])
-    setBorrowing(borrowData || [])
+
+    // Look up profiles for the other party in each request
+    const allBorrowUserIds = [...new Set([
+      ...(lendRaw   || []).map(r => r.requester_id),
+      ...(borrowRaw || []).map(r => r.owner_id),
+    ].filter(Boolean))]
+    let borrowProfileMap = {}
+    if (allBorrowUserIds.length) {
+      const { data: bps } = await supabase.from('profiles').select('id, username').in('id', allBorrowUserIds)
+      borrowProfileMap = Object.fromEntries((bps || []).map(p => [p.id, p]))
+    }
+
+    setLending(  (lendRaw   || []).map(r => ({ ...r, profiles: borrowProfileMap[r.requester_id] || null })))
+    setBorrowing((borrowRaw || []).map(r => ({ ...r, profiles: borrowProfileMap[r.owner_id]     || null })))
     setLoading(false)
   }
 
   async function fetchFriends() {
-    const { data } = await supabase
+    const { data: fs } = await supabase
       .from('friendships')
-      .select('requester_id, addressee_id, profiles!friendships_requester_id_fkey(id,username), profiles!friendships_addressee_id_fkey(id,username)')
+      .select('requester_id, addressee_id')
       .eq('status', 'accepted')
       .or(`requester_id.eq.${session.user.id},addressee_id.eq.${session.user.id}`)
-    setFriends((data || []).map(f =>
-      f.requester_id === session.user.id
-        ? { id: f.addressee_id, username: f['profiles!friendships_addressee_id_fkey']?.username }
-        : { id: f.requester_id, username: f['profiles!friendships_requester_id_fkey']?.username }
-    ))
+    const friendIds = (fs || []).map(f =>
+      f.requester_id === session.user.id ? f.addressee_id : f.requester_id
+    )
+    if (!friendIds.length) { setFriends([]); return }
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, username')
+      .in('id', friendIds)
+    setFriends(profiles || [])
   }
 
   async function loadFriendBooks(friendId) {
@@ -401,8 +409,8 @@ function LoanCard({ req, mode, onAction, navigate, s, theme }) {
   return (
     <div style={s.loanCard}>
       <div style={s.loanCover}>
-        {book.cover_image_url
-          ? <img src={book.cover_image_url} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }} />
+        {getCoverUrl(book)
+          ? <img src={getCoverUrl(book)} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }} onError={e => e.target.style.display='none'} />
           : <MiniCover title={book.title} />
         }
       </div>
@@ -411,7 +419,7 @@ function LoanCard({ req, mode, onAction, navigate, s, theme }) {
         <div style={s.loanBookAuthor}>{book.author}</div>
         <div style={s.loanMeta}>
           {(mode === 'lend-pending' || mode === 'lend-active') && (
-            <span>Requested by{' '}
+            <span>{req.owner_initiated ? 'Lending to' : 'Requested by'}{' '}
               <span style={s.loanUsername} onClick={() => navigate(`/profile/${otherProfile?.username}`)}>
                 {otherProfile?.username}
               </span>
@@ -434,13 +442,18 @@ function LoanCard({ req, mode, onAction, navigate, s, theme }) {
       </div>
       <div style={s.loanActions}>
         <StatusBadge status={req.status} theme={theme} />
-        {mode === 'lend-pending' && !showDue && (
+        {mode === 'lend-pending' && req.owner_initiated && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button style={s.btnDecline} onClick={() => act('decline')} disabled={acting}>{acting ? '…' : 'Cancel'}</button>
+          </div>
+        )}
+        {mode === 'lend-pending' && !req.owner_initiated && !showDue && (
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
             <button style={s.btnAccept} onClick={() => setShowDue(true)}>Accept</button>
             <button style={s.btnDecline} onClick={() => act('decline')} disabled={acting}>Decline</button>
           </div>
         )}
-        {mode === 'lend-pending' && showDue && (
+        {mode === 'lend-pending' && !req.owner_initiated && showDue && (
           <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
             <div style={{ fontSize: 11, color: theme.textSubtle }}>Return by (optional)</div>
             <input type="date" value={pickedDue} onChange={e => setPickedDue(e.target.value)}

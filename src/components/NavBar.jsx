@@ -82,15 +82,15 @@ export default function NavBar({ session, extra }) {
   }, [session?.user?.id])
 
   async function fetchNotifications() {
-    const [{ data: friends }, { data: borrows }, { data: orderRows }] = await Promise.all([
+    const [{ data: friendsRaw }, { data: borrows }, { data: orderRows }] = await Promise.all([
       supabase
         .from('friendships')
-        .select('id, requester_id, created_at, profiles!friendships_requester_id_fkey(username)')
+        .select('id, requester_id, created_at')
         .eq('addressee_id', session.user.id)
         .eq('status', 'pending'),
       supabase
         .from('borrow_requests')
-        .select('id, requester_id, created_at, books(title), profiles!borrow_requests_requester_id_fkey(username)')
+        .select('id, requester_id, created_at, books(title)')
         .eq('owner_id', session.user.id)
         .eq('status', 'pending'),
       supabase
@@ -99,6 +99,24 @@ export default function NavBar({ session, extra }) {
         .eq('seller_id', session.user.id)
         .eq('status', 'pending'),
     ])
+
+    // Resolve friend requester usernames separately
+    let friends = friendsRaw || []
+    if (friends.length) {
+      const requesterIds = friends.map(f => f.requester_id)
+      const { data: fps } = await supabase.from('profiles').select('id, username').in('id', requesterIds)
+      const fProfileMap = Object.fromEntries((fps || []).map(p => [p.id, p]))
+      friends = friends.map(f => ({ ...f, profiles: fProfileMap[f.requester_id] || null }))
+    }
+
+    // Resolve borrow requester usernames separately
+    let enrichedBorrows = borrows || []
+    if (enrichedBorrows.length) {
+      const borrowerIds = enrichedBorrows.map(r => r.requester_id)
+      const { data: bps } = await supabase.from('profiles').select('id, username').in('id', borrowerIds)
+      const bProfileMap = Object.fromEntries((bps || []).map(p => [p.id, p]))
+      enrichedBorrows = enrichedBorrows.map(r => ({ ...r, profiles: bProfileMap[r.requester_id] || null }))
+    }
 
     // Resolve buyer usernames separately (orders.buyer_id references auth.users, not profiles)
     let orders = orderRows || []
@@ -110,8 +128,8 @@ export default function NavBar({ session, extra }) {
       orders = orders.map(o => ({ ...o, profiles: { username: profileMap[o.buyer_id] } }))
     }
 
-    setFriendReqs(friends || [])
-    setBorrowNotifs(borrows || [])
+    setFriendReqs(friends)
+    setBorrowNotifs(enrichedBorrows)
     setOrderNotifs(orders)
   }
 

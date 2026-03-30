@@ -29,37 +29,45 @@ async function fetchOLCover(isbn, title, author) {
   return null
 }
 
-// ── Google Books cover (fallback) ─────────────────────────────────────────
-async function fetchGoogleBooksCover(isbn, title, author) {
+// ── ISBNDB cover (via Edge Function) ─────────────────────────────────────
+async function fetchISBNDBCover(isbn, title, author) {
   try {
-    let url
-    if (isbn) {
-      url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}&fields=items(id,volumeInfo/imageLinks)&maxResults=1`
-    } else {
-      const q = encodeURIComponent(`intitle:${title || ''} inauthor:${author || ''}`)
-      url = `https://www.googleapis.com/books/v1/volumes?q=${q}&fields=items(id,volumeInfo/imageLinks)&maxResults=1`
-    }
-    const res = await fetch(url)
-    if (!res.ok) return null
-    const data = await res.json()
-    const links = data?.items?.[0]?.volumeInfo?.imageLinks
-    const raw = links?.large || links?.medium || links?.thumbnail || links?.smallThumbnail
-    if (!raw) return null
-    // Upgrade to a large, uncurled version
-    return raw
-      .replace(/^http:/, 'https:')
-      .replace(/&edge=curl/, '')
-      .replace(/zoom=\d/, 'zoom=3')
-      .replace(/&source=[^&]+/, '')
+    const body = isbn
+      ? { isbn }
+      : { q: `${title || ''} ${author || ''}`.trim(), pageSize: 1 }
+    const { data } = await supabase.functions.invoke('search-books', { body })
+    return data?.books?.[0]?.cover || null
   } catch {}
   return null
 }
 
-// ── Combined cover fetch: OL first, Google Books fallback ─────────────────
+// ── Combined cover fetch: ISBNDB first, OL fallback ──────────────────────
 async function fetchBestCover(isbn, title, author) {
-  const ol = await fetchOLCover(isbn, title, author)
-  if (ol) return ol
-  return fetchGoogleBooksCover(isbn, title, author)
+  const isbndb = await fetchISBNDBCover(isbn, title, author)
+  if (isbndb) return isbndb
+  return fetchOLCover(isbn, title, author)
+}
+
+// ── Upload cover to Supabase Storage (our own CDN cache) ─────────────────
+// Falls back to the original URL on CORS errors or upload failures.
+export async function uploadCoverToStorage(coverUrl, bookId) {
+  if (!coverUrl || !bookId) return coverUrl
+  try {
+    const res = await fetch(coverUrl)
+    if (!res.ok) return coverUrl
+    const blob = await res.blob()
+    if (!blob.size) return coverUrl
+    const ext = blob.type === 'image/png' ? 'png' : 'jpg'
+    const path = `${bookId}.${ext}`
+    const { error } = await supabase.storage
+      .from('book-covers')
+      .upload(path, blob, { contentType: blob.type, upsert: true })
+    if (error) return coverUrl
+    const { data } = supabase.storage.from('book-covers').getPublicUrl(path)
+    return data.publicUrl
+  } catch {
+    return coverUrl
+  }
 }
 
 // ── Open Library description ──────────────────────────────────────────────
@@ -105,7 +113,7 @@ async function fetchOLDescription(isbn, title, author) {
 function isLowQualityCover(url) {
   if (!url) return true
   if (url.includes('-S.jpg') || url.includes('-M.jpg')) return true
-  if (url.includes('zoom=1')) return true   // small Google Books thumbnail
+  if (url.includes('zoom=1')) return true   // small thumbnail
   return false
 }
 
@@ -130,10 +138,13 @@ export async function enrichBook(bookId, { isbn_13, isbn_10, title, author, cove
     supabase.functions.invoke('get-book-valuation', { body: { isbn, title, author } }),
   ])
 
+  // Upload cover to our Storage bucket so it's cached on our CDN
+  const storedCover = cover ? await uploadCoverToStorage(cover, bookId) : null
+
   // Update books table with whatever we found
   const updates = {}
-  if (cover) updates.cover_image_url = cover
-  if (desc)  updates.description      = desc
+  if (storedCover) updates.cover_image_url = storedCover
+  if (desc)        updates.description      = desc
   if (Object.keys(updates).length > 0) {
     await supabase.from('books').update(updates).eq('id', bookId)
   }
@@ -175,11 +186,13 @@ export async function backfillMissingCovers(books, limit = 8) {
   const batch = missing.slice(0, limit)
   await Promise.allSettled(
     batch.map(b =>
-      fetchBestCover(b.isbn_13 || b.isbn_10 || null, b.title, b.author).then(cover => {
-        if (cover) {
-          return supabase.from('books').update({ cover_image_url: cover }).eq('id', b.id)
-        }
-      })
+      fetchBestCover(b.isbn_13 || b.isbn_10 || null, b.title, b.author)
+        .then(cover => cover ? uploadCoverToStorage(cover, b.id) : null)
+        .then(coverUrl => {
+          if (coverUrl) {
+            return supabase.from('books').update({ cover_image_url: coverUrl }).eq('id', b.id)
+          }
+        })
     )
   )
 }

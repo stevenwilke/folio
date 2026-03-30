@@ -77,7 +77,7 @@ export default function FriendsScreen() {
   }
 
   async function fetchAll(userId: string) {
-    const [{ data: fs }, { data: inc }, { data: out }] = await Promise.all([
+    const [{ data: fs }, { data: incRaw }, { data: outRaw }] = await Promise.all([
       supabase
         .from('friendships')
         .select('id, requester_id, addressee_id')
@@ -85,18 +85,32 @@ export default function FriendsScreen() {
         .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`),
       supabase
         .from('friendships')
-        .select('id, requester_id, profiles!friendships_requester_id_fkey(id, username, avatar_url)')
+        .select('id, requester_id')
         .eq('addressee_id', userId)
         .eq('status', 'pending'),
       supabase
         .from('friendships')
-        .select('id, addressee_id, profiles!friendships_addressee_id_fkey(id, username, avatar_url)')
+        .select('id, addressee_id')
         .eq('requester_id', userId)
         .eq('status', 'pending'),
     ]);
 
-    setIncoming((inc || []) as unknown as PendingRequest[]);
-    setOutgoing((out || []) as unknown as PendingRequest[]);
+    // Look up profiles for pending requests
+    const pendingIds = [...new Set([
+      ...(incRaw || []).map((f: any) => f.requester_id),
+      ...(outRaw || []).map((f: any) => f.addressee_id),
+    ])];
+    let pendingProfileMap: Record<string, any> = {};
+    if (pendingIds.length) {
+      const { data: ps } = await supabase.from('profiles').select('id, username, avatar_url').in('id', pendingIds);
+      pendingProfileMap = Object.fromEntries((ps || []).map((p: any) => [p.id, p]));
+    }
+
+    const inc = (incRaw || []).map((f: any) => ({ ...f, profiles: pendingProfileMap[f.requester_id] || null }));
+    const out = (outRaw || []).map((f: any) => ({ ...f, profiles: pendingProfileMap[f.addressee_id] || null }));
+
+    setIncoming(inc as unknown as PendingRequest[]);
+    setOutgoing(out as unknown as PendingRequest[]);
 
     const friendIds = (fs || []).map((f: any) =>
       f.requester_id === userId ? f.addressee_id : f.requester_id

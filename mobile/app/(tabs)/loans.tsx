@@ -26,6 +26,7 @@ import { Colors } from '../../constants/colors';
 interface BorrowRequest {
   id: string;
   status: 'pending' | 'active' | 'returned' | 'declined';
+  owner_initiated: boolean;
   message: string | null;
   due_date: string | null;
   created_at: string;
@@ -146,7 +147,8 @@ function LoanCard({
 
         {(mode === 'lend-pending' || mode === 'lend-active') && otherProfile ? (
           <Text style={lc.meta}>
-            Requested by <Text style={lc.username}>{otherProfile.username}</Text>
+            {req.owner_initiated ? 'Lending to' : 'Requested by'}{' '}
+            <Text style={lc.username}>{otherProfile.username}</Text>
           </Text>
         ) : null}
         {(mode === 'borrow-pending' || mode === 'borrow-active') && otherProfile ? (
@@ -175,7 +177,14 @@ function LoanCard({
       <View style={lc.actions}>
         <StatusBadge status={req.status} />
 
-        {mode === 'lend-pending' && (
+        {mode === 'lend-pending' && req.owner_initiated && (
+          <View style={lc.btnRow}>
+            <TouchableOpacity style={[lc.btn, lc.btnDecline]} onPress={() => act('decline')} disabled={acting}>
+              <Text style={lc.btnDeclineText}>{acting ? '…' : 'Cancel'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {mode === 'lend-pending' && !req.owner_initiated && (
           <View style={lc.btnRow}>
             <TouchableOpacity
               style={[lc.btn, lc.btnAccept]}
@@ -358,46 +367,50 @@ export default function LoansScreen() {
     if (!user) return;
     setCurrentUserId(user.id);
 
-    const [{ data: lendData }, { data: borrowData }] = await Promise.all([
+    const [{ data: lendRaw }, { data: borrowRaw }] = await Promise.all([
       supabase
         .from('borrow_requests')
-        .select(`
-          id, status, message, due_date, created_at, updated_at,
-          books ( id, title, author, cover_image_url ),
-          profiles!borrow_requests_owner_id_fkey ( id, username )
-        `)
+        .select('id, requester_id, owner_initiated, status, message, due_date, created_at, updated_at, books ( id, title, author, cover_image_url )')
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false }),
       supabase
         .from('borrow_requests')
-        .select(`
-          id, status, message, due_date, created_at, updated_at,
-          books ( id, title, author, cover_image_url ),
-          profiles!borrow_requests_requester_id_fkey ( id, username )
-        `)
+        .select('id, owner_id, owner_initiated, status, message, due_date, created_at, updated_at, books ( id, title, author, cover_image_url )')
         .eq('requester_id', user.id)
         .order('created_at', { ascending: false }),
     ]);
 
-    setLending((lendData as unknown as BorrowRequest[]) || []);
-    setBorrowing((borrowData as unknown as BorrowRequest[]) || []);
+    // Look up profiles for the other party in each request
+    const allBorrowUserIds = [...new Set([
+      ...(lendRaw || []).map((r: any) => r.requester_id),
+      ...(borrowRaw || []).map((r: any) => r.owner_id),
+    ].filter(Boolean))];
+    let borrowProfileMap: Record<string, any> = {};
+    if (allBorrowUserIds.length) {
+      const { data: bps } = await supabase.from('profiles').select('id, username').in('id', allBorrowUserIds);
+      borrowProfileMap = Object.fromEntries((bps || []).map((p: any) => [p.id, p]));
+    }
+
+    setLending(((lendRaw || []).map((r: any) => ({ ...r, profiles: borrowProfileMap[r.requester_id] || null }))) as unknown as BorrowRequest[]);
+    setBorrowing(((borrowRaw || []).map((r: any) => ({ ...r, profiles: borrowProfileMap[r.owner_id] || null }))) as unknown as BorrowRequest[]);
 
     // Fetch friends for Browse tab
     const { data: friendships } = await supabase
       .from('friendships')
-      .select('requester_id, addressee_id, profiles!friendships_requester_id_fkey ( id, username ), addressee:profiles!friendships_addressee_id_fkey ( id, username )')
+      .select('requester_id, addressee_id')
       .eq('status', 'accepted')
       .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
 
     if (friendships) {
-      const mapped: Friend[] = friendships.map((f: any) => {
-        if (f.requester_id === user.id) {
-          return { id: f.addressee?.id ?? '', username: f.addressee?.username ?? '' };
-        } else {
-          return { id: f.profiles?.id ?? '', username: f.profiles?.username ?? '' };
-        }
-      }).filter((f) => f.id);
-      setFriends(mapped);
+      const friendIds = friendships.map((f: any) =>
+        f.requester_id === user.id ? f.addressee_id : f.requester_id
+      ).filter(Boolean);
+      if (friendIds.length) {
+        const { data: friendProfiles } = await supabase.from('profiles').select('id, username').in('id', friendIds);
+        setFriends((friendProfiles || []) as Friend[]);
+      } else {
+        setFriends([]);
+      }
     }
   }
 

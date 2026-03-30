@@ -454,6 +454,7 @@ function NotificationsDropdown({ friendReqs, borrowNotifs, orderNotifs, onRespon
 const s = {
   topbar: {
     position: 'sticky', top: 0, zIndex: 10,
+    width: '100%', boxSizing: 'border-box',
     background: 'rgba(245,240,232,0.95)', backdropFilter: 'blur(8px)',
     borderBottom: '1px solid #d4c9b0',
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',

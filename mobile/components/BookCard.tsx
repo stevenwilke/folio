@@ -59,6 +59,7 @@ export function BookCard({
             author={author}
             width={coverWidth}
             height={coverHeight}
+            showText={false}
           />
         )}
       </View>

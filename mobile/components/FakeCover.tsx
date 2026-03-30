@@ -8,6 +8,7 @@ interface FakeCoverProps {
   author?: string | null;
   width?: number;
   height?: number;
+  showText?: boolean;
 }
 
 // Generate a pair of gradient colors from the book title
@@ -33,7 +34,7 @@ function getGradientColors(title: string): [string, string] {
   return palettes[hash];
 }
 
-export function FakeCover({ title, author, width = 80, height = 120 }: FakeCoverProps) {
+export function FakeCover({ title, author, width = 80, height = 120, showText = true }: FakeCoverProps) {
   const [startColor, endColor] = getGradientColors(title);
   const initial = title.trim().charAt(0).toUpperCase();
 
@@ -49,7 +50,7 @@ export function FakeCover({ title, author, width = 80, height = 120 }: FakeCover
 
       <View style={styles.content}>
         <Text style={[styles.initial, { fontSize: width * 0.35 }]}>{initial}</Text>
-        {width >= 60 && (
+        {showText && width >= 60 && (
           <Text
             style={[styles.title, { fontSize: Math.max(7, width * 0.11) }]}
             numberOfLines={3}
@@ -57,7 +58,7 @@ export function FakeCover({ title, author, width = 80, height = 120 }: FakeCover
             {title}
           </Text>
         )}
-        {author && width >= 80 && (
+        {showText && author && width >= 80 && (
           <Text
             style={[styles.author, { fontSize: Math.max(6, width * 0.09) }]}
             numberOfLines={2}

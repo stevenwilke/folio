@@ -29,22 +29,8 @@ async function fetchOLCover(isbn, title, author) {
   return null
 }
 
-// ── ISBNDB cover (via Edge Function) ─────────────────────────────────────
-async function fetchISBNDBCover(isbn, title, author) {
-  try {
-    const body = isbn
-      ? { isbn }
-      : { q: `${title || ''} ${author || ''}`.trim(), pageSize: 1 }
-    const { data } = await supabase.functions.invoke('search-books', { body })
-    return data?.books?.[0]?.cover || null
-  } catch {}
-  return null
-}
-
-// ── Combined cover fetch: ISBNDB first, OL fallback ──────────────────────
+// ── Combined cover fetch via Open Library ────────────────────────────────
 async function fetchBestCover(isbn, title, author) {
-  const isbndb = await fetchISBNDBCover(isbn, title, author)
-  if (isbndb) return isbndb
   return fetchOLCover(isbn, title, author)
 }
 

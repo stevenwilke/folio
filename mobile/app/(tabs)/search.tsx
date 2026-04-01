@@ -84,11 +84,9 @@ export default function SearchScreen() {
         folioQ = folioQ.or(`title.ilike.%${q.trim()}%,author.ilike.%${q.trim()}%`);
       }
 
-      const [isbndbResp, olJson, { data: folioBooks }] = await Promise.all([
-        supabase.functions.invoke('search-books', { body: { query: q } })
-          .catch(() => ({ data: null })),
+      const [olJson, { data: folioBooks }] = await Promise.all([
         fetch(
-          `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&fields=key,title,author_name,isbn,cover_i,first_publish_year&limit=12`
+          `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&fields=key,title,author_name,isbn,cover_i,first_publish_year&limit=16`
         ).then(r => r.json()).catch(() => ({ docs: [] })),
         folioQ,
       ]);
@@ -110,44 +108,17 @@ export default function SearchScreen() {
         adding:       false,
       }));
 
-      // ISBNs already in Ex Libris — used to dedup external results
+      // ISBNs already in the app — used to dedup OL results
       const folioIsbn13s = new Set(folioResults.map(r => r.isbn13).filter(Boolean));
       const folioIsbn10s = new Set(folioResults.map(r => r.isbn10).filter(Boolean));
 
-      // Normalize ISBNDB results (primary external source)
-      const isbndbBooks: any[] = isbndbResp?.data?.books ?? [];
-      const isbndbResults: SearchResult[] = isbndbBooks
-        .filter((b: any) => {
-          if (b.isbn13 && folioIsbn13s.has(b.isbn13)) return false;
-          if (b.isbn10 && folioIsbn10s.has(b.isbn10)) return false;
-          return true;
-        })
-        .map((b: any) => ({
-          key:          `isbndb-${b.isbn13 || b.title}`,
-          title:        b.title,
-          author:       b.authors?.[0] || 'Unknown author',
-          coverUrl:     b.image || null,
-          saveCoverUrl: b.image || null,
-          year:         b.date_published ? parseInt(b.date_published) : null,
-          isbn13:       b.isbn13 || null,
-          isbn10:       b.isbn || null,
-          genre:        b.subjects?.[0] || null,
-          source:       'openlibrary' as const,
-          bookId:       null,
-          addedStatus:  null,
-          adding:       false,
-        }));
-
-      const isbndbIsbn13s = new Set(isbndbResults.map(r => r.isbn13).filter(Boolean));
-      const isbndbIsbn10s = new Set(isbndbResults.map(r => r.isbn10).filter(Boolean));
-
-      // Normalize OL results, skipping duplicates from folio + isbndb
+      // Normalize Open Library results, skipping duplicates already in Folio DB
       const olResults: SearchResult[] = (olJson.docs ?? [])
         .filter((d: any) => {
           const i13 = d.isbn?.find((i: string) => i.length === 13);
           const i10 = d.isbn?.find((i: string) => i.length === 10);
-          if (i13 && (folioIsbn13s.has(i13) || isbndbIsbn13s.has(i13))) return false;
-          if (i10 && (folioIsbn10s.has(i10) || isbndbIsbn10s.has(i10))) return false;
+          if (i13 && folioIsbn13s.has(i13)) return false;
+          if (i10 && folioIsbn10s.has(i10)) return false;
           return true;
         })
         .map((d: any) => ({
@@ -190,7 +161,7 @@ export default function SearchScreen() {
         readStatus: r.bookId ? (libraryStatusMap[r.bookId] || null) : null,
       }));
 
-      const allResults: SearchResult[] = [...taggedFolio, ...isbndbResults, ...olResults];
+      const allResults: SearchResult[] = [...taggedFolio, ...olResults];
 
       // Build sectioned list with header items
       const libraryBooks = allResults.filter(r => r.inLibrary);

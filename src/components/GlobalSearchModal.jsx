@@ -101,24 +101,29 @@ export default function GlobalSearchModal({ session, onClose }) {
         setInterp(aiData?.interpretation || '')
         setResults(mergeResults(localBooks, aiData?.books || []))
       } else {
-        const [isbndbResult, localBooks] = await Promise.all([
-          supabase.functions.invoke('search-books', { body: { q, pageSize: 12 } }),
+        const [olResult, localBooks] = await Promise.all([
+          fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&fields=key,title,author_name,isbn,cover_i,first_publish_year,subject&limit=16`)
+            .then(r => r.json()).catch(() => ({ docs: [] })),
           localPromise,
         ])
-        const externalBooks = (isbndbResult.data?.books || []).map(book => ({
-          id:          `isbndb:${book.isbn13 || book.isbn10 || Math.random()}`,
-          title:       book.title,
-          author:      book.author,
-          year:        book.year,
-          cover:       book.cover,
-          description: book.description,
-          isbn13:      book.isbn13,
-          isbn10:      book.isbn10,
-          categories:  book.categories,
-          pageCount:   book.pageCount,
-          publisher:   book.publisher,
-          avgRating:   null,
-        }))
+        const externalBooks = (olResult.docs || []).map(doc => {
+          const isbn13 = doc.isbn?.find(i => i.length === 13) || null
+          const isbn10 = doc.isbn?.find(i => i.length === 10) || null
+          return {
+            id:          `ol:${doc.key}`,
+            title:       doc.title,
+            author:      doc.author_name?.[0] || null,
+            year:        doc.first_publish_year ? String(doc.first_publish_year) : null,
+            cover:       doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : null,
+            description: null,
+            isbn13,
+            isbn10,
+            categories:  doc.subject?.slice(0, 3) || [],
+            pageCount:   null,
+            publisher:   null,
+            avgRating:   null,
+          }
+        })
         setResults(mergeResults(localBooks, externalBooks))
       }
     } catch (e) {
@@ -440,7 +445,7 @@ export default function GlobalSearchModal({ session, onClose }) {
             fontSize: 11, color: muted,
             fontFamily: "'DM Sans', sans-serif",
           }}>
-            Powered by ISBNDB{aiMode ? ' · AI by Gemini' : ''}
+            Powered by Open Library{aiMode ? ' · AI by Gemini' : ''}
           </div>
         )}
       </div>

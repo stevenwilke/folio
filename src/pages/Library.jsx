@@ -181,16 +181,6 @@ export default function Library({ session }) {
       return null
     }
 
-    async function fetchISBNDBCover(isbn, title, author) {
-      try {
-        const body = isbn
-          ? { isbn }
-          : { q: `${title || ''} ${author || ''}`.trim(), pageSize: 1 }
-        const { data } = await supabase.functions.invoke('search-books', { body })
-        return data?.books?.[0]?.cover || null
-      } catch { return null }
-    }
-
     const todo = entries.filter(e => isLowQuality(e.books.cover_image_url))
     if (todo.length === 0) return
 
@@ -200,7 +190,7 @@ export default function Library({ session }) {
         const { id, isbn_13, isbn_10, title, author } = entry.books
         const isbn = isbn_13 || isbn_10 || null
         try {
-          const raw = (await fetchISBNDBCover(isbn, title, author)) || (await fetchOLCover(isbn, title, author))
+          const raw = await fetchOLCover(isbn, title, author)
           if (raw) {
             const url = await uploadCoverToStorage(raw, id)
             await supabase.from('books').update({ cover_image_url: url }).eq('id', id)

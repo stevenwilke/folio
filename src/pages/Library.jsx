@@ -123,10 +123,8 @@ export default function Library({ session }) {
       if (data && data.length > 0) {
         localStorage.setItem('exlibris-onboarded', '1')
       }
-      const ownedIds = (data || [])
-        .filter(e => e.read_status === 'owned')
-        .map(e => e.books.id)
-      fetchCollectionValue(ownedIds)
+      const allBookIds = (data || []).map(e => e.books?.id).filter(Boolean)
+      fetchCollectionValue(allBookIds)
       // Backfill genres in the background (once per session)
       if (!sessionStorage.getItem('exlibris-genre-backfill')) {
         sessionStorage.setItem('exlibris-genre-backfill', '1')
@@ -136,6 +134,11 @@ export default function Library({ session }) {
       if (!sessionStorage.getItem('exlibris-cover-backfill-v2')) {
         sessionStorage.setItem('exlibris-cover-backfill-v2', '1')
         backfillCovers(data || [])
+      }
+      // Backfill missing valuations in the background (once per session)
+      if (!sessionStorage.getItem('exlibris-valuation-backfill')) {
+        sessionStorage.setItem('exlibris-valuation-backfill', '1')
+        backfillValuations(data || [])
       }
     }
     setLoading(false)
@@ -209,6 +212,60 @@ export default function Library({ session }) {
         } catch { /* ignore */ }
       }))
       await new Promise(r => setTimeout(r, 600))
+    }
+  }
+
+  // Fetch retail pricing from Google Books for books with no valuation yet
+  async function backfillValuations(entries) {
+    const bookIds = entries.map(e => e.books?.id).filter(Boolean)
+    if (!bookIds.length) return
+
+    // Find which books already have a valuation (any entry — even a null-price miss)
+    // Skip ones fetched in the last 6 hours to avoid hammering the API on every reload
+    const { data: existing } = await supabase
+      .from('valuations')
+      .select('book_id, fetched_at, list_price')
+      .in('book_id', bookIds)
+
+    const sixHoursAgo = Date.now() - 6 * 60 * 60 * 1000
+    const skipIds = new Set(
+      (existing || [])
+        .filter(v => new Date(v.fetched_at).getTime() > sixHoursAgo)
+        .map(v => v.book_id)
+    )
+
+    const todo = entries.filter(e => e.books?.id && !skipIds.has(e.books.id))
+    if (!todo.length) return
+
+    const BATCH = 5
+    for (let i = 0; i < todo.length; i += BATCH) {
+      await Promise.allSettled(todo.slice(i, i + BATCH).map(async entry => {
+        const { id, isbn_13, isbn_10, title, author } = entry.books
+        try {
+          const { data } = await supabase.functions.invoke('get-book-valuation', {
+            body: { isbn: isbn_13 || isbn_10 || null, title, author }
+          })
+          const row = {
+            book_id:             id,
+            list_price:          data?.list_price          ?? null,
+            list_price_currency: data?.list_price_currency ?? null,
+            avg_price:           data?.avg_price           ?? null,
+            min_price:           data?.min_price           ?? null,
+            max_price:           data?.max_price           ?? null,
+            sample_count:        data?.sample_count        ?? null,
+            currency:            data?.currency            || 'USD',
+            fetched_at:          new Date().toISOString(),
+          }
+          await supabase.from('valuations').upsert(row, { onConflict: 'book_id' })
+          // Refresh the value totals after each batch completes
+          if (data?.list_price) {
+            const allIds = entries.map(e => e.books?.id).filter(Boolean)
+            fetchCollectionValue(allIds)
+          }
+        } catch { /* ignore individual failures */ }
+      }))
+      // Small delay between batches to avoid rate-limiting
+      await new Promise(r => setTimeout(r, 800))
     }
   }
 

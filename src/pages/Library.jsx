@@ -41,7 +41,7 @@ export default function Library({ session }) {
   function closeBook()       { setSearchParams({}); fetchCollection() }
   const [listingTarget, setListingTarget] = useState(null)
   const [activeListings, setActiveListings] = useState({})
-  const [collectionValue, setCollectionValue] = useState(null)
+  const [collectionStats, setCollectionStats] = useState(null)
   const [search, setSearch]             = useState('')
   const [groupBy, setGroupBy]           = useState('none')
   const [collapsedGroups, setCollapsedGroups] = useState(new Set())
@@ -87,14 +87,22 @@ export default function Library({ session }) {
   }
 
   async function fetchCollectionValue(bookIds) {
-    if (!bookIds.length) { setCollectionValue(0); return }
+    const total = bookIds.length
+    if (!total) { setCollectionStats({ retailTotal: 0, retailCount: 0, usedTotal: 0, usedCount: 0, total: 0 }); return }
     const { data } = await supabase
       .from('valuations')
-      .select('avg_price')
+      .select('list_price, avg_price')
       .in('book_id', bookIds)
-      .not('avg_price', 'is', null)
-    const total = (data || []).reduce((sum, v) => sum + Number(v.avg_price), 0)
-    setCollectionValue(total)
+    const rows = data || []
+    const retailRows = rows.filter(v => v.list_price != null)
+    const usedRows   = rows.filter(v => v.avg_price   != null)
+    setCollectionStats({
+      retailTotal: retailRows.reduce((sum, v) => sum + Number(v.list_price), 0),
+      retailCount: retailRows.length,
+      usedTotal:   usedRows.reduce((sum, v) => sum + Number(v.avg_price), 0),
+      usedCount:   usedRows.length,
+      total,
+    })
   }
 
   async function fetchCollection() {
@@ -476,15 +484,38 @@ export default function Library({ session }) {
               ['Read',        stats.read,    '#5a7a5a', '✓'],
               ['Reading',     stats.reading, '#c0521e', '📖'],
               ['Want to Read',stats.want,    '#b8860b', '🔖'],
-              ...(collectionValue !== null
-                ? [['Est. Value', `$${collectionValue.toFixed(2)}`, '#5a7a5a', '💰']]
-                : []),
             ].map(([label, val, color, icon]) => (
               <div key={label} style={s.statCard}>
                 <div style={{ ...s.statVal, color: color || theme.text }}>{icon} {val}</div>
                 <div style={s.statLabel}>{label}</div>
               </div>
             ))}
+            {collectionStats && (
+              <>
+                <div style={s.statCard}>
+                  <div style={{ ...s.statVal, color: '#5a7a5a' }}>
+                    💰 {collectionStats.retailCount > 0 ? `$${collectionStats.retailTotal.toFixed(2)}` : '—'}
+                  </div>
+                  <div style={s.statLabel}>
+                    Retail Value
+                    <span style={{ display: 'block', fontSize: 10, opacity: 0.7, marginTop: 1 }}>
+                      {collectionStats.retailCount}/{collectionStats.total} books priced
+                    </span>
+                  </div>
+                </div>
+                <div style={s.statCard}>
+                  <div style={{ ...s.statVal, color: '#b8860b' }}>
+                    📊 {collectionStats.usedCount > 0 ? `$${collectionStats.usedTotal.toFixed(2)}` : '—'}
+                  </div>
+                  <div style={s.statLabel}>
+                    Used Value
+                    <span style={{ display: 'block', fontSize: 10, opacity: 0.7, marginTop: 1 }}>
+                      {collectionStats.usedCount}/{collectionStats.total} books priced
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 

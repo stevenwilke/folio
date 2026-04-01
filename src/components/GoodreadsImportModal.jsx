@@ -1,6 +1,5 @@
 import { useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { enrichBook } from '../lib/enrichBook'
 import { useTheme } from '../contexts/ThemeContext'
 
 // Map Goodreads exclusive_shelf to our status
@@ -75,29 +74,6 @@ function parseCSVLine(line) {
   return result
 }
 
-async function fetchCoverUrl(isbn13, isbn10, title, author) {
-  // 1. ISBNDB via Edge Function (best quality)
-  try {
-    const isbn = isbn13 || isbn10
-    const body = isbn
-      ? { isbn }
-      : { q: `${title || ''} ${author || ''}`.trim(), pageSize: 1 }
-    const { data } = await supabase.functions.invoke('search-books', { body })
-    const cover = data?.books?.[0]?.cover
-    if (cover) return cover
-  } catch { /* skip */ }
-
-  // 2. Open Library fallback by ISBN
-  for (const isbn of [isbn13, isbn10].filter(Boolean)) {
-    try {
-      const url = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false`
-      const res = await fetch(url, { method: 'HEAD' })
-      if (res.ok) return `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`
-    } catch { /* skip */ }
-  }
-
-  return null
-}
 
 export default function GoodreadsImportModal({ session, onClose, onImported }) {
   const { theme } = useTheme()
@@ -158,60 +134,64 @@ export default function GoodreadsImportModal({ session, onClose, onImported }) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setError('Not authenticated.'); setStep('preview'); return }
 
-    for (let i = 0; i < books.length; i++) {
-      const b = books[i]
-      try {
-        // Find or create book
-        let bookId = null
-        if (b.isbn13) {
-          const { data } = await supabase.from('books').select('id').eq('isbn_13', b.isbn13).maybeSingle()
-          if (data) bookId = data.id
-        }
-        if (!bookId && b.isbn10) {
-          const { data } = await supabase.from('books').select('id').eq('isbn_10', b.isbn10).maybeSingle()
-          if (data) bookId = data.id
-        }
-        if (!bookId) {
-          const { data } = await supabase.from('books').select('id')
-            .eq('title', b.title).eq('author', b.author).maybeSingle()
-          if (data) bookId = data.id
-        }
-        let isNewBook = false
-        if (!bookId) {
-          const coverUrl = await fetchCoverUrl(b.isbn13, b.isbn10, b.title, b.author)
-          const { data: newBook } = await supabase.from('books').insert({
-            title: b.title, author: b.author,
-            isbn_13: b.isbn13, isbn_10: b.isbn10,
-            pages: b.pages, published_year: b.year,
-            format: b.format,
-            cover_image_url: coverUrl,
-          }).select('id').single()
-          if (newBook) { bookId = newBook.id; isNewBook = true }
-        }
+    // Process in batches of 10 for speed while keeping DB load manageable
+    const BATCH = 10
+    let done = 0
 
-        if (bookId) {
-          await supabase.from('collection_entries').upsert({
-            user_id:     user.id,
-            book_id:     bookId,
-            read_status: b.status,
-            user_rating: b.rating || null,
-            review_text: b.review || null,
-          }, { onConflict: 'user_id,book_id' })
+    for (let start = 0; start < books.length; start += BATCH) {
+      const batch = books.slice(start, start + BATCH)
 
-          // Enrich new books in background (cover upgrade, description, pricing)
-          if (isNewBook) {
-            enrichBook(bookId, {
-              isbn_13: b.isbn13, isbn_10: b.isbn10,
-              title: b.title, author: b.author,
-              cover_image_url: null,  // always try to get best cover
-              description: null,
-            })
+      await Promise.allSettled(batch.map(async (b) => {
+        try {
+          // Find existing book by ISBN or title+author
+          let bookId = null
+          if (b.isbn13) {
+            const { data } = await supabase.from('books').select('id').eq('isbn_13', b.isbn13).maybeSingle()
+            if (data) bookId = data.id
           }
-        }
-      } catch { /* skip failed books */ }
+          if (!bookId && b.isbn10) {
+            const { data } = await supabase.from('books').select('id').eq('isbn_10', b.isbn10).maybeSingle()
+            if (data) bookId = data.id
+          }
+          if (!bookId) {
+            const { data } = await supabase.from('books').select('id')
+              .ilike('title', b.title).eq('author', b.author).maybeSingle()
+            if (data) bookId = data.id
+          }
 
-      setProgress({ done: i + 1, total: books.length })
+          // Insert new book without cover — backfillCovers handles that on library load
+          if (!bookId) {
+            const { data: newBook } = await supabase.from('books').insert({
+              title:          b.title,
+              author:         b.author,
+              isbn_13:        b.isbn13 || null,
+              isbn_10:        b.isbn10 || null,
+              pages:          b.pages  || null,
+              published_year: b.year   || null,
+              format:         b.format || null,
+              cover_image_url: null,
+            }).select('id').single()
+            if (newBook) bookId = newBook.id
+          }
+
+          if (bookId) {
+            await supabase.from('collection_entries').upsert({
+              user_id:     user.id,
+              book_id:     bookId,
+              read_status: b.status,
+              user_rating: b.rating || null,
+              review_text: b.review || null,
+            }, { onConflict: 'user_id,book_id' })
+          }
+        } catch { /* skip individual failures */ }
+      }))
+
+      done = Math.min(start + BATCH, books.length)
+      setProgress({ done, total: books.length })
     }
+
+    // Mark as onboarded so the library page doesn't redirect to onboarding
+    localStorage.setItem('exlibris-onboarded', '1')
     setStep('done')
   }
 

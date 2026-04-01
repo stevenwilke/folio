@@ -642,20 +642,22 @@ export default function BookDetail({ bookId, session, onBack }) {
                     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
                       <span style={s.valuationPrice}>${Number(valuation.list_price).toFixed(2)}</span>
                       <span style={s.valuationSub}>
-                        List price{valuation.list_price_currency ? ` (${valuation.list_price_currency})` : ''}
+                        Retail price{valuation.list_price_currency && valuation.list_price_currency !== 'USD' ? ` (${valuation.list_price_currency})` : ''}
                       </span>
                     </span>
                   )}
-                  {valuation.list_price != null && valuation.avg_price != null && (
-                    <span style={s.valuationDivider}>·</span>
-                  )}
-                  {valuation.avg_price != null && (
-                    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
-                      <span style={s.valuationMarket}>~${Number(valuation.avg_price).toFixed(2)}</span>
-                      <span style={s.valuationSub}>
-                        avg of {valuation.sample_count} eBay sales (90 days)
-                      </span>
-                    </span>
+                  {valuation.list_price != null && (
+                    <>
+                      <span style={s.valuationDivider}>·</span>
+                      <a
+                        href={`https://www.thriftbooks.com/browse/?b.search=${encodeURIComponent(book.isbn_13 || book.isbn_10 || book.title)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ ...s.valuationSub, color: theme.rust, textDecoration: 'none', fontStyle: 'italic' }}
+                      >
+                        Find used copies →
+                      </a>
+                    </>
                   )}
                 </>
               ) : (

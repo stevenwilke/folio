@@ -636,9 +636,9 @@ export default function BookDetail({ bookId, session, onBack }) {
             <div style={s.valuationRow}>
               {valuationLoading ? (
                 <span style={s.valuationMuted}>Fetching prices…</span>
-              ) : valuation ? (
+              ) : (
                 <>
-                  {valuation.list_price != null && (
+                  {valuation?.list_price != null && (
                     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
                       <span style={s.valuationPrice}>${Number(valuation.list_price).toFixed(2)}</span>
                       <span style={s.valuationSub}>
@@ -646,22 +646,23 @@ export default function BookDetail({ bookId, session, onBack }) {
                       </span>
                     </span>
                   )}
-                  {valuation.list_price != null && (
-                    <>
-                      <span style={s.valuationDivider}>·</span>
-                      <a
-                        href={`https://www.thriftbooks.com/browse/?b.search=${encodeURIComponent(book.isbn_13 || book.isbn_10 || book.title)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ ...s.valuationSub, color: theme.rust, textDecoration: 'none', fontStyle: 'italic' }}
-                      >
-                        Find used copies →
-                      </a>
-                    </>
-                  )}
+                  {valuation?.list_price != null && <span style={s.valuationDivider}>·</span>}
+                  <a
+                    href={`https://bookshop.org/search?keywords=${encodeURIComponent(book.isbn_13 || book.isbn_10 || book.title)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ ...s.valuationSub, color: theme.rust, textDecoration: 'none', fontStyle: 'italic' }}
+                  >
+                    Buy new →
+                  </a>
+                  <span style={s.valuationDivider}>·</span>
+                  <a
+                    href={`https://www.thriftbooks.com/browse/?b.search=${encodeURIComponent(book.isbn_13 || book.isbn_10 || book.title)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ ...s.valuationSub, color: theme.rust, textDecoration: 'none', fontStyle: 'italic' }}
+                  >
+                    Find used →
+                  </a>
                 </>
-              ) : (
-                <span style={s.valuationMuted}>No pricing data found</span>
               )}
             </div>
 

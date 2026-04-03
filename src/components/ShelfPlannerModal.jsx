@@ -1,0 +1,809 @@
+import { useState, useRef, useCallback } from 'react'
+import { supabase } from '../lib/supabase'
+import { useTheme } from '../contexts/ThemeContext'
+
+// ── Genre colour palette ──────────────────────────────────────────────────────
+const GENRE_COLORS = {
+  'Science Fiction':    { spine: '#1a5c8a', text: '#e8f4fd' },
+  'Fantasy':            { spine: '#5a2d82', text: '#f0e8ff' },
+  'Mystery':            { spine: '#1a4d2e', text: '#e8f5ee' },
+  'Thriller':           { spine: '#7a1a1a', text: '#ffe8e8' },
+  'Horror':             { spine: '#2a0a0a', text: '#ffd0d0' },
+  'Romance':            { spine: '#8a1a5c', text: '#ffe8f4' },
+  'Historical Fiction': { spine: '#5c3a1a', text: '#fff0e0' },
+  'Literary Fiction':   { spine: '#1a5c3a', text: '#e8fff0' },
+  'Biography':          { spine: '#4a3a0a', text: '#fff8e0' },
+  'Non-Fiction':        { spine: '#1a3a5c', text: '#e0f0ff' },
+  'Self-Help':          { spine: '#5c4a1a', text: '#fff5e0' },
+  'Young Adult':        { spine: '#1a7a5c', text: '#e0fff8' },
+  "Children's":         { spine: '#7a5c1a', text: '#fff8e0' },
+  'Graphic Novel':      { spine: '#3a1a7a', text: '#ece8ff' },
+  'Poetry':             { spine: '#7a3a5c', text: '#ffe8f4' },
+}
+const DEFAULT_COLOR = { spine: '#6b5c4a', text: '#fff8f0' }
+
+const GENRE_OVERRIDES_KEY = 'folio-genre-overrides'
+const ALL_GENRES = Object.keys(GENRE_COLORS)
+
+function getGenreColor(genre) {
+  if (!genre) return DEFAULT_COLOR
+  for (const [key, val] of Object.entries(GENRE_COLORS)) {
+    if (genre.toLowerCase().includes(key.toLowerCase())) return val
+  }
+  return DEFAULT_COLOR
+}
+
+// ── Sort methods ──────────────────────────────────────────────────────────────
+const SORT_METHODS = [
+  { id: 'alpha-title',  label: 'A → Z by Title',       icon: '🔤' },
+  { id: 'alpha-author', label: 'A → Z by Author',       icon: '👤' },
+  { id: 'genre',        label: 'Grouped by Genre',       icon: '📚' },
+  { id: 'genre-alpha',  label: 'Genre, then Title A→Z', icon: '🗂️' },
+  { id: 'year',         label: 'By Publication Year',   icon: '📅' },
+  { id: 'series',       label: 'By Series',             icon: '📖' },
+  { id: 'color',        label: 'Rainbow (by Genre)',     icon: '🌈' },
+  { id: 'status',       label: 'By Reading Status',     icon: '✅' },
+]
+
+const COLOR_ORDER = [
+  'Romance', 'Horror', 'Thriller', 'Literary Fiction', 'Mystery',
+  'Historical Fiction', 'Biography', 'Non-Fiction', 'Self-Help',
+  'Young Adult', "Children's", 'Science Fiction', 'Fantasy',
+  'Graphic Novel', 'Poetry',
+]
+
+function sortBooks(books, method) {
+  const copy = [...books]
+  switch (method) {
+    case 'alpha-title':
+      return copy.sort((a, b) => a.title.localeCompare(b.title))
+    case 'alpha-author':
+      return copy.sort((a, b) => {
+        const aLast = (a.author || 'zzz').split(' ').pop() || ''
+        const bLast = (b.author || 'zzz').split(' ').pop() || ''
+        return aLast.localeCompare(bLast) || a.title.localeCompare(b.title)
+      })
+    case 'genre':
+    case 'genre-alpha':
+      return copy.sort((a, b) => {
+        const gA = a.genre || 'zzz'
+        const gB = b.genre || 'zzz'
+        if (gA !== gB) return gA.localeCompare(gB)
+        return method === 'genre-alpha' ? a.title.localeCompare(b.title) : 0
+      })
+    case 'year':
+      return copy.sort((a, b) => (a.published_year || 9999) - (b.published_year || 9999))
+    case 'series':
+      return copy.sort((a, b) => {
+        const sA = a.series_name || 'zzz'
+        const sB = b.series_name || 'zzz'
+        if (sA !== sB) return sA.localeCompare(sB)
+        return (a.series_position || 0) - (b.series_position || 0)
+      })
+    case 'color':
+      return copy.sort((a, b) => {
+        const iA = COLOR_ORDER.indexOf(a.genre || '')
+        const iB = COLOR_ORDER.indexOf(b.genre || '')
+        const posA = iA === -1 ? 999 : iA
+        const posB = iB === -1 ? 999 : iB
+        return posA - posB || a.title.localeCompare(b.title)
+      })
+    case 'status': {
+      const order = { reading: 0, read: 1, want: 2, owned: 3 }
+      return copy.sort((a, b) => {
+        const sA = order[a.read_status] ?? 9
+        const sB = order[b.read_status] ?? 9
+        return sA - sB || a.title.localeCompare(b.title)
+      })
+    }
+    default:
+      return copy
+  }
+}
+
+function distributeToShelves(books, shelves) {
+  // shelves: [{capacity: N}, ...]
+  const result = shelves.map(s => ({ ...s, books: [] }))
+  let bookIdx = 0
+  for (const shelf of result) {
+    while (bookIdx < books.length && shelf.books.length < shelf.capacity) {
+      shelf.books.push(books[bookIdx++])
+    }
+  }
+  // Any overflow goes on a new shelf
+  if (bookIdx < books.length) {
+    result.push({ capacity: books.length, books: books.slice(bookIdx) })
+  }
+  return result
+}
+
+// ── Book Spine component ──────────────────────────────────────────────────────
+function BookSpine({ book, width = 24, height = 140, showTitle = true }) {
+  const [hovered, setHovered] = useState(false)
+  const colors = getGenreColor(book.genre)
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: 'relative',
+        width,
+        height,
+        background: colors.spine,
+        borderRadius: '2px 2px 1px 1px',
+        flexShrink: 0,
+        cursor: 'default',
+        boxShadow: hovered
+          ? '2px 0 8px rgba(0,0,0,0.4), inset 1px 0 0 rgba(255,255,255,0.1)'
+          : '1px 0 3px rgba(0,0,0,0.3)',
+        transition: 'transform 0.1s, box-shadow 0.1s',
+        transform: hovered ? 'translateY(-4px) scaleY(1.02)' : 'none',
+        overflow: 'hidden',
+      }}
+    >
+      {showTitle && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          writingMode: 'vertical-rl',
+          textOrientation: 'mixed',
+          transform: 'rotate(180deg)',
+          fontSize: Math.max(7, Math.min(10, width - 4)),
+          color: colors.text,
+          padding: '4px 2px',
+          lineHeight: 1.2,
+          wordBreak: 'break-word',
+          overflow: 'hidden',
+        }}>
+          {book.title.length > 30 ? book.title.slice(0, 28) + '…' : book.title}
+        </div>
+      )}
+      {/* Hover tooltip */}
+      {hovered && (
+        <div style={{
+          position: 'absolute',
+          bottom: '110%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.85)',
+          color: '#fff',
+          padding: '6px 10px',
+          borderRadius: 8,
+          fontSize: 11,
+          whiteSpace: 'nowrap',
+          zIndex: 100,
+          pointerEvents: 'none',
+          minWidth: 160,
+          textAlign: 'center',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>{book.title}</div>
+          {book.author && <div style={{ opacity: 0.8, fontSize: 10 }}>by {book.author}</div>}
+          {book.genre && (
+            <div style={{ opacity: 0.6, fontSize: 10, marginTop: 2 }}>
+              {book.genre}
+              {book._hasOverride && <span style={{ opacity: 0.7 }}> (overridden)</span>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Shelf Row component ───────────────────────────────────────────────────────
+function ShelfRow({ shelfNumber, books, shelfColor }) {
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{
+        fontSize: 11,
+        fontWeight: 600,
+        color: '#8a7f72',
+        textTransform: 'uppercase',
+        letterSpacing: '0.08em',
+        marginBottom: 6,
+      }}>
+        Shelf {shelfNumber} · {books.length} books
+      </div>
+      <div style={{
+        background: '#f5efe6',
+        borderRadius: 6,
+        padding: '12px 16px 0 16px',
+        boxShadow: 'inset 0 -4px 0 ' + shelfColor + ', 0 2px 8px rgba(0,0,0,0.08)',
+        minHeight: 165,
+      }}>
+        {books.length === 0 ? (
+          <div style={{ color: '#bbb', fontSize: 13, paddingBottom: 16, paddingTop: 8 }}>
+            Empty shelf
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, flexWrap: 'wrap', paddingBottom: 0 }}>
+            {books.map((book, i) => (
+              <BookSpine key={book.id || i} book={book} width={22} height={130 + Math.random() * 20 | 0} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Print Guide component ─────────────────────────────────────────────────────
+function PrintGuide({ shelves, sortMethod, onClose, onGenreChange }) {
+  const [editingBookId, setEditingBookId] = useState(null)
+  const methodLabel = SORT_METHODS.find(m => m.id === sortMethod)?.label || sortMethod
+
+  function handlePrint() {
+    const win = window.open('', '_blank')
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<title>Shelf Arrangement Guide</title>
+<style>
+  body { font-family: Georgia, serif; max-width: 700px; margin: 40px auto; color: #222; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 13px; margin-bottom: 32px; }
+  .shelf { margin-bottom: 28px; page-break-inside: avoid; }
+  .shelf-header { font-size: 14px; font-weight: bold; border-bottom: 2px solid #333; padding-bottom: 4px; margin-bottom: 10px; }
+  .book { font-size: 12px; padding: 4px 0; border-bottom: 1px solid #eee; display: flex; }
+  .num { color: #888; width: 28px; flex-shrink: 0; }
+  .title { flex: 1; font-weight: 500; }
+  .author { color: #666; font-size: 11px; }
+  .genre { color: #999; font-size: 10px; float: right; }
+  @media print { body { margin: 20px; } }
+</style>
+</head>
+<body>
+<h1>📚 Shelf Arrangement Guide</h1>
+<div class="subtitle">Arranged: ${methodLabel} · Generated ${new Date().toLocaleDateString()}</div>
+${shelves.map((shelf, si) => `
+<div class="shelf">
+  <div class="shelf-header">Shelf ${si + 1} — ${shelf.books.length} books</div>
+  ${shelf.books.map((book, bi) => `
+  <div class="book">
+    <span class="num">${bi + 1}.</span>
+    <span class="title">${book.title}${book.series_name ? ` (${book.series_name} #${book.series_position || ''})` : ''}</span>
+    <span class="author">${book.author ? ' — ' + book.author : ''}</span>
+    ${book.genre ? `<span class="genre">${book.genre}</span>` : ''}
+  </div>`).join('')}
+</div>`).join('')}
+</body>
+</html>`
+    win.document.write(html)
+    win.document.close()
+    win.print()
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 15 }}>Arrangement: {methodLabel}</div>
+          <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+            {shelves.length} shelves · {shelves.reduce((s, sh) => s + sh.books.length, 0)} books
+          </div>
+        </div>
+        <button onClick={handlePrint} style={{
+          background: '#c0521e', color: '#fff', border: 'none', borderRadius: 8,
+          padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+        }}>
+          🖨️ Print Guide
+        </button>
+      </div>
+      {shelves.map((shelf, si) => (
+        <div key={si} style={{ marginBottom: 20 }}>
+          <div style={{
+            fontWeight: 600, fontSize: 13, color: '#5c4a3a', borderBottom: '1px solid #e0d5c8',
+            paddingBottom: 6, marginBottom: 8,
+          }}>
+            Shelf {si + 1} · {shelf.books.length} books
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {shelf.books.map((book, bi) => {
+              const bookKey = book.id || `${si}-${bi}`
+              const gc = getGenreColor(book.genre)
+              return (
+                <div key={bookKey} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, fontSize: 12,
+                  padding: '4px 0', borderBottom: '1px solid #f5f0ea',
+                }}>
+                  <span style={{ color: '#bbb', width: 24, flexShrink: 0, textAlign: 'right' }}>{bi + 1}.</span>
+                  <span style={{ flex: 1, fontWeight: 500 }}>{book.title}</span>
+                  {book.author && <span style={{ color: '#888', fontSize: 11 }}>{book.author}</span>}
+                  {/* Editable genre pill */}
+                  <div style={{ flexShrink: 0, position: 'relative' }}>
+                    {editingBookId === bookKey ? (
+                      <select
+                        autoFocus
+                        defaultValue={book.genre || ''}
+                        onChange={e => {
+                          onGenreChange(book.id, e.target.value || null)
+                          setEditingBookId(null)
+                        }}
+                        onBlur={() => setEditingBookId(null)}
+                        style={{
+                          fontSize: 11, borderRadius: 6, border: '1px solid #d4c9b0',
+                          padding: '2px 6px', background: '#fff', cursor: 'pointer',
+                          maxWidth: 160,
+                        }}
+                      >
+                        {book._hasOverride && (
+                          <option value="">↩ Reset to "{book._originalGenre || 'no genre'}"</option>
+                        )}
+                        {!book._hasOverride && !book.genre && (
+                          <option value="">— pick a genre —</option>
+                        )}
+                        {ALL_GENRES.map(g => (
+                          <option key={g} value={g}>{g}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span
+                        onClick={() => setEditingBookId(bookKey)}
+                        title="Click to change genre for shelf planning"
+                        style={{
+                          fontSize: 10, padding: '2px 7px', borderRadius: 10, cursor: 'pointer',
+                          background: book.genre ? gc.spine + '22' : '#f0ebe3',
+                          color: book.genre ? gc.spine : '#8a7f72',
+                          border: book._hasOverride ? `1px dashed ${gc.spine}` : '1px solid transparent',
+                          display: 'inline-flex', alignItems: 'center', gap: 3,
+                          userSelect: 'none',
+                        }}
+                      >
+                        {book._hasOverride && <span style={{ fontSize: 9, opacity: 0.8 }}>✎</span>}
+                        {book.genre || '+ genre'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Main Modal ────────────────────────────────────────────────────────────────
+export default function ShelfPlannerModal({ books, session, onClose }) {
+  const { theme } = useTheme()
+  const fileInputRef = useRef(null)
+
+  // Steps: 'setup' | 'arrange' | 'guide'
+  const [step, setStep] = useState('setup')
+
+  // Setup state
+  const [shelfCount, setShelfCount] = useState(3)
+  const [booksPerShelf, setBooksPerShelf] = useState(30)
+  const [customShelfSizes, setCustomShelfSizes] = useState([])
+  const [useCustomSizes, setUseCustomSizes] = useState(false)
+
+  // Photo analysis state
+  const [analyzing, setAnalyzing] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState(null)
+  const [photoPreview, setPhotoPreview] = useState(null)
+  const [analysisError, setAnalysisError] = useState(null)
+
+  // Arrangement state
+  const [sortMethod, setSortMethod] = useState('genre-alpha')
+  const [activeTab, setActiveTab] = useState('visual') // 'visual' | 'guide'
+
+  // Genre overrides (persisted to localStorage, keyed by book_id)
+  const [genreOverrides, setGenreOverrides] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(GENRE_OVERRIDES_KEY) || '{}') }
+    catch { return {} }
+  })
+
+  function setGenreOverride(bookId, genre) {
+    const next = { ...genreOverrides }
+    if (genre) next[bookId] = genre
+    else delete next[bookId]
+    setGenreOverrides(next)
+    localStorage.setItem(GENRE_OVERRIDES_KEY, JSON.stringify(next))
+  }
+
+  // Computed — apply overrides before sorting so genre-based sorts use the override
+  const shelvesDef = useCustomSizes && customShelfSizes.length
+    ? customShelfSizes.map(c => ({ capacity: parseInt(c) || booksPerShelf }))
+    : Array.from({ length: shelfCount }, () => ({ capacity: booksPerShelf }))
+
+  const booksWithOverrides = books.filter(b => b.title).map(b => ({
+    ...b,
+    genre: b.id in genreOverrides ? genreOverrides[b.id] : b.genre,
+    _originalGenre: b.genre,
+    _hasOverride: b.id in genreOverrides,
+  }))
+  const sortedBooks = sortBooks(booksWithOverrides, sortMethod)
+  const shelvesWithBooks = distributeToShelves(sortedBooks, shelvesDef)
+
+  const shelfColors = ['#b8956a', '#a07850', '#8a6640', '#7a5630', '#6a4620']
+
+  async function handlePhotoUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Preview
+    const reader = new FileReader()
+    reader.onload = (ev) => setPhotoPreview(ev.target.result)
+    reader.readAsDataURL(file)
+
+    // Analyze
+    setAnalyzing(true)
+    setAnalysisError(null)
+    setAnalysisResult(null)
+
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const bytes = new Uint8Array(arrayBuffer)
+      let binary = ''
+      bytes.forEach(b => binary += String.fromCharCode(b))
+      const base64 = btoa(binary)
+
+      const { data, error } = await supabase.functions.invoke('analyze-shelf', {
+        body: { imageBase64: base64, mimeType: file.type },
+      })
+
+      if (error || data?.error) {
+        setAnalysisError(data?.error || error?.message || 'Analysis failed')
+      } else {
+        setAnalysisResult(data)
+        // Auto-configure shelves from analysis
+        if (data.shelf_count) setShelfCount(data.shelf_count)
+        if (data.books_per_shelf?.length) {
+          setBooksPerShelf(Math.round(data.books_per_shelf.reduce((a, b) => a + b, 0) / data.books_per_shelf.length))
+          setCustomShelfSizes(data.books_per_shelf.map(String))
+          setUseCustomSizes(true)
+        }
+      }
+    } catch (err) {
+      setAnalysisError(err.message)
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  const s = {
+    overlay: {
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000, padding: 20,
+    },
+    modal: {
+      background: theme.bgCard,
+      borderRadius: 16,
+      width: '100%',
+      maxWidth: 900,
+      maxHeight: '90vh',
+      display: 'flex',
+      flexDirection: 'column',
+      boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+      overflow: 'hidden',
+    },
+    header: {
+      padding: '20px 24px',
+      borderBottom: `1px solid ${theme.border}`,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      flexShrink: 0,
+    },
+    body: {
+      flex: 1,
+      overflow: 'auto',
+      padding: 24,
+    },
+    closeBtn: {
+      background: 'none', border: 'none', fontSize: 20, cursor: 'pointer',
+      color: theme.textSubtle, padding: 4,
+    },
+    sectionLabel: {
+      fontSize: 12, fontWeight: 600, color: theme.textSubtle,
+      textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10,
+    },
+    card: {
+      background: theme.bg,
+      border: `1px solid ${theme.border}`,
+      borderRadius: 12,
+      padding: '16px 20px',
+      marginBottom: 16,
+    },
+    input: {
+      border: `1px solid ${theme.border}`, borderRadius: 8, padding: '8px 12px',
+      fontSize: 14, background: theme.bgCard, color: theme.text, width: '100%',
+    },
+    btn: {
+      background: theme.accent, color: '#fff', border: 'none', borderRadius: 10,
+      padding: '10px 24px', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+    },
+    btnSecondary: {
+      background: 'none', border: `1px solid ${theme.border}`, borderRadius: 10,
+      padding: '10px 24px', fontSize: 14, color: theme.text, cursor: 'pointer',
+    },
+    tab: (active) => ({
+      padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: active ? 600 : 400,
+      background: active ? theme.accent + '18' : 'none',
+      color: active ? theme.accent : theme.textSubtle,
+      border: 'none', cursor: 'pointer',
+    }),
+    uploadArea: {
+      border: `2px dashed ${theme.border}`, borderRadius: 12, padding: 32,
+      textAlign: 'center', cursor: 'pointer', color: theme.textSubtle,
+      transition: 'border-color 0.2s',
+    },
+  }
+
+  // ── STEP 1: Setup ──────────────────────────────────────────────────────────
+  if (step === 'setup') {
+    return (
+      <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+        <div style={s.modal}>
+          <div style={s.header}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 18, color: theme.text }}>
+                📚 Shelf Planner
+              </div>
+              <div style={{ fontSize: 13, color: theme.textSubtle, marginTop: 2 }}>
+                Arrange your {books.length} books perfectly
+              </div>
+            </div>
+            <button style={s.closeBtn} onClick={onClose}>✕</button>
+          </div>
+
+          <div style={s.body}>
+            {/* Photo upload section */}
+            <div style={{ marginBottom: 24 }}>
+              <div style={s.sectionLabel}>Option 1 — Upload a shelf photo (optional)</div>
+              <div style={s.card}>
+                {photoPreview ? (
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                    <img src={photoPreview} alt="Shelf" style={{
+                      width: 180, height: 120, objectFit: 'cover', borderRadius: 8,
+                    }} />
+                    <div style={{ flex: 1 }}>
+                      {analyzing && (
+                        <div style={{ color: theme.textSubtle, fontSize: 13 }}>
+                          🔍 Analyzing your shelf...
+                        </div>
+                      )}
+                      {analysisError && (
+                        <div style={{ color: '#c0521e', fontSize: 13 }}>{analysisError}</div>
+                      )}
+                      {analysisResult && (
+                        <div>
+                          <div style={{ fontWeight: 600, color: theme.text, marginBottom: 8 }}>
+                            ✅ Shelf analysis complete!
+                          </div>
+                          <div style={{ fontSize: 13, color: theme.textSubtle, lineHeight: 1.8 }}>
+                            <div>🗄️ <strong>{analysisResult.shelf_count}</strong> shelves detected</div>
+                            <div>📦 Approx. <strong>{analysisResult.total_capacity}</strong> total book capacity</div>
+                            {analysisResult.notes && <div style={{ marginTop: 6, fontStyle: 'italic' }}>{analysisResult.notes}</div>}
+                            {analysisResult.recognized_books?.length > 0 && (
+                              <div style={{ marginTop: 8 }}>
+                                <div style={{ fontWeight: 600, marginBottom: 4 }}>Books I spotted:</div>
+                                {analysisResult.recognized_books.map((b, i) => (
+                                  <div key={i} style={{ fontSize: 12 }}>
+                                    • {b.title}{b.author ? ` by ${b.author}` : ''}{b.shelf ? ` (shelf ${b.shelf})` : ''}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => { setPhotoPreview(null); setAnalysisResult(null) }}
+                      style={{ ...s.btnSecondary, padding: '6px 12px', fontSize: 12 }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    style={s.uploadArea}
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => {
+                      e.preventDefault()
+                      const file = e.dataTransfer.files[0]
+                      if (file?.type.startsWith('image/')) handlePhotoUpload({ target: { files: [file] } })
+                    }}
+                  >
+                    <div style={{ fontSize: 36, marginBottom: 8 }}>📸</div>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Drop a photo of your shelf</div>
+                    <div style={{ fontSize: 12 }}>AI will count shelves and estimate capacity</div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={handlePhotoUpload}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Manual configuration */}
+            <div style={{ marginBottom: 24 }}>
+              <div style={s.sectionLabel}>Option 2 — Configure shelves manually</div>
+              <div style={s.card}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: theme.text }}>
+                      Number of shelves
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <button onClick={() => setShelfCount(Math.max(1, shelfCount - 1))}
+                        style={{ ...s.btnSecondary, padding: '6px 12px' }}>−</button>
+                      <span style={{ fontSize: 20, fontWeight: 700, color: theme.text, minWidth: 32, textAlign: 'center' }}>
+                        {shelfCount}
+                      </span>
+                      <button onClick={() => setShelfCount(Math.min(20, shelfCount + 1))}
+                        style={{ ...s.btnSecondary, padding: '6px 12px' }}>+</button>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: theme.text }}>
+                      Books per shelf (average)
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <button onClick={() => setBooksPerShelf(Math.max(5, booksPerShelf - 5))}
+                        style={{ ...s.btnSecondary, padding: '6px 12px' }}>−</button>
+                      <span style={{ fontSize: 20, fontWeight: 700, color: theme.text, minWidth: 32, textAlign: 'center' }}>
+                        {booksPerShelf}
+                      </span>
+                      <button onClick={() => setBooksPerShelf(Math.min(80, booksPerShelf + 5))}
+                        style={{ ...s.btnSecondary, padding: '6px 12px' }}>+</button>
+                    </div>
+                  </div>
+                </div>
+                <div style={{
+                  fontSize: 12, color: theme.textSubtle,
+                  background: theme.bgSubtle || theme.bg,
+                  borderRadius: 8, padding: '8px 12px',
+                }}>
+                  {shelfCount} shelves × {booksPerShelf} books = <strong>{shelfCount * booksPerShelf}</strong> total capacity
+                  {shelfCount * booksPerShelf < books.length && (
+                    <span style={{ color: '#c0521e' }}>
+                      {' '}— you need room for <strong>{books.length - shelfCount * booksPerShelf}</strong> more books
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Genre legend */}
+            <div style={{ marginBottom: 24 }}>
+              <div style={s.sectionLabel}>Genre colour guide</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {Object.entries(GENRE_COLORS).map(([genre, colors]) => (
+                  <div key={genre} style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    fontSize: 11, color: theme.text,
+                  }}>
+                    <div style={{ width: 12, height: 20, background: colors.spine, borderRadius: 2 }} />
+                    {genre}
+                  </div>
+                ))}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: theme.text }}>
+                  <div style={{ width: 12, height: 20, background: DEFAULT_COLOR.spine, borderRadius: 2 }} />
+                  Other
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{
+            padding: '16px 24px',
+            borderTop: `1px solid ${theme.border}`,
+            display: 'flex',
+            gap: 10,
+            justifyContent: 'flex-end',
+            flexShrink: 0,
+          }}>
+            <button style={s.btnSecondary} onClick={onClose}>Cancel</button>
+            <button style={s.btn} onClick={() => setStep('arrange')}>
+              Plan my shelves →
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── STEP 2 & 3: Arrange + Guide ───────────────────────────────────────────
+  return (
+    <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={s.modal}>
+        <div style={s.header}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button style={{ ...s.btnSecondary, padding: '6px 10px', fontSize: 12 }}
+              onClick={() => setStep('setup')}>
+              ← Back
+            </button>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 16, color: theme.text }}>📚 Shelf Planner</div>
+              <div style={{ fontSize: 12, color: theme.textSubtle }}>
+                {shelvesWithBooks.length} shelves · {sortedBooks.length} books
+              </div>
+            </div>
+          </div>
+          <button style={s.closeBtn} onClick={onClose}>✕</button>
+        </div>
+
+        {/* Sort method picker */}
+        <div style={{
+          padding: '12px 24px',
+          borderBottom: `1px solid ${theme.border}`,
+          flexShrink: 0,
+          overflowX: 'auto',
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: theme.textSubtle, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Sort order
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {SORT_METHODS.map(m => (
+              <button
+                key={m.id}
+                onClick={() => setSortMethod(m.id)}
+                style={{
+                  padding: '5px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+                  border: `1px solid ${sortMethod === m.id ? theme.accent : theme.border}`,
+                  background: sortMethod === m.id ? theme.accent + '15' : 'none',
+                  color: sortMethod === m.id ? theme.accent : theme.text,
+                  fontWeight: sortMethod === m.id ? 600 : 400,
+                }}
+              >
+                {m.icon} {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* View tabs */}
+        <div style={{
+          padding: '10px 24px 0',
+          borderBottom: `1px solid ${theme.border}`,
+          display: 'flex', gap: 4, flexShrink: 0,
+        }}>
+          <button style={s.tab(activeTab === 'visual')} onClick={() => setActiveTab('visual')}>
+            🖼️ Visual Preview
+          </button>
+          <button style={s.tab(activeTab === 'guide')} onClick={() => setActiveTab('guide')}>
+            📋 Arrangement Guide
+          </button>
+        </div>
+
+        <div style={s.body}>
+          {activeTab === 'visual' ? (
+            <div>
+              {shelvesWithBooks.map((shelf, si) => (
+                <ShelfRow
+                  key={si}
+                  shelfNumber={si + 1}
+                  books={shelf.books}
+                  shelfColor={shelfColors[si % shelfColors.length]}
+                />
+              ))}
+              <div style={{ fontSize: 12, color: theme.textSubtle, textAlign: 'center', marginTop: 8 }}>
+                Hover over any spine to see the book title · Colors represent genre
+              </div>
+            </div>
+          ) : (
+            <PrintGuide
+              shelves={shelvesWithBooks}
+              sortMethod={sortMethod}
+              onClose={onClose}
+              onGenreChange={setGenreOverride}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

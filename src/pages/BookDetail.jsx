@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { extractGenreFromGoogleCategories } from '../lib/genres'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
+import { uploadCoverToStorage } from '../lib/enrichBook'
 import BookTagsManager from '../components/BookTagsManager'
 import { useIsMobile } from '../hooks/useIsMobile'
 
@@ -41,23 +43,45 @@ async function fetchDescriptionFromOL(book) {
         }
       }
     }
-    const query = `${book.title} ${book.author || ''}`.trim()
-    const searchRes = await fetch(
-      `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&fields=key&limit=3`
-    )
-    if (!searchRes.ok) return null
-    const searchData = await searchRes.json()
-    for (const doc of searchData.docs || []) {
-      const workRes  = await fetch(`https://openlibrary.org${doc.key}.json`)
-      if (!workRes.ok) continue
-      const workData = await workRes.json()
-      const desc = workData.description
-      if (desc) {
-        const text = typeof desc === 'object' ? desc.value : desc
-        if (text && isLikelyEnglish(text)) return text
+    // Try OL title+author search
+    const params = new URLSearchParams({ fields: 'key', limit: '3' })
+    params.set('title', book.title)
+    if (book.author) params.set('author', book.author.split(',')[0].trim())
+    const searchRes = await fetch(`https://openlibrary.org/search.json?${params}`)
+    if (searchRes.ok) {
+      const searchData = await searchRes.json()
+      for (const doc of searchData.docs || []) {
+        const workRes  = await fetch(`https://openlibrary.org${doc.key}.json`)
+        if (!workRes.ok) continue
+        const workData = await workRes.json()
+        const desc = workData.description
+        if (desc) {
+          const text = typeof desc === 'object' ? desc.value : desc
+          if (text && isLikelyEnglish(text)) return text
+        }
       }
     }
     return null
+  } catch {
+    return null
+  }
+}
+
+/** Fetch book metadata from Google Books via our edge function (uses API key server-side). */
+async function fetchFromGoogleBooks(book) {
+  try {
+    const isbn = book.isbn_13 || book.isbn_10
+    const { data, error } = await supabase.functions.invoke('get-book-metadata', {
+      body: { isbn: isbn || null, title: book.title, author: book.author || null },
+    })
+    if (error || !data?.found) return null
+    return {
+      desc:       data.description && isLikelyEnglish(data.description) ? data.description : null,
+      cover:      data.cover       || null,
+      isbn_13:    data.isbn_13     || null,
+      isbn_10:    data.isbn_10     || null,
+      categories: data.categories  || [],
+    }
   } catch {
     return null
   }
@@ -80,7 +104,9 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [communityRating, setCommunityRating] = useState(null)
   const [loading, setLoading]           = useState(true)
   const [fetchingDesc, setFetchingDesc] = useState(false)
-  const [coverImgError, setCoverImgError] = useState(false)
+  const [coverImgError, setCoverImgError]   = useState(false)
+  const [coverUploading, setCoverUploading] = useState(false)
+  const coverFileInputRef = useRef(null)
   const [tab, setTab]                   = useState('about')
   const [rating, setRating]             = useState(0)
   const [hoverRating, setHoverRating]   = useState(0)
@@ -177,15 +203,52 @@ export default function BookDetail({ bookId, session, onBack }) {
     if (data) {
       setBook(data)
       setLoading(false)
-      if (!data.description) {
-        setFetchingDesc(true)
-        const desc = await fetchDescriptionFromOL(data)
-        if (desc) {
-          await supabase.from('books').update({ description: desc }).eq('id', data.id)
-          setBook(prev => ({ ...prev, description: desc }))
+
+      // Enrich missing fields in the background (description, cover, genre, ISBN)
+      const needsDesc  = !data.description
+      const needsCover = !data.cover_image_url
+      const needsGenre = !data.genre
+
+      if (needsDesc || needsCover || needsGenre || !data.isbn_13) {
+        setFetchingDesc(needsDesc)
+
+        // Try Open Library first for description (free, no key)
+        let desc  = needsDesc  ? await fetchDescriptionFromOL(data) : null
+        let cover = null
+        let genre = null
+
+        // Call Google Books edge function if we still need anything
+        let gbIsbn13 = null, gbIsbn10 = null
+        if ((needsDesc && !desc) || needsCover || needsGenre || !data.isbn_13) {
+          const gb = await fetchFromGoogleBooks(data)
+          if (gb) {
+            if (needsDesc  && !desc  && gb.desc)   desc  = gb.desc
+            if (needsCover && !cover && gb.cover)  cover = gb.cover
+            if (needsGenre && gb.categories?.length) {
+              genre = extractGenreFromGoogleCategories(gb.categories)
+            }
+            if (!data.isbn_13 && gb.isbn_13) gbIsbn13 = gb.isbn_13
+            if (!data.isbn_10 && gb.isbn_10) gbIsbn10 = gb.isbn_10
+          }
         }
+
+        const updates = {}
+        if (desc)     updates.description     = desc
+        if (cover)    updates.cover_image_url = cover
+        if (genre)    updates.genre           = genre
+        if (gbIsbn13) updates.isbn_13         = gbIsbn13
+        if (gbIsbn10) updates.isbn_10         = gbIsbn10
+
+        if (Object.keys(updates).length > 0) {
+          await supabase.from('books').update(updates).eq('id', data.id)
+          setBook(prev => ({ ...prev, ...updates }))
+          // If we just found an ISBN, trigger valuation fetch now
+          if (gbIsbn13 || gbIsbn10) loadValuation({ ...data, ...updates })
+        }
+
         setFetchingDesc(false)
       }
+
       loadValuation(data)
       fetchJournal(data)
       if (data.series_name) fetchSeries(data)
@@ -399,6 +462,28 @@ export default function BookDetail({ bookId, session, onBack }) {
     window.location.href = '/'
   }
 
+  async function handleCoverUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file || !book) return
+    setCoverUploading(true)
+    try {
+      const ext  = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const path = `${book.id}.${ext}`
+      const { error: uploadErr } = await supabase.storage
+        .from('book-covers')
+        .upload(path, file, { contentType: file.type, upsert: true })
+      if (!uploadErr) {
+        const { data } = supabase.storage.from('book-covers').getPublicUrl(path)
+        const url = data.publicUrl
+        await supabase.from('books').update({ cover_image_url: url }).eq('id', book.id)
+        setBook(prev => ({ ...prev, cover_image_url: url }))
+        setCoverImgError(false)
+      }
+    } catch { /* silent fail */ }
+    setCoverUploading(false)
+    if (coverFileInputRef.current) coverFileInputRef.current.value = ''
+  }
+
   async function saveHeroRating(n) {
     if (!entry) return
     const newRating = n === rating ? 0 : n
@@ -582,13 +667,26 @@ export default function BookDetail({ bookId, session, onBack }) {
       <div style={s.content}>
         {/* Hero */}
         <div style={s.hero}>
-          <div style={s.coverWrap}>
+          {/* Cover with upload overlay */}
+          <div style={{ ...s.coverWrap, position: 'relative' }}
+            onMouseEnter={e => { const btn = e.currentTarget.querySelector('[data-upload-btn]'); if (btn) btn.style.opacity = '1' }}
+            onMouseLeave={e => { const btn = e.currentTarget.querySelector('[data-upload-btn]'); if (btn) btn.style.opacity = '0' }}>
             {(() => {
               const url = getCoverUrl(book)
               return (url && !coverImgError)
                 ? <img src={url} alt={book.title} style={s.coverImg} onError={() => setCoverImgError(true)} />
                 : <FakeCover title={book.title} />
             })()}
+            {/* Upload button overlay */}
+            <input ref={coverFileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCoverUpload} />
+            <button
+              data-upload-btn
+              onClick={() => coverFileInputRef.current?.click()}
+              disabled={coverUploading}
+              title="Upload a custom cover"
+              style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.65)', border: 'none', borderRadius: 8, padding: '5px 9px', cursor: 'pointer', color: 'white', fontSize: 15, opacity: 0, transition: 'opacity 0.2s', lineHeight: 1, backdropFilter: 'blur(4px)' }}>
+              {coverUploading ? '⏳' : '📷'}
+            </button>
           </div>
 
           <div style={s.heroInfo}>

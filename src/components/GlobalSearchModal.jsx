@@ -20,9 +20,11 @@ export default function GlobalSearchModal({ session, onClose }) {
   const [addedIds, setAddedIds]         = useState(new Set())
   const [openMenuId, setOpenMenuId]     = useState(null)
   const [hasSearched, setHasSearched]   = useState(false)
-  const inputRef  = useRef(null)
-  const debounce  = useRef(null)
-  const panelRef  = useRef(null)
+  const [chatAnswer, setChatAnswer]     = useState(null)
+  const inputRef       = useRef(null)
+  const debounce       = useRef(null)
+  const panelRef       = useRef(null)
+  const collectionCache = useRef(null)   // cached once per modal open
 
   // Auto-focus
   useEffect(() => { inputRef.current?.focus() }, [])
@@ -52,6 +54,7 @@ export default function GlobalSearchModal({ session, onClose }) {
     if (!q || q.length < 2) {
       setResults([])
       setInterp('')
+      setChatAnswer(null)
       setHasSearched(false)
       return
     }
@@ -60,9 +63,33 @@ export default function GlobalSearchModal({ session, onClose }) {
     return () => clearTimeout(debounce.current)
   }, [query, aiMode])
 
+  // Fetch and cache the user's full collection for AI context
+  async function fetchCollection() {
+    if (!session?.user?.id) return []
+    if (collectionCache.current) return collectionCache.current
+    try {
+      const { data } = await supabase
+        .from('collection_entries')
+        .select('read_status, user_rating, books(title, author, genre)')
+        .eq('user_id', session.user.id)
+      const collection = (data || [])
+        .map(e => ({
+          title:       e.books?.title  || '',
+          author:      e.books?.author || null,
+          genre:       e.books?.genre  || null,
+          user_rating: e.user_rating   || null,
+          read_status: e.read_status   || null,
+        }))
+        .filter(b => b.title)
+      collectionCache.current = collection
+      return collection
+    } catch { return [] }
+  }
+
   async function runSearch(q) {
     setLoading(true)
     setInterp('')
+    setChatAnswer(null)
     setHasSearched(true)
 
     // Run local DB search in parallel for title + author, then check library status
@@ -93,13 +120,23 @@ export default function GlobalSearchModal({ session, onClose }) {
 
     try {
       if (aiMode) {
-        const [{ data: aiData, error }, localBooks] = await Promise.all([
-          supabase.functions.invoke('ai-book-search', { body: { query: q } }),
+        const [collection, localBooks] = await Promise.all([
+          fetchCollection(),
           localPromise,
         ])
+        const { data: aiData, error } = await supabase.functions.invoke('ai-book-search', {
+          body: { query: q, collection },
+        })
         if (error) throw error
         setInterp(aiData?.interpretation || '')
-        setResults(mergeResults(localBooks, aiData?.books || []))
+        if (aiData?.type === 'chat') {
+          // Conversational answer about the user's own collection
+          setChatAnswer(aiData.answer || '')
+          setResults([])
+        } else {
+          // Book discovery — merge with local results as before
+          setResults(mergeResults(localBooks, aiData?.books || []))
+        }
       } else {
         const [olResult, localBooks] = await Promise.all([
           fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&fields=key,title,author_name,isbn,cover_i,first_publish_year,subject&limit=16`)
@@ -232,6 +269,7 @@ export default function GlobalSearchModal({ session, onClose }) {
       if (collErr) throw collErr
 
       setAddedIds(prev => new Set([...prev, book.id]))
+      collectionCache.current = null   // invalidate so next AI query sees the new book
       window.dispatchEvent(new Event('exlibris:bookAdded'))
     } catch (e) {
       console.error('Add to library error:', e)
@@ -284,7 +322,7 @@ export default function GlobalSearchModal({ session, onClose }) {
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder={aiMode ? 'Ask anything — "a thriller set in Japan" or "books like Dune"…' : 'Search by title, author, or ISBN…'}
+            placeholder={aiMode ? 'Ask anything — "best book in my collection" or "a thriller set in Japan"…' : 'Search by title, author, or ISBN…'}
             style={{
               flex: 1, border: 'none', background: 'transparent', outline: 'none',
               fontSize: 17, fontFamily: "'DM Sans', sans-serif",
@@ -335,7 +373,7 @@ export default function GlobalSearchModal({ session, onClose }) {
           </button>
           <span style={{ fontSize: 12, color: muted, fontFamily: "'DM Sans', sans-serif" }}>
             {aiMode
-              ? 'Ask in plain English — AI finds the best matches'
+              ? 'Ask about your collection or discover new books'
               : 'Toggle AI for natural language queries'}
           </span>
         </div>
@@ -368,12 +406,49 @@ export default function GlobalSearchModal({ session, onClose }) {
               }} />
               <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
               <div style={{ marginTop: 10, fontSize: 13, color: muted, fontFamily: "'DM Sans', sans-serif" }}>
-                {aiMode ? 'AI is finding the best matches…' : 'Searching…'}
+                {aiMode ? 'AI is thinking…' : 'Searching…'}
               </div>
             </div>
           )}
 
-          {!loading && hasSearched && results.length === 0 && (
+          {/* ── Chat answer bubble (collection questions) ── */}
+          {!loading && chatAnswer && (
+            <div style={{ padding: '20px' }}>
+              <div style={{
+                background: isDark
+                  ? 'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(192,82,30,0.10))'
+                  : 'linear-gradient(135deg, rgba(124,58,237,0.07), rgba(192,82,30,0.06))',
+                border: `1px solid ${isDark ? 'rgba(124,58,237,0.25)' : 'rgba(124,58,237,0.18)'}`,
+                borderRadius: 14,
+                padding: '18px 20px',
+              }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  marginBottom: 12,
+                }}>
+                  <span style={{ fontSize: 18 }}>✨</span>
+                  <span style={{
+                    fontSize: 12, fontWeight: 700,
+                    letterSpacing: '0.06em', textTransform: 'uppercase',
+                    background: 'linear-gradient(135deg, #7c3aed, #c0521e)',
+                    WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                    fontFamily: "'DM Sans', sans-serif",
+                  }}>
+                    AI Answer
+                  </span>
+                </div>
+                <p style={{
+                  margin: 0,
+                  fontSize: 14, lineHeight: 1.7, color: text,
+                  fontFamily: "'DM Sans', sans-serif",
+                }}>
+                  {chatAnswer}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!loading && hasSearched && results.length === 0 && !chatAnswer && (
             <div style={{ padding: '40px 20px', textAlign: 'center' }}>
               <div style={{ fontSize: 36, marginBottom: 10 }}>📚</div>
               <div style={{ fontSize: 15, fontWeight: 600, color: text, fontFamily: 'Georgia, serif' }}>No books found</div>
@@ -437,7 +512,7 @@ export default function GlobalSearchModal({ session, onClose }) {
         </div>
 
         {/* ── Footer ── */}
-        {results.length > 0 && (
+        {(results.length > 0 || chatAnswer) && (
           <div style={{
             padding: '10px 20px',
             borderTop: `1px solid ${border}`,
@@ -445,7 +520,7 @@ export default function GlobalSearchModal({ session, onClose }) {
             fontSize: 11, color: muted,
             fontFamily: "'DM Sans', sans-serif",
           }}>
-            Powered by Open Library{aiMode ? ' · AI by Gemini' : ''}
+            {chatAnswer ? 'Powered by Gemini · Your personal library' : `Powered by Open Library${aiMode ? ' · AI by Gemini' : ''}`}
           </div>
         )}
       </div>

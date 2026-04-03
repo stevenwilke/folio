@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { BookCard, ReadStatus } from '../../components/BookCard';
+import ShelfPlannerModal, { ShelfBook } from '../../components/ShelfPlannerModal';
 
 type FilterKey = 'all' | ReadStatus;
 
@@ -31,11 +32,16 @@ interface CollectionEntry {
   id: string;
   book_id: string;
   read_status: ReadStatus;
+  user_rating: number | null;
   books: {
     id: string;
     title: string;
     author: string | null;
     cover_image_url: string | null;
+    genre: string | null;
+    published_year: number | null;
+    series_name: string | null;
+    series_position: number | null;
   };
 }
 
@@ -58,6 +64,7 @@ export default function LibraryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [coverSize, setCoverSize] = useState<SizeKey>('M');
+  const [showShelfPlanner, setShowShelfPlanner] = useState(false);
 
   const COLUMNS = SIZE_COLUMNS[coverSize];
   const HORIZONTAL_PADDING = 16;
@@ -85,11 +92,16 @@ export default function LibraryScreen() {
         id,
         book_id,
         read_status,
+        user_rating,
         books (
           id,
           title,
           author,
-          cover_image_url
+          cover_image_url,
+          genre,
+          published_year,
+          series_name,
+          series_position
         )
       `)
       .eq('user_id', user.id)
@@ -186,7 +198,7 @@ export default function LibraryScreen() {
         )}
       />
 
-      {/* Grid size control */}
+      {/* Grid size + Shelf Planner */}
       <View style={styles.sizeRow}>
         {(['S', 'M', 'L'] as SizeKey[]).map((size) => (
           <TouchableOpacity
@@ -199,6 +211,12 @@ export default function LibraryScreen() {
             </Text>
           </TouchableOpacity>
         ))}
+        <TouchableOpacity
+          style={styles.shelfPlannerBtn}
+          onPress={() => setShowShelfPlanner(true)}
+        >
+          <Text style={styles.shelfPlannerBtnText}>📚 Shelf Planner</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -222,6 +240,18 @@ export default function LibraryScreen() {
       )}
     </View>
   );
+
+  const shelfBooks: ShelfBook[] = entries.map((e) => ({
+    id: e.book_id,
+    title: e.books.title,
+    author: e.books.author,
+    genre: e.books.genre,
+    published_year: e.books.published_year,
+    series_name: e.books.series_name,
+    series_position: e.books.series_position,
+    read_status: e.read_status,
+    user_rating: e.user_rating,
+  }));
 
   return (
     <View style={styles.root}>
@@ -248,6 +278,12 @@ export default function LibraryScreen() {
           }
         />
       )}
+
+      <ShelfPlannerModal
+        visible={showShelfPlanner}
+        books={shelfBooks}
+        onClose={() => setShowShelfPlanner(false)}
+      />
     </View>
   );
 }
@@ -394,5 +430,20 @@ const styles = StyleSheet.create({
   },
   sizeBtnTextActive: {
     color: Colors.white,
+  },
+  shelfPlannerBtn: {
+    marginLeft: 'auto',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.rust,
+    backgroundColor: Colors.card,
+  },
+  shelfPlannerBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.rust,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
 });

@@ -37,6 +37,7 @@ export function BookCard({
   onPress,
   cardWidth = 160,
 }: BookCardProps) {
+  const [imgError, setImgError] = React.useState(false);
   const coverWidth = cardWidth - 16;
   const coverHeight = Math.round(coverWidth * 1.5);
 
@@ -47,11 +48,12 @@ export function BookCard({
       activeOpacity={0.75}
     >
       <View style={styles.coverWrapper}>
-        {coverImageUrl ? (
+        {coverImageUrl && !imgError ? (
           <Image
             source={{ uri: coverImageUrl }}
             style={[styles.cover, { width: coverWidth, height: coverHeight }]}
             resizeMode="cover"
+            onError={() => setImgError(true)}
           />
         ) : (
           <FakeCover
@@ -59,7 +61,7 @@ export function BookCard({
             author={author}
             width={coverWidth}
             height={coverHeight}
-            showText={false}
+            showText={true}
           />
         )}
       </View>

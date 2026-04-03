@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { extractGenre } from '../lib/genres'
+import { extractGenre, extractGenreFromGoogleCategories } from '../lib/genres'
 import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
 import SearchModal from '../components/SearchModal'
@@ -10,6 +10,7 @@ import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
 import { uploadCoverToStorage } from '../lib/enrichBook'
 import { useIsMobile } from '../hooks/useIsMobile'
+import ShelfPlannerModal from '../components/ShelfPlannerModal'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -33,7 +34,8 @@ export default function Library({ session }) {
   const [loading, setLoading]         = useState(true)
   const [filter, setFilter]           = useState('all')
   const [sort, setSort]               = useState('added')
-  const [showImport, setShowImport]   = useState(false)
+  const [showImport, setShowImport]         = useState(false)
+  const [showShelfPlanner, setShowShelfPlanner] = useState(false)
 
   // Sync selected book with ?book=<id> so browser back button works
   const selectedBook = searchParams.get('book') || null
@@ -126,8 +128,8 @@ export default function Library({ session }) {
       const allBookIds = (data || []).map(e => e.books?.id).filter(Boolean)
       fetchCollectionValue(allBookIds)
       // Backfill genres in the background (once per session)
-      if (!sessionStorage.getItem('exlibris-genre-backfill')) {
-        sessionStorage.setItem('exlibris-genre-backfill', '1')
+      if (!sessionStorage.getItem('exlibris-genre-backfill-v2')) {
+        sessionStorage.setItem('exlibris-genre-backfill-v2', '1')
         backfillGenres(data || [])
       }
       // Backfill missing/low-quality covers in the background (once per session)
@@ -269,28 +271,53 @@ export default function Library({ session }) {
     }
   }
 
-  // Fetch genres from Open Library for books that don't have one
+  // Fetch genres for books that don't have one.
+  // Tries Open Library first (for books with ISBN), then falls back to Google Books edge fn.
   async function backfillGenres(entries) {
-    const todo = entries.filter(e => !e.books.genre && (e.books.isbn_13 || e.books.isbn_10))
+    const todo = entries.filter(e => !e.books.genre)
     if (todo.length === 0) return
 
     const BATCH = 5
     for (let i = 0; i < todo.length; i += BATCH) {
       await Promise.all(todo.slice(i, i + BATCH).map(async entry => {
-        const isbn = entry.books.isbn_13 || entry.books.isbn_10
-        try {
-          const r = await fetch(`https://openlibrary.org/search.json?isbn=${isbn}&fields=subject&limit=1`)
-          const data = await r.json()
-          const genre = extractGenre(data.docs?.[0]?.subject)
-          if (genre) {
-            await supabase.from('books').update({ genre }).eq('id', entry.books.id)
-            setBooks(prev => prev.map(e =>
-              e.books.id === entry.books.id ? { ...e, books: { ...e.books, genre } } : e
-            ))
-          }
-        } catch { /* ignore network errors */ }
+        const { id, isbn_13, isbn_10, title, author } = entry.books
+        const isbn = isbn_13 || isbn_10
+
+        let genre = null
+
+        // Try Open Library by ISBN first (fast, no key)
+        if (isbn) {
+          try {
+            const r = await fetch(`https://openlibrary.org/search.json?isbn=${isbn}&fields=subject&limit=1`)
+            if (r.ok) {
+              const ct = r.headers.get('content-type') || ''
+              if (ct.includes('json')) {
+                const data = await r.json()
+                genre = extractGenre(data.docs?.[0]?.subject)
+              }
+            }
+          } catch { /* ignore */ }
+        }
+
+        // Fall back to Google Books edge function (handles no-ISBN books too)
+        if (!genre) {
+          try {
+            const { data: gbData } = await supabase.functions.invoke('get-book-metadata', {
+              body: { isbn: isbn || null, title, author: author || null },
+            })
+            if (gbData?.found && gbData.categories?.length) {
+              genre = extractGenreFromGoogleCategories(gbData.categories)
+            }
+          } catch { /* ignore */ }
+        }
+
+        if (genre) {
+          await supabase.from('books').update({ genre }).eq('id', id)
+          setBooks(prev => prev.map(e =>
+            e.books.id === id ? { ...e, books: { ...e.books, genre } } : e
+          ))
+        }
       }))
-      // Pause between batches to be respectful to OL
       await new Promise(r => setTimeout(r, 600))
     }
   }
@@ -735,6 +762,9 @@ export default function Library({ session }) {
           <button style={{ ...s.filterInactive, color: theme.sage, borderColor: theme.sage }} onClick={() => setShowImport(true)}>
             📥 Import from Goodreads
           </button>
+          <button style={{ ...s.filterInactive, color: theme.accent, borderColor: theme.accent }} onClick={() => setShowShelfPlanner(true)}>
+            📚 Shelf Planner
+          </button>
           <button style={{ ...s.filterInactive, color: theme.sage, borderColor: theme.sage }} onClick={() => {
             const STATUS_LABELS = { owned: 'In Library', read: 'Read', reading: 'Reading', want: 'Want to Read' }
             const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`
@@ -857,6 +887,23 @@ export default function Library({ session }) {
           onImported={() => { setShowImport(false); fetchCollection() }}
         />
       )}
+      {showShelfPlanner && (
+        <ShelfPlannerModal
+          session={session}
+          books={books.map(b => ({
+            id: b.book_id,
+            title: b.books?.title || '',
+            author: b.books?.author || null,
+            genre: b.books?.genre || null,
+            published_year: b.books?.published_year || null,
+            series_name: b.books?.series_name || null,
+            series_position: b.books?.series_position || null,
+            read_status: b.read_status,
+            user_rating: b.user_rating || null,
+          }))}
+          onClose={() => setShowShelfPlanner(false)}
+        />
+      )}
       </div>
 
       {/* List for sale modal */}
@@ -963,7 +1010,9 @@ function ListRow({ entry, isLast, selectMode, isSelected, onSelect, theme, isMob
       <div style={{ width: 38, height: 57, flexShrink: 0, borderRadius: 3, overflow: 'hidden', boxShadow: '1px 2px 6px rgba(26,18,8,0.18)' }}>
         {coverUrl && !imgError
           ? <img src={coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setImgError(true)} />
-          : <div style={{ width: '100%', height: '100%', background: `linear-gradient(135deg, ${c}, ${c2})` }} />
+          : <div style={{ width: '100%', height: '100%', background: `linear-gradient(135deg, ${c}, ${c2})`, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3px 4px' }}>
+              <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 8, fontWeight: 700, fontFamily: 'Georgia, serif', textAlign: 'center', lineHeight: 1.3, wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{book.title}</span>
+            </div>
         }
       </div>
       {/* Title / author / meta */}

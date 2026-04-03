@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { query } = await req.json()
+    const { query, collection } = await req.json()
     const apiKey = Deno.env.get('GEMINI_API_KEY')
 
     if (!query?.trim()) {
@@ -21,18 +21,59 @@ serve(async (req) => {
       )
     }
 
-    let searchQuery = query.trim()
-    let interpretation = ''
+    // ── Build the Gemini prompt ──────────────────────────────────────────────
+    // If the user's collection is provided, give Gemini context to answer
+    // questions about it, or fall back to book discovery.
+    let prompt: string
+    const hasCollection = Array.isArray(collection) && collection.length > 0
 
-    // Use Gemini to interpret the natural language query into optimised search terms
-    if (apiKey) {
-      const prompt = `You are a book search assistant. A user typed this search query: "${query}"
+    if (hasCollection) {
+      const collectionText = collection
+        .map((b: any) => {
+          const parts = [`"${b.title}"`]
+          if (b.author)      parts.push(`by ${b.author}`)
+          if (b.genre)       parts.push(`(${b.genre})`)
+          if (b.user_rating) parts.push(`— rated ${b.user_rating}/5`)
+          if (b.read_status) parts.push(`[${b.read_status}]`)
+          return parts.join(' ')
+        })
+        .join('\n')
+
+      prompt = `You are a warm, knowledgeable personal library assistant.
+
+The user's book collection (${collection.length} books):
+${collectionText}
+
+The user asked: "${query}"
+
+Decide which type of response is needed:
+
+A) COLLECTION question — the user is asking about their own books (e.g. "best book", "what have I read", "recommend from my collection", "what should I read next", "my highest rated", etc.)
+B) DISCOVERY request — the user wants to find NEW books to add (e.g. "thriller set in Japan", "books like Dune", "something by Stephen King")
+
+If A: Answer conversationally in 2–4 sentences. Be specific — name actual books from their collection. If ratings are available, use them. Be warm and personal.
+If B: Provide an optimised Google Books search query.
+
+Respond with ONLY valid JSON — no markdown:
+For A: {"type":"chat","answer":"Your helpful answer here...","interpretation":"One-line summary of what you found"}
+For B: {"type":"search","searchQuery":"optimised search string","interpretation":"Short friendly description of the search"}`
+
+    } else {
+      prompt = `You are a book search assistant. A user typed this search query: "${query}"
 
 Convert it into the best possible Google Books API search query string, and write a very short friendly interpretation (under 12 words) of what they're looking for.
 
 Respond with ONLY valid JSON — no markdown, no explanation:
 {"searchQuery":"the optimised Google Books search string","interpretation":"Short friendly description of the search..."}`
+    }
 
+    // ── Call Gemini ──────────────────────────────────────────────────────────
+    let searchQuery  = query.trim()
+    let interpretation = ''
+    let chatAnswer: string | null = null
+    let responseType = 'search'
+
+    if (apiKey) {
       try {
         const geminiRes = await fetch(
           `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -41,7 +82,7 @@ Respond with ONLY valid JSON — no markdown, no explanation:
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.2, maxOutputTokens: 256 },
+              generationConfig: { temperature: 0.4, maxOutputTokens: 512 },
             }),
           }
         )
@@ -58,15 +99,32 @@ Respond with ONLY valid JSON — no markdown, no explanation:
             .replace(/\s*```\s*$/i, '')
             .trim()
           const parsed = JSON.parse(stripped)
-          if (parsed.searchQuery) searchQuery = parsed.searchQuery
-          if (parsed.interpretation) interpretation = parsed.interpretation
+
+          if (parsed.type === 'chat' && parsed.answer) {
+            // Collection question — return the conversational answer directly
+            responseType  = 'chat'
+            chatAnswer    = parsed.answer
+            interpretation = parsed.interpretation || ''
+          } else {
+            // Discovery search
+            if (parsed.searchQuery) searchQuery  = parsed.searchQuery
+            if (parsed.interpretation) interpretation = parsed.interpretation
+          }
         }
       } catch {
-        // Gemini failed — fall back to raw query, no interpretation
+        // Gemini failed — fall back to raw query
       }
     }
 
-    // Search Google Books API
+    // ── Chat response — no Google Books call needed ──────────────────────────
+    if (responseType === 'chat') {
+      return new Response(
+        JSON.stringify({ type: 'chat', answer: chatAnswer, interpretation }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // ── Discovery response — search Google Books ─────────────────────────────
     const googleRes = await fetch(
       `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(searchQuery)}&maxResults=12&langRestrict=en&printType=books`
     )
@@ -80,23 +138,23 @@ Respond with ONLY valid JSON — no markdown, no explanation:
 
     const googleData = await googleRes.json()
     const books = (googleData.items || []).map((item: any) => ({
-      id:          item.id,
-      title:       item.volumeInfo.title || 'Unknown Title',
-      author:      item.volumeInfo.authors?.[0] || null,
-      year:        item.volumeInfo.publishedDate?.slice(0, 4) || null,
-      cover:       item.volumeInfo.imageLinks?.thumbnail?.replace('http:', 'https:') || null,
-      description: item.volumeInfo.description?.slice(0, 280) || null,
-      isbn13:      item.volumeInfo.industryIdentifiers?.find((i: any) => i.type === 'ISBN_13')?.identifier || null,
-      isbn10:      item.volumeInfo.industryIdentifiers?.find((i: any) => i.type === 'ISBN_10')?.identifier || null,
-      categories:  item.volumeInfo.categories || [],
-      pageCount:   item.volumeInfo.pageCount || null,
-      publisher:   item.volumeInfo.publisher || null,
-      avgRating:   item.volumeInfo.averageRating || null,
-      ratingsCount:item.volumeInfo.ratingsCount || null,
+      id:           item.id,
+      title:        item.volumeInfo.title || 'Unknown Title',
+      author:       item.volumeInfo.authors?.[0] || null,
+      year:         item.volumeInfo.publishedDate?.slice(0, 4) || null,
+      cover:        item.volumeInfo.imageLinks?.thumbnail?.replace('http:', 'https:') || null,
+      description:  item.volumeInfo.description?.slice(0, 280) || null,
+      isbn13:       item.volumeInfo.industryIdentifiers?.find((i: any) => i.type === 'ISBN_13')?.identifier || null,
+      isbn10:       item.volumeInfo.industryIdentifiers?.find((i: any) => i.type === 'ISBN_10')?.identifier || null,
+      categories:   item.volumeInfo.categories || [],
+      pageCount:    item.volumeInfo.pageCount || null,
+      publisher:    item.volumeInfo.publisher || null,
+      avgRating:    item.volumeInfo.averageRating || null,
+      ratingsCount: item.volumeInfo.ratingsCount || null,
     }))
 
     return new Response(
-      JSON.stringify({ books, interpretation }),
+      JSON.stringify({ type: 'search', books, interpretation }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   } catch (err) {

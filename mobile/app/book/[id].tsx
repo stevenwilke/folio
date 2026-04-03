@@ -13,6 +13,7 @@ import {
   RefreshControl,
   TextInput,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
@@ -93,6 +94,9 @@ export default function BookDetailScreen() {
   const [reviewSaved, setReviewSaved] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
 
+  // Cover upload
+  const [coverUploading, setCoverUploading] = useState(false);
+
   // Feature 1: Reading Journal
   const [journalEntries, setJournalEntries] = useState<{id: string, content: string, created_at: string}[]>([]);
   const [newJournalEntry, setNewJournalEntry] = useState('');
@@ -113,6 +117,32 @@ export default function BookDetailScreen() {
       .eq('book_id', bookId)
       .order('created_at', { ascending: false });
     setJournalEntries(data || []);
+  }
+
+  async function handleCoverUpload() {
+    if (!book) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.85,
+      base64: true,
+    });
+    if (result.canceled || !result.assets[0]?.base64) return;
+    setCoverUploading(true);
+    try {
+      const asset = result.assets[0];
+      const ext   = asset.mimeType?.includes('png') ? 'png' : 'jpg';
+      const path  = `${book.id}.${ext}`;
+      const bytes = Uint8Array.from(atob(asset.base64!), c => c.charCodeAt(0));
+      const { error } = await supabase.storage
+        .from('book-covers')
+        .upload(path, bytes, { contentType: asset.mimeType || 'image/jpeg', upsert: true });
+      if (!error) {
+        const { data } = supabase.storage.from('book-covers').getPublicUrl(path);
+        await supabase.from('books').update({ cover_image_url: data.publicUrl }).eq('id', book.id);
+        setBook(prev => prev ? { ...prev, cover_image_url: data.publicUrl } : prev);
+      }
+    } catch { /* silent */ }
+    setCoverUploading(false);
   }
 
   async function fetchSeries(book: Book, userId: string | null) {
@@ -445,7 +475,7 @@ export default function BookDetailScreen() {
       >
         {/* Cover + title section */}
         <View style={styles.heroSection}>
-          <View style={styles.coverContainer}>
+          <View style={[styles.coverContainer, { position: 'relative' }]}>
             {book.cover_image_url ? (
               <Image
                 source={{ uri: book.cover_image_url }}
@@ -460,6 +490,15 @@ export default function BookDetailScreen() {
                 height={coverHeight}
               />
             )}
+            {/* Upload cover button */}
+            <TouchableOpacity
+              onPress={handleCoverUpload}
+              disabled={coverUploading}
+              style={[coverUploadBtnStyle, { bottom: 6, right: 6 }]}
+              activeOpacity={0.8}
+            >
+              <Text style={{ fontSize: 14 }}>{coverUploading ? '⏳' : '📷'}</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.heroInfo}>
@@ -795,6 +834,15 @@ export default function BookDetailScreen() {
     </>
   );
 }
+
+const coverUploadBtnStyle = {
+  position: 'absolute' as const,
+  backgroundColor: 'rgba(0,0,0,0.65)',
+  borderRadius: 8,
+  padding: 6,
+  justifyContent: 'center' as const,
+  alignItems: 'center' as const,
+};
 
 const styles = StyleSheet.create({
   root: {

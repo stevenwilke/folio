@@ -6,6 +6,7 @@ import {
   Image,
   TouchableOpacity,
   Platform,
+  Pressable,
 } from 'react-native';
 import { Colors } from '../constants/colors';
 import { FakeCover } from './FakeCover';
@@ -27,6 +28,10 @@ interface BookCardProps {
   status?: ReadStatus | null;
   onPress?: () => void;
   cardWidth?: number;
+  /** Called when the user taps the camera button on a cover-less book */
+  onAddCover?: () => void;
+  /** True while a user's cover submission is awaiting review */
+  hasPendingCover?: boolean;
 }
 
 export function BookCard({
@@ -36,6 +41,8 @@ export function BookCard({
   status,
   onPress,
   cardWidth = 160,
+  onAddCover,
+  hasPendingCover,
 }: BookCardProps) {
   const [imgError, setImgError] = React.useState(false);
   const coverWidth = cardWidth - 16;
@@ -56,13 +63,33 @@ export function BookCard({
             onError={() => setImgError(true)}
           />
         ) : (
-          <FakeCover
-            title={title}
-            author={author}
-            width={coverWidth}
-            height={coverHeight}
-            showText={true}
-          />
+          <View style={{ width: coverWidth, height: coverHeight }}>
+            <FakeCover
+              title={title}
+              author={author}
+              width={coverWidth}
+              height={coverHeight}
+              showText={true}
+            />
+            {/* Camera button or pending badge — only when onAddCover is provided */}
+            {onAddCover && (
+              <Pressable
+                style={styles.addCoverOverlay}
+                onPress={(e) => { e.stopPropagation?.(); onAddCover(); }}
+                hitSlop={8}
+              >
+                {hasPendingCover ? (
+                  <View style={styles.pendingBadge}>
+                    <Text style={styles.pendingText}>Pending</Text>
+                  </View>
+                ) : (
+                  <View style={styles.cameraBtn}>
+                    <Text style={styles.cameraBtnText}>📷</Text>
+                  </View>
+                )}
+              </Pressable>
+            )}
+          </View>
         )}
       </View>
 
@@ -129,6 +156,33 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     fontSize: 10,
+    fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  addCoverOverlay: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+  },
+  cameraBtn: {
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
+  cameraBtnText: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  pendingBadge: {
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  pendingText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 9,
     fontWeight: '600',
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },

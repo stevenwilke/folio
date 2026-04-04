@@ -36,6 +36,8 @@ export default function Library({ session }) {
   const [sort, setSort]               = useState('added')
   const [showImport, setShowImport]         = useState(false)
   const [showShelfPlanner, setShowShelfPlanner] = useState(false)
+  const [coverUploadTarget, setCoverUploadTarget] = useState(null) // { id, title }
+  const [pendingCoverIds, setPendingCoverIds]     = useState(new Set())
 
   // Sync selected book with ?book=<id> so browser back button works
   const selectedBook = searchParams.get('book') || null
@@ -127,6 +129,16 @@ export default function Library({ session }) {
       }
       const allBookIds = (data || []).map(e => e.books?.id).filter(Boolean)
       fetchCollectionValue(allBookIds)
+      // Track which books already have a pending cover submission
+      if (allBookIds.length) {
+        const { data: pending } = await supabase
+          .from('pending_covers')
+          .select('book_id')
+          .eq('user_id', session.user.id)
+          .eq('status', 'pending')
+          .in('book_id', allBookIds)
+        setPendingCoverIds(new Set((pending || []).map(p => p.book_id)))
+      }
       // Backfill genres in the background (once per session)
       if (!sessionStorage.getItem('exlibris-genre-backfill-v2')) {
         sessionStorage.setItem('exlibris-genre-backfill-v2', '1')
@@ -518,6 +530,7 @@ export default function Library({ session }) {
 
     forSaleBadge:   { position: 'absolute', bottom: 6, right: 6, background: theme.sage, color: 'white', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, letterSpacing: 0.3 },
     cardSelected:   { outline: `2px solid ${theme.rust}`, borderRadius: 6 },
+    dropzone:       { display: 'block', border: '2px dashed #d4c9b0', borderRadius: 10, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', color: '#8a7f72', fontSize: 14, marginBottom: 16, background: '#f5f0e8' },
     bulkBar:        { position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, background: theme.bgCard, borderTop: `1px solid ${theme.border}`, boxShadow: '0 -4px 20px rgba(26,18,8,0.1)', padding: '14px 32px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' },
     bulkCount:      { fontSize: 14, fontWeight: 600, color: theme.text, marginRight: 4 },
     bulkSelect:     { padding: '7px 10px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", background: theme.bgCard, color: theme.text, cursor: 'pointer', outline: 'none' },
@@ -870,6 +883,12 @@ export default function Library({ session }) {
                             onListForSale={() => setListingTarget(entry)}
                             selectMode={selectMode}
                             isSelected={selectedIds.has(entry.id)}
+                            hasPendingCover={pendingCoverIds.has(entry.books.id)}
+                            onAddCover={
+                              getCoverUrl(entry.books)
+                                ? undefined
+                                : () => setCoverUploadTarget({ id: entry.books.id, title: entry.books.title })
+                            }
                           />
                         ))}
                       </div>
@@ -913,6 +932,17 @@ export default function Library({ session }) {
           entry={listingTarget}
           onClose={() => setListingTarget(null)}
           onSuccess={() => { setListingTarget(null); navigate('/marketplace') }}
+        />
+      )}
+
+      {/* Cover upload modal */}
+      {coverUploadTarget && (
+        <CoverUploadModal
+          session={session}
+          bookId={coverUploadTarget.id}
+          bookTitle={coverUploadTarget.title}
+          onClose={() => setCoverUploadTarget(null)}
+          onSuccess={() => { setCoverUploadTarget(null); fetchCollection() }}
         />
       )}
 
@@ -1050,7 +1080,7 @@ function ListRow({ entry, isLast, selectMode, isSelected, onSelect, theme, isMob
 }
 
 // ---- BOOK CARD ----
-function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMode, isSelected }) {
+function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMode, isSelected, hasPendingCover, onAddCover }) {
   const { theme } = useTheme()
   const book   = entry.books
   const status = entry.read_status
@@ -1098,6 +1128,8 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
     menu:       { position: 'absolute', top: '100%', left: 0, marginTop: 4, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 8, zIndex: 20, minWidth: 160, boxShadow: theme.shadow },
     menuItem:   { padding: '8px 14px', fontSize: 13, cursor: 'pointer', color: theme.textMuted },
     forSaleBadge: { position: 'absolute', bottom: 6, right: 6, background: theme.sage, color: 'white', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, letterSpacing: 0.3 },
+    addCoverBtn:  { background: 'rgba(0,0,0,0.45)', border: 'none', borderRadius: 6, padding: '5px 7px', cursor: 'pointer', color: 'white', fontSize: 13, backdropFilter: 'blur(4px)', lineHeight: 1 },
+    pendingBadge: { background: 'rgba(0,0,0,0.45)', color: 'rgba(255,255,255,0.85)', fontSize: 9, padding: '3px 7px', borderRadius: 10, backdropFilter: 'blur(4px)', whiteSpace: 'nowrap' },
   }
 
   return (
@@ -1158,6 +1190,23 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
             ? <img src={url} alt={book.title} style={s.coverImg} onError={() => setImgError(true)} />
             : <FakeCover title={book.title} />
         })()}
+        {/* Camera button / pending badge — only for cover-less books */}
+        {onAddCover && !selectMode && (
+          <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 3 }}
+               onClick={e => e.stopPropagation()}>
+            {hasPendingCover ? (
+              <span style={s.pendingBadge}>Pending review</span>
+            ) : (
+              <button
+                style={s.addCoverBtn}
+                onClick={e => { e.stopPropagation(); onAddCover() }}
+                title="Add a cover photo"
+              >
+                📷
+              </button>
+            )}
+          </div>
+        )}
         {listing && (
           <div style={s.forSaleBadge}>${Number(listing.price).toFixed(2)}</div>
         )}
@@ -1393,6 +1442,139 @@ function ListingModal({ session, entry, onClose, onSuccess }) {
             </button>
             <button style={s.btnGhost} onClick={onClose}>Cancel</button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---- COVER UPLOAD MODAL ----
+function CoverUploadModal({ session, bookId, bookTitle, onClose, onSuccess }) {
+  const { theme } = useTheme()
+  const [file, setFile]           = useState(null)
+  const [preview, setPreview]     = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError]         = useState(null)
+  const [done, setDone]           = useState(false)
+
+  function handleFile(f) {
+    if (!f) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) {
+      setError('Please choose a JPG, PNG, or WebP image.')
+      return
+    }
+    if (f.size > 2 * 1024 * 1024) {
+      setError('Image must be under 2 MB.')
+      return
+    }
+    setError(null)
+    setFile(f)
+    setPreview(URL.createObjectURL(f))
+  }
+
+  async function handleSubmit() {
+    if (!file) return
+    setUploading(true)
+    setError(null)
+
+    const ext         = file.name.split('.').pop() || 'jpg'
+    const storagePath = `${session.user.id}/${bookId}/${Date.now()}.${ext}`
+
+    const { error: uploadErr } = await supabase.storage
+      .from('book-covers')
+      .upload(storagePath, file, { contentType: file.type })
+
+    if (uploadErr) {
+      setError('Upload failed — please try again.')
+      setUploading(false)
+      return
+    }
+
+    const { error: fnErr } = await supabase.functions.invoke('submit-cover', {
+      body: { bookId, storagePath },
+    })
+
+    if (fnErr) {
+      await supabase.storage.from('book-covers').remove([storagePath])
+      setError('Submission failed — please try again.')
+      setUploading(false)
+      return
+    }
+
+    setDone(true)
+    setUploading(false)
+    setTimeout(onSuccess, 1600)
+  }
+
+  const s = {
+    overlay:   { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    modal:     { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 420, maxWidth: '94vw', maxHeight: '85vh', display: 'flex', flexDirection: 'column' },
+    header:    { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px 0' },
+    title:     { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text },
+    closeBtn:  { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textSubtle, padding: 4 },
+    dropzone:  { display: 'block', border: '2px dashed #d4c9b0', borderRadius: 10, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', color: '#8a7f72', fontSize: 14, marginBottom: 16, background: '#f5f0e8' },
+    btnPrimary:{ padding: '8px 16px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    btnGhost:  { padding: '6px 12px', background: 'none', border: 'none', borderRadius: 6, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.textMuted },
+  }
+
+  return (
+    <div style={s.overlay} onClick={onClose}>
+      <div style={s.modal} onClick={e => e.stopPropagation()}>
+        <div style={s.header}>
+          <div>
+            <div style={s.title}>Add Book Cover</div>
+            <div style={{ fontSize: 13, color: theme.textSubtle, marginTop: 3 }}>{bookTitle}</div>
+          </div>
+          <button style={s.closeBtn} onClick={onClose}>✕</button>
+        </div>
+
+        <div style={{ padding: '16px 24px 24px' }}>
+          {done ? (
+            <div style={{ textAlign: 'center', padding: '28px 0' }}>
+              <div style={{ fontSize: 40 }}>✓</div>
+              <div style={{ color: '#5a7a5a', fontWeight: 600, marginTop: 10, fontSize: 16 }}>Cover submitted!</div>
+              <div style={{ fontSize: 13, color: '#8a7f72', marginTop: 6 }}>It'll go live once reviewed.</div>
+            </div>
+          ) : (
+            <>
+              <p style={{ fontSize: 13, color: '#6b5f52', lineHeight: 1.6, marginTop: 0, marginBottom: 16 }}>
+                Upload a cover for this book. It'll be reviewed before going live for all users.{' '}
+                <span style={{ color: '#8a7f72' }}>JPG, PNG, or WebP · max 2 MB</span>
+              </p>
+
+              {preview ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                  <img src={preview} alt="Preview"
+                    style={{ maxHeight: 210, maxWidth: '100%', borderRadius: 6, boxShadow: '2px 3px 10px rgba(26,18,8,0.2)' }} />
+                  <label style={{ fontSize: 12, color: '#8a7f72', cursor: 'pointer', textDecoration: 'underline' }}>
+                    Choose a different image
+                    <input type="file" accept="image/jpeg,image/png,image/webp"
+                      style={{ display: 'none' }} onChange={e => handleFile(e.target.files[0])} />
+                  </label>
+                </div>
+              ) : (
+                <label style={s.dropzone}>
+                  <div style={{ fontSize: 30, marginBottom: 8 }}>📷</div>
+                  Click to select an image
+                  <input type="file" accept="image/jpeg,image/png,image/webp"
+                    style={{ display: 'none' }} onChange={e => handleFile(e.target.files[0])} />
+                </label>
+              )}
+
+              {error && <div style={{ color: '#c0521e', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  style={{ ...s.btnPrimary, opacity: (!file || uploading) ? 0.5 : 1 }}
+                  onClick={handleSubmit}
+                  disabled={!file || uploading}
+                >
+                  {uploading ? 'Uploading…' : 'Submit for Review'}
+                </button>
+                <button style={s.btnGhost} onClick={onClose}>Cancel</button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

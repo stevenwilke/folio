@@ -9,10 +9,15 @@ import {
   useWindowDimensions,
   Platform,
   RefreshControl,
+  Modal,
+  Image,
+  Alert,
+  Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { BookCard, ReadStatus } from '../../components/BookCard';
@@ -65,6 +70,8 @@ export default function LibraryScreen() {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [coverSize, setCoverSize] = useState<SizeKey>('M');
   const [showShelfPlanner, setShowShelfPlanner] = useState(false);
+  const [pendingCoverIds, setPendingCoverIds] = useState<Set<string>>(new Set());
+  const [coverUploadTarget, setCoverUploadTarget] = useState<{ id: string; title: string } | null>(null);
 
   const COLUMNS = SIZE_COLUMNS[coverSize];
   const HORIZONTAL_PADDING = 16;
@@ -108,7 +115,8 @@ export default function LibraryScreen() {
       .order('added_at', { ascending: false });
 
     if (!error && data) {
-      setEntries(data as unknown as CollectionEntry[]);
+      const entries = data as unknown as CollectionEntry[];
+      setEntries(entries);
 
       // New user check: no books + not yet onboarded → show onboarding wizard
       if (data.length === 0) {
@@ -116,6 +124,18 @@ export default function LibraryScreen() {
         if (!onboarded) {
           router.replace('/onboarding');
         }
+      }
+
+      // Fetch any pending cover submissions for this user's books
+      const bookIds = entries.map((e) => e.books.id);
+      if (bookIds.length) {
+        const { data: pending } = await supabase
+          .from('pending_covers')
+          .select('book_id')
+          .eq('user_id', user.id)
+          .eq('status', 'pending')
+          .in('book_id', bookIds);
+        setPendingCoverIds(new Set((pending ?? []).map((p: any) => p.book_id)));
       }
     }
   }
@@ -157,6 +177,12 @@ export default function LibraryScreen() {
           status={item.read_status}
           cardWidth={cardWidth}
           onPress={() => router.push(`/book/${item.book_id}`)}
+          hasPendingCover={pendingCoverIds.has(item.books.id)}
+          onAddCover={
+            item.books.cover_image_url
+              ? undefined
+              : () => setCoverUploadTarget({ id: item.books.id, title: item.books.title })
+          }
         />
       </View>
     );
@@ -284,9 +310,288 @@ export default function LibraryScreen() {
         books={shelfBooks}
         onClose={() => setShowShelfPlanner(false)}
       />
+
+      {/* Cover upload modal */}
+      {coverUploadTarget && (
+        <CoverUploadModal
+          bookId={coverUploadTarget.id}
+          bookTitle={coverUploadTarget.title}
+          onClose={() => setCoverUploadTarget(null)}
+          onSuccess={() => {
+            setCoverUploadTarget(null);
+            fetchLibrary();
+          }}
+        />
+      )}
     </View>
   );
 }
+
+// ---- COVER UPLOAD MODAL (mobile) ----
+function CoverUploadModal({
+  bookId,
+  bookTitle,
+  onClose,
+  onSuccess,
+}: {
+  bookId: string;
+  bookTitle: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [mimeType, setMimeType] = useState<string>('image/jpeg');
+  const [uploading, setUploading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pickImage() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please allow access to your photo library to upload a cover.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [2, 3],
+      quality: 0.85,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setImageUri(result.assets[0].uri);
+      setMimeType(result.assets[0].mimeType ?? 'image/jpeg');
+      setError(null);
+    }
+  }
+
+  async function handleSubmit() {
+    if (!imageUri) return;
+    setUploading(true);
+    setError(null);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not signed in');
+
+      const ext = imageUri.split('.').pop() ?? 'jpg';
+      const storagePath = `${user.id}/${bookId}/${Date.now()}.${ext}`;
+
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+
+      if (blob.size > 2 * 1024 * 1024) {
+        setError('Image must be under 2 MB.');
+        setUploading(false);
+        return;
+      }
+
+      const { error: uploadErr } = await supabase.storage
+        .from('book-covers')
+        .upload(storagePath, blob, { contentType: mimeType });
+
+      if (uploadErr) throw uploadErr;
+
+      const { error: fnErr } = await supabase.functions.invoke('submit-cover', {
+        body: { bookId, storagePath },
+      });
+
+      if (fnErr) {
+        await supabase.storage.from('book-covers').remove([storagePath]);
+        throw fnErr;
+      }
+
+      setDone(true);
+      setTimeout(onSuccess, 1600);
+    } catch (err: any) {
+      setError(err?.message ?? 'Upload failed — please try again.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={uploadStyles.backdrop} onPress={onClose}>
+        <Pressable style={uploadStyles.sheet} onPress={() => {}}>
+          {done ? (
+            <View style={uploadStyles.doneWrap}>
+              <Text style={uploadStyles.doneIcon}>✓</Text>
+              <Text style={uploadStyles.doneTitle}>Cover submitted!</Text>
+              <Text style={uploadStyles.doneSub}>It'll go live once reviewed.</Text>
+            </View>
+          ) : (
+            <>
+              <View style={uploadStyles.handle} />
+              <Text style={uploadStyles.title}>Add Book Cover</Text>
+              <Text style={uploadStyles.bookName}>{bookTitle}</Text>
+              <Text style={uploadStyles.hint}>
+                Upload a cover for this book. It'll be reviewed before going live.
+                {'\n'}JPG, PNG, or WebP · max 2 MB
+              </Text>
+
+              {imageUri ? (
+                <View style={uploadStyles.previewWrap}>
+                  <Image source={{ uri: imageUri }} style={uploadStyles.preview} resizeMode="contain" />
+                  <TouchableOpacity onPress={pickImage} style={uploadStyles.changeLink}>
+                    <Text style={uploadStyles.changeLinkText}>Choose a different image</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={uploadStyles.dropzone} onPress={pickImage}>
+                  <Text style={uploadStyles.dropzoneIcon}>📷</Text>
+                  <Text style={uploadStyles.dropzoneText}>Tap to select an image</Text>
+                </TouchableOpacity>
+              )}
+
+              {error ? <Text style={uploadStyles.error}>{error}</Text> : null}
+
+              <View style={uploadStyles.btnRow}>
+                <TouchableOpacity
+                  style={[uploadStyles.btnPrimary, (!imageUri || uploading) && uploadStyles.btnDisabled]}
+                  onPress={handleSubmit}
+                  disabled={!imageUri || uploading}
+                >
+                  <Text style={uploadStyles.btnPrimaryText}>
+                    {uploading ? 'Uploading…' : 'Submit for Review'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={uploadStyles.btnGhost} onPress={onClose}>
+                  <Text style={uploadStyles.btnGhostText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const uploadStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(26,18,8,0.5)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: '#fdfaf4',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    paddingBottom: 40,
+    borderWidth: 1,
+    borderColor: '#d4c9b0',
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#d4c9b0',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  title: {
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1208',
+    marginBottom: 2,
+  },
+  bookName: {
+    fontSize: 14,
+    color: '#8a7f72',
+    marginBottom: 12,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  hint: {
+    fontSize: 13,
+    color: '#6b5f52',
+    lineHeight: 19,
+    marginBottom: 18,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  dropzone: {
+    borderWidth: 2,
+    borderColor: '#d4c9b0',
+    borderStyle: 'dashed',
+    borderRadius: 10,
+    paddingVertical: 32,
+    alignItems: 'center',
+    backgroundColor: '#f5f0e8',
+    marginBottom: 18,
+  },
+  dropzoneIcon: { fontSize: 32, marginBottom: 8 },
+  dropzoneText: {
+    fontSize: 14,
+    color: '#8a7f72',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  previewWrap: {
+    alignItems: 'center',
+    marginBottom: 18,
+    gap: 10,
+  },
+  preview: {
+    width: 130,
+    height: 195,
+    borderRadius: 6,
+  },
+  changeLink: {},
+  changeLinkText: {
+    fontSize: 12,
+    color: '#8a7f72',
+    textDecorationLine: 'underline',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  error: {
+    color: '#c0521e',
+    fontSize: 13,
+    marginBottom: 12,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  btnRow: { flexDirection: 'row', gap: 10 },
+  btnPrimary: {
+    flex: 1,
+    backgroundColor: Colors.rust,
+    paddingVertical: 13,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  btnDisabled: { opacity: 0.45 },
+  btnPrimaryText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  btnGhost: {
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d4c9b0',
+    alignItems: 'center',
+  },
+  btnGhostText: {
+    color: '#3a3028',
+    fontSize: 15,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  doneWrap: { alignItems: 'center', paddingVertical: 36 },
+  doneIcon: { fontSize: 44, color: '#5a7a5a', marginBottom: 12 },
+  doneTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#5a7a5a',
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+    marginBottom: 6,
+  },
+  doneSub: {
+    fontSize: 14,
+    color: '#8a7f72',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+});
 
 const styles = StyleSheet.create({
   root: {

@@ -66,19 +66,7 @@ export default function ManualAddModal({ session, onClose, onAdded = () => {} })
     if (!validate()) return
     setSaving(true)
 
-    // 1. Upload cover if provided
-    let coverUrl = null
-    if (coverFile) {
-      const ext  = coverFile.name.split('.').pop()
-      const path = `manual/${Date.now()}.${ext}`
-      const { error: uploadErr } = await supabase.storage
-        .from('covers')
-        .upload(path, coverFile, { upsert: false, contentType: coverFile.type })
-      if (!uploadErr) {
-        const { data: { publicUrl } } = supabase.storage.from('covers').getPublicUrl(path)
-        coverUrl = publicUrl
-      }
-    }
+    // 1. Cover is handled after the book is created (needs bookId for storage path)
 
     // 2. Check for existing book (by ISBN or title+author)
     let bookId = null
@@ -97,30 +85,24 @@ export default function ManualAddModal({ session, onClose, onAdded = () => {} })
       if (data) bookId = data.id
     }
 
-    // 3. Insert or update book
+    // 2. Insert or update book (no cover yet — uploaded after we have bookId)
     const bookData = {
       title:           title.trim(),
       author:          author.trim(),
-      isbn_13:         isbn13.trim()  || null,
-      isbn_10:         isbn10.trim()  || null,
-      cover_image_url: coverUrl       || null,
+      isbn_13:         isbn13.trim()       || null,
+      isbn_10:         isbn10.trim()       || null,
       published_year:  year ? parseInt(year) : null,
-      genre:           genre          || null,
+      genre:           genre               || null,
       description:     description.trim() || null,
-      publisher:       publisher.trim() || null,
+      publisher:       publisher.trim()   || null,
       pages:           pages ? parseInt(pages) : null,
-      format:          format         || null,
-      language:        language.trim() || null,
-      series_name:     seriesName.trim()   || null,
-      series_number:   seriesNumber.trim() || null,
+      format:          format             || null,
+      language:        language.trim()    || null,
+      series_name:     seriesName.trim()  || null,
+      series_number:   seriesNumber.trim()|| null,
     }
 
-    if (bookId) {
-      // Update cover if we just uploaded one
-      if (coverUrl) {
-        await supabase.from('books').update({ cover_image_url: coverUrl }).eq('id', bookId)
-      }
-    } else {
+    if (!bookId) {
       const { data: newBook, error } = await supabase.from('books').insert(bookData).select().single()
       if (error || !newBook) {
         console.error('Book insert failed:', error)
@@ -130,21 +112,33 @@ export default function ManualAddModal({ session, onClose, onAdded = () => {} })
       bookId = newBook.id
     }
 
+    // 3. Add to collection
+    await supabase.from('collection_entries').upsert(
+      { user_id: session.user.id, book_id: bookId, read_status: status },
+      { onConflict: 'user_id,book_id' }
+    )
+
+    // 4. Upload cover through approval flow (so it's reviewed before going live)
+    if (coverFile && bookId) {
+      const ext         = coverFile.name.split('.').pop()
+      const storagePath = `${session.user.id}/${bookId}/${Date.now()}.${ext}`
+      const { error: uploadErr } = await supabase.storage
+        .from('book-covers')
+        .upload(storagePath, coverFile, { contentType: coverFile.type })
+      if (!uploadErr) {
+        await supabase.functions.invoke('submit-cover', { body: { bookId, storagePath } })
+      }
+    }
+
     // Enrich in background — do NOT await
     enrichBook(bookId, {
       isbn_13: isbn13.trim() || null,
       isbn_10: isbn10.trim() || null,
       title: title.trim(),
       author: author.trim(),
-      cover_image_url: coverUrl || null,
+      cover_image_url: null,
       description: description.trim() || null,
     })
-
-    // 4. Add to collection
-    await supabase.from('collection_entries').upsert(
-      { user_id: session.user.id, book_id: bookId, read_status: status },
-      { onConflict: 'user_id,book_id' }
-    )
 
     window.dispatchEvent(new CustomEvent('exlibris:bookAdded'))
     setSaving(false)
@@ -183,12 +177,11 @@ export default function ManualAddModal({ session, onClose, onAdded = () => {} })
                 )
               }
             </div>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickCover} />
-            {coverPreview && (
-              <button style={s.clearCover} onClick={() => { setCoverFile(null); setCoverPreview(null) }}>
-                Remove photo
-              </button>
-            )}
+            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={pickCover} />
+            {coverPreview
+              ? <button style={s.clearCover} onClick={() => { setCoverFile(null); setCoverPreview(null) }}>Remove photo</button>
+              : <div style={s.coverHint2} >Reviewed before going live</div>
+            }
 
             {/* Status */}
             <div style={{ marginTop: 20 }}>

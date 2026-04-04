@@ -242,6 +242,12 @@ export default function BookDetail({ bookId, session, onBack }) {
         if (Object.keys(updates).length > 0) {
           await supabase.from('books').update(updates).eq('id', data.id)
           setBook(prev => ({ ...prev, ...updates }))
+          // Notify Library so it can update the card immediately (no re-fetch needed)
+          if (updates.cover_image_url) {
+            window.dispatchEvent(new CustomEvent('exlibris:coverUpdated', {
+              detail: { bookId: data.id, coverUrl: updates.cover_image_url }
+            }))
+          }
           // If we just found an ISBN, trigger valuation fetch now
           if (gbIsbn13 || gbIsbn10) loadValuation({ ...data, ...updates })
         }

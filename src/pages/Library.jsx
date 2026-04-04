@@ -73,9 +73,22 @@ export default function Library({ session }) {
     fetchCollection()
     window.addEventListener('exlibris:bookAdded', fetchCollection)
     window.addEventListener('exlibris:bookRemoved', fetchCollection)
+
+    // When BookDetail enriches and saves a cover, update that card immediately
+    function handleCoverUpdated(e) {
+      const { bookId, coverUrl } = e.detail
+      setBooks(prev => prev.map(entry =>
+        entry.books.id === bookId
+          ? { ...entry, books: { ...entry.books, cover_image_url: coverUrl } }
+          : entry
+      ))
+    }
+    window.addEventListener('exlibris:coverUpdated', handleCoverUpdated)
+
     return () => {
       window.removeEventListener('exlibris:bookAdded', fetchCollection)
       window.removeEventListener('exlibris:bookRemoved', fetchCollection)
+      window.removeEventListener('exlibris:coverUpdated', handleCoverUpdated)
     }
   }, [])
 
@@ -122,7 +135,19 @@ export default function Library({ session }) {
       .order('added_at', { ascending: false })
 
     if (!error) {
-      setBooks(data || [])
+      // Merge: preserve any cover_image_url already enriched in local state
+      // (DB update may be in-flight or just landed; don't overwrite with stale null)
+      setBooks(prev => {
+        const prevCovers = {}
+        prev.forEach(e => { if (e.books?.cover_image_url) prevCovers[e.books.id] = e.books.cover_image_url })
+        return (data || []).map(e => ({
+          ...e,
+          books: {
+            ...e.books,
+            cover_image_url: e.books.cover_image_url || prevCovers[e.books.id] || null,
+          },
+        }))
+      })
       // Mark as onboarded once they've ever had books — prevents accidental redirect
       if (data && data.length > 0) {
         localStorage.setItem('exlibris-onboarded', '1')
@@ -1089,6 +1114,10 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
   const [hover,        setHover]        = useState(false)
   const [imgError,     setImgError]     = useState(false)
   const [currentPage,  setCurrentPage]  = useState(entry.current_page || 0)
+
+  // Reset imgError whenever the cover URL changes (e.g. BookDetail enriches and saves a new URL)
+  const coverUrl = getCoverUrl(book)
+  useEffect(() => { setImgError(false) }, [coverUrl])
   const [editingPage,  setEditingPage]  = useState(false)
   const [pageInput,    setPageInput]    = useState('')
 
@@ -1184,15 +1213,13 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
       )}
 
       <div style={{ ...s.coverWrap, position: 'relative' }}>
-        {(() => {
-          const url = getCoverUrl(book)
-          return (url && !imgError)
-            ? <img src={url} alt={book.title} style={s.coverImg} onError={() => setImgError(true)} />
-            : <FakeCover title={book.title} />
-        })()}
+        {(coverUrl && !imgError)
+          ? <img src={coverUrl} alt={book.title} style={s.coverImg} onError={() => setImgError(true)} />
+          : <FakeCover title={book.title} />
+        }
         {/* Camera button / pending badge — only for cover-less books */}
         {onAddCover && !selectMode && (
-          <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 3 }}
+          <div style={{ position: 'absolute', top: 6, left: 6, zIndex: 3 }}
                onClick={e => e.stopPropagation()}>
             {hasPendingCover ? (
               <span style={s.pendingBadge}>Pending review</span>

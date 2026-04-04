@@ -4,7 +4,7 @@ create table if not exists pending_covers (
   book_id        uuid        not null references books(id) on delete cascade,
   user_id        uuid        not null references profiles(id) on delete cascade,
   storage_path   text        not null,
-  review_token   text        not null unique default encode(gen_random_bytes(32), 'hex'),
+  review_token   text        not null unique default gen_random_uuid()::text,
   status         text        not null default 'pending'
                              check (status in ('pending', 'approved', 'rejected')),
   submitted_at   timestamptz not null default now(),

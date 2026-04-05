@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const EFFECTIVE_DATE = 'April 4, 2026'
-const CONTACT_EMAIL  = 'hello@exlibriso.com'
+const CONTACT_EMAIL  = 'hello@exlibrisomnium.com'
 
 export default function TermsOfService({ session }) {
   const { theme } = useTheme()

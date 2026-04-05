@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const EFFECTIVE_DATE = 'April 4, 2026'
-const CONTACT_EMAIL  = 'privacy@exlibriso.com'
+const CONTACT_EMAIL  = 'privacy@exlibrisomnium.com'
 
 export default function PrivacyPolicy({ session }) {
   const { theme } = useTheme()

@@ -113,7 +113,7 @@ function SiteFooter() {
         {[
           ['Privacy', '/privacy'],
           ['Terms',   '/terms'],
-          ['Contact', 'mailto:hello@exlibriso.com'],
+          ['Contact', 'mailto:hello@exlibrisomnium.com'],
         ].map(([label, href]) => (
           href.startsWith('mailto:')
             ? <a key={label} href={href} style={{ color: theme.textSubtle, textDecoration: 'none', fontSize: 13 }}

@@ -133,6 +133,7 @@ export default function Library({ session }) {
       `)
       .eq('user_id', session.user.id)
       .order('added_at', { ascending: false })
+      .limit(5000)
 
     if (!error) {
       // Merge: preserve any cover_image_url already enriched in local state
@@ -1064,7 +1065,7 @@ function ListRow({ entry, isLast, selectMode, isSelected, onSelect, theme, isMob
       {/* Thumbnail */}
       <div style={{ width: 38, height: 57, flexShrink: 0, borderRadius: 3, overflow: 'hidden', boxShadow: '1px 2px 6px rgba(26,18,8,0.18)' }}>
         {coverUrl && !imgError
-          ? <img src={coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setImgError(true)} />
+          ? <img src={coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" onError={() => setImgError(true)} />
           : <div style={{ width: '100%', height: '100%', background: `linear-gradient(135deg, ${c}, ${c2})`, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3px 4px' }}>
               <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 8, fontWeight: 700, fontFamily: 'Georgia, serif', textAlign: 'center', lineHeight: 1.3, wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 4, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{book.title}</span>
             </div>
@@ -1214,7 +1215,7 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
 
       <div style={{ ...s.coverWrap, position: 'relative' }}>
         {(coverUrl && !imgError)
-          ? <img src={coverUrl} alt={book.title} style={s.coverImg} onError={() => setImgError(true)} />
+          ? <img src={coverUrl} alt={book.title} style={s.coverImg} loading="lazy" onError={() => setImgError(true)} />
           : <FakeCover title={book.title} />
         }
         {/* Camera button / pending badge — only for cover-less books */}

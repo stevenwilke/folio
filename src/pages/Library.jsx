@@ -496,7 +496,7 @@ export default function Library({ session }) {
     topbarRight:    { display: 'flex', gap: 10, alignItems: 'center' },
     content:        { padding: isMobile ? '16px' : '28px 32px' },
     statsRow:       { display: 'flex', gap: isMobile ? 8 : 14, marginBottom: isMobile ? 16 : 28, flexWrap: isMobile ? 'nowrap' : 'nowrap' },
-    statCard:       { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: isMobile ? 10 : 14, padding: isMobile ? '12px 8px' : '18px 22px', flex: 1, transition: 'box-shadow 0.15s', textAlign: 'center' },
+    statCard:       { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: isMobile ? 10 : 14, padding: isMobile ? '12px 8px' : '18px 22px', flex: 1, transition: 'box-shadow 0.15s, border-color 0.15s, background 0.15s, transform 0.15s', textAlign: 'center' },
     statVal:        { fontFamily: 'Georgia, serif', fontSize: isMobile ? 22 : 28, fontWeight: 700, color: theme.rust },
     statLabel:      { fontSize: isMobile ? 10 : 11, color: theme.textSubtle, marginTop: 4, textTransform: 'uppercase', letterSpacing: isMobile ? 0.3 : 1 },
     filterRow:      { display: 'flex', gap: isMobile ? 6 : 8, marginBottom: 24, flexWrap: isMobile ? 'nowrap' : 'wrap', overflowX: isMobile ? 'auto' : 'visible', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' },
@@ -585,34 +585,59 @@ export default function Library({ session }) {
       <NavBar session={session} />
 
       <div style={s.content}>
-        {/* Stats */}
+        {/* Stats — clicking filters the library to that shelf */}
         {isMobile ? (
           <div style={s.statsRow}>
             {[
-              ['Total',   stats.total],
-              ['Read',    stats.read],
-              ['Reading', stats.reading],
-              ['Want',    stats.want],
-            ].map(([label, val]) => (
-              <div key={label} style={s.statCard}>
-                <div style={s.statVal}>{val}</div>
-                <div style={s.statLabel}>{label}</div>
-              </div>
-            ))}
+              ['Total',   stats.total,   'all'],
+              ['Read',    stats.read,    'read'],
+              ['Reading', stats.reading, 'reading'],
+              ['Want',    stats.want,    'want'],
+            ].map(([label, val, f]) => {
+              const active = filter === f
+              return (
+                <div key={label}
+                  onClick={() => setFilter(active ? 'all' : f)}
+                  style={{
+                    ...s.statCard,
+                    cursor: 'pointer',
+                    border: `1px solid ${active ? theme.rust : theme.border}`,
+                    background: active ? theme.rust + '12' : theme.bgCard,
+                  }}>
+                  <div style={{ ...s.statVal, color: active ? theme.rust : theme.rust }}>{val}</div>
+                  <div style={{ ...s.statLabel, color: active ? theme.rust : theme.textSubtle }}>{label}</div>
+                </div>
+              )
+            })}
           </div>
         ) : (
           <div style={s.statsRow}>
             {[
-              ['Total Books', stats.total,   null,      '📚'],
-              ['Read',        stats.read,    '#5a7a5a', '✓'],
-              ['Reading',     stats.reading, '#c0521e', '📖'],
-              ['Want to Read',stats.want,    '#b8860b', '🔖'],
-            ].map(([label, val, color, icon]) => (
-              <div key={label} style={s.statCard}>
-                <div style={{ ...s.statVal, color: color || theme.text }}>{icon} {val}</div>
-                <div style={s.statLabel}>{label}</div>
-              </div>
-            ))}
+              ['Total Books', stats.total,   'all',     null,      '📚'],
+              ['Read',        stats.read,    'read',    '#5a7a5a', '✓'],
+              ['Reading',     stats.reading, 'reading', '#c0521e', '📖'],
+              ['Want to Read',stats.want,    'want',    '#b8860b', '🔖'],
+            ].map(([label, val, f, color, icon]) => {
+              const active = filter === f
+              return (
+                <div key={label}
+                  onClick={() => setFilter(active ? 'all' : f)}
+                  style={{
+                    ...s.statCard,
+                    cursor: 'pointer',
+                    border: `1px solid ${active ? (color || theme.rust) : theme.border}`,
+                    background: active ? (color || theme.rust) + '14' : theme.bgCard,
+                    transform: active ? 'translateY(-2px)' : 'none',
+                    boxShadow: active ? `0 4px 12px ${(color || theme.rust)}30` : 'none',
+                  }}>
+                  <div style={{ ...s.statVal, color: color || theme.text }}>{icon} {val}</div>
+                  <div style={{ ...s.statLabel, color: active ? (color || theme.rust) : theme.textSubtle }}>
+                    {label}
+                    {active && <span style={{ marginLeft: 4, fontSize: 9 }}>▾ filtered</span>}
+                  </div>
+                </div>
+              )
+            })}
             {collectionStats && (
               <>
                 <div style={s.statCard}>

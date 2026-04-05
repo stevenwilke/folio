@@ -531,7 +531,7 @@ export default function Friends({ session, initialTab }) {
     <div style={s.page}>
       <NavBar session={session} />
 
-      <div style={{ ...s.content, maxWidth: activeTab === 'polls' ? 640 : 720 }}>
+      <div style={s.content}>
 
         {/* Page header */}
         <div style={s.pageHead}>

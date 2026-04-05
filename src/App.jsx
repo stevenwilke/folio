@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { ThemeProvider } from './contexts/ThemeContext'
 import Auth from './pages/Auth'
@@ -18,6 +18,8 @@ import Author from './pages/Author'
 import Onboarding from './pages/Onboarding'
 import Landing from './pages/Landing'
 import Notifications from './pages/Notifications'
+import PrivacyPolicy from './pages/PrivacyPolicy'
+import TermsOfService from './pages/TermsOfService'
 import BottomTabBar from './components/BottomTabBar'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useTheme } from './contexts/ThemeContext'
@@ -89,6 +91,8 @@ function AppRoutes({ session }) {
             path="/auth"
             element={session ? <Navigate to="/" replace /> : <Auth />}
           />
+          <Route path="/privacy" element={<PrivacyPolicy session={session} />} />
+          <Route path="/terms"   element={<TermsOfService session={session} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
@@ -107,16 +111,17 @@ function SiteFooter() {
       </div>
       <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
         {[
-          ['About', '#'],
-          ['Privacy', '#'],
-          ['Terms', '#'],
-          ['Contact', '#'],
+          ['Privacy', '/privacy'],
+          ['Terms',   '/terms'],
+          ['Contact', 'mailto:hello@exlibriso.com'],
         ].map(([label, href]) => (
-          <a key={label} href={href} style={{ color: theme.textSubtle, textDecoration: 'none', fontSize: 13 }}
-            onMouseEnter={e => e.target.style.color = theme.rust}
-            onMouseLeave={e => e.target.style.color = theme.textSubtle}>
-            {label}
-          </a>
+          href.startsWith('mailto:')
+            ? <a key={label} href={href} style={{ color: theme.textSubtle, textDecoration: 'none', fontSize: 13 }}
+                onMouseEnter={e => e.target.style.color = theme.rust}
+                onMouseLeave={e => e.target.style.color = theme.textSubtle}>{label}</a>
+            : <Link key={label} to={href} style={{ color: theme.textSubtle, textDecoration: 'none', fontSize: 13 }}
+                onMouseEnter={e => e.target.style.color = theme.rust}
+                onMouseLeave={e => e.target.style.color = theme.textSubtle}>{label}</Link>
         ))}
       </div>
       <div style={{ fontSize: 12 }}>© {new Date().getFullYear()} Ex Libris Omnium · Built for book lovers</div>

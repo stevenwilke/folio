@@ -15,7 +15,6 @@ const NAV_ITEMS = [
   { label: 'Loans',       path: '/loans' },
   { label: 'Marketplace', path: '/marketplace' },
   { label: 'Clubs',       path: '/clubs' },
-  { label: 'Polls',       path: '/polls' },
 ]
 
 // Module-level cache — survives React navigation without re-fetching

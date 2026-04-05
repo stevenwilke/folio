@@ -16,7 +16,6 @@ const MORE_ITEMS = [
   { path: '/marketplace', icon: '🏪', label: 'Marketplace' },
   { path: '/shelves',     icon: '📂', label: 'Shelves'     },
   { path: '/clubs',       icon: '💬', label: 'Book Clubs'  },
-  { path: '/polls',       icon: '📊', label: 'Polls'       },
   { path: '/stats',       icon: '📈', label: 'Stats'       },
 ]
 

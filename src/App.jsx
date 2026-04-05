@@ -12,7 +12,6 @@ import Discover from './pages/Discover'
 import Friends from './pages/Friends'
 import Stats from './pages/Stats'
 import Shelves from './pages/Shelves'
-import Polls from './pages/Polls'
 import BookClubs from './pages/BookClubs'
 import Author from './pages/Author'
 import Onboarding from './pages/Onboarding'
@@ -67,10 +66,7 @@ function AppRoutes({ session }) {
             path="/shelves"
             element={session ? <Shelves session={session} /> : <Navigate to="/" replace />}
           />
-          <Route
-            path="/polls"
-            element={session ? <Polls session={session} /> : <Navigate to="/" replace />}
-          />
+          <Route path="/polls" element={<Navigate to="/friends" replace />} />
           <Route
             path="/clubs"
             element={session ? <BookClubs session={session} /> : <Navigate to="/" replace />}

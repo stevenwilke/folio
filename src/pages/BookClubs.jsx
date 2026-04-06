@@ -156,9 +156,11 @@ function CreateClubModal({ session, onClose, onCreated }) {
       role: 'admin',
     })
 
+    console.log('[CreateClub] book_club_members insert:', { clubId: club.id, userId: session.user.id, memberError })
+
     if (memberError) {
       setSaving(false)
-      setErrorMsg(memberError.message || 'Club created but could not add you as a member.')
+      setErrorMsg(`Membership insert failed: ${memberError.message}`)
       return
     }
 
@@ -620,19 +622,22 @@ export default function BookClubs({ session }) {
   async function fetchClubs() {
     setLoading(true)
     const userId = session.user.id
+    console.log('[fetchClubs] starting, userId:', userId)
 
     // Step 1: get the IDs of clubs this user belongs to
-    const { data: memberRows } = await supabase
+    const { data: memberRows, error: memberRowsError } = await supabase
       .from('book_club_members')
       .select('club_id')
       .eq('user_id', userId)
+
+    console.log('[fetchClubs] step1 memberRows:', memberRows, 'error:', memberRowsError)
 
     const joinedIds = (memberRows || []).map(r => r.club_id)
 
     // Step 2: fetch full club details for clubs the user has joined
     let myClubsData = []
     if (joinedIds.length > 0) {
-      const { data } = await supabase
+      const { data, error: clubsError } = await supabase
         .from('book_clubs')
         .select(`
           id, name, description, is_public, current_book_id, created_by,
@@ -640,7 +645,10 @@ export default function BookClubs({ session }) {
           book_club_members(user_id, role, profiles(username, avatar_url))
         `)
         .in('id', joinedIds)
+      console.log('[fetchClubs] step2 clubs:', data, 'error:', clubsError)
       myClubsData = data || []
+    } else {
+      console.log('[fetchClubs] step2 skipped — no joined clubs')
     }
     setMyClubs(myClubsData)
 
@@ -659,7 +667,8 @@ export default function BookClubs({ session }) {
       discoverQuery = discoverQuery.not('id', 'in', `(${joinedIds.join(',')})`)
     }
 
-    const { data: publicClubs } = await discoverQuery
+    const { data: publicClubs, error: discoverError } = await discoverQuery
+    console.log('[fetchClubs] step3 publicClubs:', publicClubs, 'error:', discoverError)
     setDiscoverClubs(publicClubs || [])
     setLoading(false)
   }

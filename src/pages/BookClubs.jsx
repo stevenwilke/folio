@@ -131,10 +131,12 @@ function CreateClubModal({ session, onClose, onCreated }) {
   const [description, setDescription] = useState('')
   const [isPublic, setIsPublic] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [errorMsg, setErrorMsg] = useState(null)
 
   async function handleSubmit() {
     if (!name.trim()) return
     setSaving(true)
+    setErrorMsg(null)
 
     const { data: club, error } = await supabase
       .from('book_clubs')
@@ -142,7 +144,11 @@ function CreateClubModal({ session, onClose, onCreated }) {
       .select()
       .single()
 
-    if (error || !club) { setSaving(false); return }
+    if (error || !club) {
+      setSaving(false)
+      setErrorMsg(error?.message || 'Could not create club — please try again.')
+      return
+    }
 
     await supabase.from('book_club_members').insert({
       club_id: club.id,
@@ -183,6 +189,11 @@ function CreateClubModal({ session, onClose, onCreated }) {
             <span style={{ fontSize: 14, color: theme.text }}>Public club (discoverable by anyone)</span>
           </label>
         </div>
+        {errorMsg && (
+          <div style={{ padding: '0 24px 12px', fontSize: 13, color: theme.rust }}>
+            ⚠️ {errorMsg}
+          </div>
+        )}
         <div style={s.modalFooter}>
           <button style={s.btnGhost} onClick={onClose}>Cancel</button>
           <button

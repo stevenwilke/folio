@@ -46,6 +46,7 @@ export default function Library({ session }) {
   const [listingTarget, setListingTarget] = useState(null)
   const [activeListings, setActiveListings] = useState({})
   const [collectionStats, setCollectionStats] = useState(null)
+  const [valuationMap, setValuationMap] = useState({}) // { [bookId]: { list_price, avg_price } }
   const [search, setSearch]             = useState('')
   const [groupBy, setGroupBy]           = useState('none')
   const [collapsedGroups, setCollapsedGroups] = useState(new Set())
@@ -108,7 +109,7 @@ export default function Library({ session }) {
     if (!total) { setCollectionStats({ retailTotal: 0, retailCount: 0, usedTotal: 0, usedCount: 0, total: 0 }); return }
     const { data } = await supabase
       .from('valuations')
-      .select('list_price, avg_price')
+      .select('book_id, list_price, avg_price')
       .in('book_id', bookIds)
     const rows = data || []
     const retailRows = rows.filter(v => v.list_price != null)
@@ -120,6 +121,10 @@ export default function Library({ session }) {
       usedCount:   usedRows.length,
       total,
     })
+    // Build per-book map so we can show prices on cards and filter by value
+    const vMap = {}
+    for (const v of rows) vMap[v.book_id] = { list_price: v.list_price, avg_price: v.avg_price }
+    setValuationMap(vMap)
   }
 
   async function fetchCollection() {
@@ -362,7 +367,12 @@ export default function Library({ session }) {
 
   const searchLower = search.trim().toLowerCase()
   const filtered = books
-    .filter(e => filter === 'all' || e.read_status === filter)
+    .filter(e => {
+      if (filter === 'all')           return true
+      if (filter === 'valued-retail') return valuationMap[e.books.id]?.list_price != null
+      if (filter === 'valued-used')   return valuationMap[e.books.id]?.avg_price  != null
+      return e.read_status === filter
+    })
     .filter(e => !searchLower || e.books.title.toLowerCase().includes(searchLower) || (e.books.author || '').toLowerCase().includes(searchLower))
     .filter(e => !selectedTag || (tagMap[e.books.id] || []).includes(selectedTag))
 
@@ -640,28 +650,32 @@ export default function Library({ session }) {
             })}
             {collectionStats && (
               <>
-                <div style={s.statCard}>
-                  <div style={{ ...s.statVal, color: '#5a7a5a' }}>
-                    💰 {collectionStats.retailCount > 0 ? `$${collectionStats.retailTotal.toFixed(2)}` : '—'}
-                  </div>
-                  <div style={s.statLabel}>
-                    Retail Value
-                    <span style={{ display: 'block', fontSize: 10, opacity: 0.7, marginTop: 1 }}>
-                      {collectionStats.retailCount}/{collectionStats.total} books priced
-                    </span>
-                  </div>
-                </div>
-                <div style={s.statCard}>
-                  <div style={{ ...s.statVal, color: '#b8860b' }}>
-                    📊 {collectionStats.usedCount > 0 ? `$${collectionStats.usedTotal.toFixed(2)}` : '—'}
-                  </div>
-                  <div style={s.statLabel}>
-                    Used Value
-                    <span style={{ display: 'block', fontSize: 10, opacity: 0.7, marginTop: 1 }}>
-                      {collectionStats.usedCount}/{collectionStats.total} books priced
-                    </span>
-                  </div>
-                </div>
+                {[
+                  { f: 'valued-retail', color: '#5a7a5a', icon: '💰', label: 'Retail Value', val: collectionStats.retailCount > 0 ? `$${collectionStats.retailTotal.toFixed(2)}` : '—', count: collectionStats.retailCount },
+                  { f: 'valued-used',   color: '#b8860b', icon: '📊', label: 'Used Value',   val: collectionStats.usedCount   > 0 ? `$${collectionStats.usedTotal.toFixed(2)}`   : '—', count: collectionStats.usedCount },
+                ].map(({ f, color, icon, label, val, count }) => {
+                  const active = filter === f
+                  return (
+                    <div key={f}
+                      onClick={() => setFilter(active ? 'all' : f)}
+                      style={{
+                        ...s.statCard,
+                        cursor: 'pointer',
+                        border: `1px solid ${active ? color : theme.border}`,
+                        background: active ? color + '14' : theme.bgCard,
+                        transform: active ? 'translateY(-2px)' : 'none',
+                        boxShadow: active ? `0 4px 12px ${color}30` : 'none',
+                      }}>
+                      <div style={{ ...s.statVal, color }}>{icon} {val}</div>
+                      <div style={{ ...s.statLabel, color: active ? color : theme.textSubtle }}>
+                        {label}
+                        <span style={{ display: 'block', fontSize: 10, opacity: 0.7, marginTop: 1 }}>
+                          {active ? '▾ filtered · ' : ''}{count}/{collectionStats.total} books priced
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
               </>
             )}
           </div>
@@ -926,6 +940,9 @@ export default function Library({ session }) {
                             key={entry.id}
                             entry={entry}
                             listing={activeListings[entry.books.id] || null}
+                            valuation={valuationMap[entry.books.id] || null}
+                            showValuation={filter === 'valued-retail' || filter === 'valued-used'}
+                            valuationMode={filter === 'valued-retail' ? 'retail' : filter === 'valued-used' ? 'used' : null}
                             onUpdate={fetchCollection}
                             onSelect={() => {
                               if (selectMode) toggleSelect(entry.id)
@@ -1131,7 +1148,7 @@ function ListRow({ entry, isLast, selectMode, isSelected, onSelect, theme, isMob
 }
 
 // ---- BOOK CARD ----
-function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMode, isSelected, hasPendingCover, onAddCover }) {
+function BookCard({ entry, listing, valuation, showValuation, valuationMode, onUpdate, onSelect, onListForSale, selectMode, isSelected, hasPendingCover, onAddCover }) {
   const { theme } = useTheme()
   const book   = entry.books
   const status = entry.read_status
@@ -1310,6 +1327,20 @@ function BookCard({ entry, listing, onUpdate, onSelect, onListForSale, selectMod
       <div style={{ marginTop: 8 }}>
         <div style={s.bookTitle}>{book.title}</div>
         <div style={s.bookAuthor}>{book.author}</div>
+        {showValuation && valuation && (
+          <div style={{ marginTop: 5, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {valuationMode === 'retail' && valuation.list_price != null && (
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#5a7a5a', background: '#5a7a5a18', borderRadius: 4, padding: '2px 6px' }}>
+                💰 ${Number(valuation.list_price).toFixed(2)}
+              </span>
+            )}
+            {valuationMode === 'used' && valuation.avg_price != null && (
+              <span style={{ fontSize: 11, fontWeight: 600, color: '#b8860b', background: '#b8860b18', borderRadius: 4, padding: '2px 6px' }}>
+                📊 ${Number(valuation.avg_price).toFixed(2)}
+              </span>
+            )}
+          </div>
+        )}
         {status === 'reading' && (
           <div style={{ marginTop: 5 }} onClick={e => e.stopPropagation()}>
             {editingPage ? (

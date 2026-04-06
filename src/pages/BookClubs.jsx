@@ -216,11 +216,11 @@ function CreateClubModal({ session, onClose, onCreated }) {
 }
 
 // ---- CLUB DETAIL ----
-function ClubDetail({ club, session, onBack, onClubUpdate }) {
+function ClubDetail({ club, session, onBack, onClubUpdate, onClubDeleted }) {
   const { theme } = useTheme()
   const s = makeStyles(theme)
   const [posts, setPosts] = useState([])
-  const [members, setMembers] = useState([])
+  const [members, setMembers] = useState(club.book_club_members || [])
   const [myProgress, setMyProgress] = useState(null)
   const [memberProgress, setMemberProgress] = useState([])
   const [postText, setPostText] = useState('')
@@ -241,8 +241,23 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
   const [searchingInvite, setSearchingInvite] = useState(false)
   const [inviting, setInviting] = useState(null)
 
+  // Edit club info
+  const [showEditInfo, setShowEditInfo] = useState(false)
+  const [editName, setEditName] = useState(club.name)
+  const [editDesc, setEditDesc] = useState(club.description || '')
+  const [editPublic, setEditPublic] = useState(club.is_public)
+  const [savingInfo, setSavingInfo] = useState(false)
+
+  // Delete club
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  // Role changes
+  const [promotingUser, setPromotingUser] = useState(null)
+
   const messagesEndRef = useRef(null)
-  const isAdmin = club.book_club_members?.some(m => m.user_id === session.user.id && m.role === 'admin')
+  const isAdmin = members.some(m => m.user_id === session.user.id && m.role === 'admin')
+    || club.book_club_members?.some(m => m.user_id === session.user.id && m.role === 'admin')
 
   useEffect(() => {
     fetchPosts()
@@ -348,6 +363,39 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
     setInviting(null)
     setInviteQuery('')
     setInviteResults([])
+    fetchMembers()
+    onClubUpdate()
+  }
+
+  async function saveClubInfo() {
+    const name = editName.trim()
+    if (!name) return
+    setSavingInfo(true)
+    await supabase.from('book_clubs').update({
+      name,
+      description: editDesc.trim() || null,
+      is_public: editPublic,
+    }).eq('id', club.id)
+    setSavingInfo(false)
+    setShowEditInfo(false)
+    onClubUpdate()
+  }
+
+  async function deleteClub() {
+    setDeleting(true)
+    const { error } = await supabase.from('book_clubs').delete().eq('id', club.id)
+    if (error) { setDeleting(false); return }
+    onClubDeleted()
+  }
+
+  async function toggleMemberRole(member) {
+    setPromotingUser(member.user_id)
+    const newRole = member.role === 'admin' ? 'member' : 'admin'
+    await supabase.from('book_club_members')
+      .update({ role: newRole })
+      .eq('club_id', club.id)
+      .eq('user_id', member.user_id)
+    setPromotingUser(null)
     fetchMembers()
     onClubUpdate()
   }
@@ -507,6 +555,15 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
                     <div style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{m.profiles?.username}</div>
                     {m.role === 'admin' && <div style={{ fontSize: 11, color: theme.rust }}>Admin</div>}
                   </div>
+                  {isAdmin && m.user_id !== session.user.id && (
+                    <button
+                      style={{ ...s.btnSmallGhost, fontSize: 11, padding: '3px 8px', opacity: promotingUser === m.user_id ? 0.6 : 1 }}
+                      onClick={() => toggleMemberRole(m)}
+                      disabled={promotingUser === m.user_id}
+                    >
+                      {promotingUser === m.user_id ? '…' : m.role === 'admin' ? 'Remove Admin' : 'Make Admin'}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -548,14 +605,15 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
             </div>
           )}
 
-          {/* Admin: Change book */}
+          {/* Admin: Club Settings */}
           {isAdmin && (
             <div style={s.panelSection}>
               <div style={{ ...s.panelTitle, marginBottom: 12 }}>Club Settings</div>
+
+              {/* Set / Change current book */}
               <button style={s.btnSmallGhost} onClick={() => setShowChangeBook(v => !v)}>
                 {club.current_book_id ? 'Change current book' : 'Set current book'}
               </button>
-
               {showChangeBook && (
                 <div style={{ marginTop: 10 }}>
                   <input
@@ -595,6 +653,78 @@ function ClubDetail({ club, session, onBack, onClubUpdate }) {
                   )}
                 </div>
               )}
+
+              {/* Edit club info */}
+              <div style={{ marginTop: 12 }}>
+                <button style={s.btnSmallGhost} onClick={() => {
+                  setEditName(club.name)
+                  setEditDesc(club.description || '')
+                  setEditPublic(club.is_public)
+                  setShowEditInfo(v => !v)
+                }}>
+                  ✏️ Edit Club Info
+                </button>
+                {showEditInfo && (
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <input
+                      style={s.input}
+                      placeholder="Club name"
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      maxLength={80}
+                    />
+                    <textarea
+                      style={{ ...s.input, height: 70, resize: 'vertical', lineHeight: 1.5 }}
+                      placeholder="Description (optional)"
+                      value={editDesc}
+                      onChange={e => setEditDesc(e.target.value)}
+                      maxLength={300}
+                    />
+                    <label style={{ ...s.checkLabel, gap: 8 }}>
+                      <input type="checkbox" checked={editPublic} onChange={e => setEditPublic(e.target.checked)} style={{ accentColor: theme.rust }} />
+                      <span style={{ fontSize: 13, color: theme.text }}>Public club</span>
+                    </label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        style={{ ...s.btnSmall, opacity: !editName.trim() || savingInfo ? 0.6 : 1 }}
+                        onClick={saveClubInfo}
+                        disabled={!editName.trim() || savingInfo}
+                      >
+                        {savingInfo ? 'Saving…' : 'Save Changes'}
+                      </button>
+                      <button style={s.btnSmallGhost} onClick={() => setShowEditInfo(false)}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Delete club */}
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${theme.borderLight}` }}>
+                {showDeleteConfirm ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontSize: 13, color: theme.rust, fontWeight: 600 }}>
+                      Delete "{club.name}"? This cannot be undone.
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        style={{ ...s.btnSmall, background: theme.rust, opacity: deleting ? 0.6 : 1 }}
+                        onClick={deleteClub}
+                        disabled={deleting}
+                      >
+                        {deleting ? 'Deleting…' : 'Yes, Delete Club'}
+                      </button>
+                      <button style={s.btnSmallGhost} onClick={() => setShowDeleteConfirm(false)}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    style={{ ...s.btnSmallGhost, color: theme.rust, borderColor: theme.rust }}
+                    onClick={() => setShowDeleteConfirm(true)}
+                  >
+                    🗑 Delete Club
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -616,6 +746,24 @@ export default function BookClubs({ session }) {
   const [joining, setJoining] = useState(null)
 
   useEffect(() => { fetchClubs() }, [])
+
+  // Push a history entry when entering a club so the browser back button
+  // returns to the clubs list instead of leaving the page entirely.
+  useEffect(() => {
+    const handlePopState = () => setSelectedClub(null)
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  function handleEnter(club) {
+    window.history.pushState({ clubId: club.id }, '', window.location.pathname)
+    setSelectedClub(club)
+  }
+
+  function handleBack() {
+    setSelectedClub(null)
+    window.history.back()
+  }
 
   async function fetchClubs() {
     setLoading(true)
@@ -671,10 +819,6 @@ export default function BookClubs({ session }) {
     fetchClubs()
   }
 
-  function handleEnter(club) {
-    setSelectedClub(club)
-  }
-
   async function refreshSelectedClub() {
     await fetchClubs()
     if (selectedClub) {
@@ -700,8 +844,9 @@ export default function BookClubs({ session }) {
           <ClubDetail
             club={selectedClub}
             session={session}
-            onBack={() => setSelectedClub(null)}
+            onBack={handleBack}
             onClubUpdate={refreshSelectedClub}
+            onClubDeleted={() => { handleBack(); fetchClubs() }}
           />
         </div>
       </div>

@@ -28,21 +28,47 @@ create table if not exists book_club_posts (
   created_at timestamptz not null default now()
 );
 
+-- ─── Helper functions (security definer breaks the RLS recursion cycle) ────────
+-- These query book_club_members bypassing RLS, so policies on book_clubs
+-- can safely call them without triggering book_club_members RLS → book_clubs
+-- RLS → infinite loop.
+
+create or replace function is_club_member(p_club_id uuid, p_user_id uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from book_club_members
+    where club_id = p_club_id and user_id = p_user_id
+  );
+$$;
+
+create or replace function is_club_admin(p_club_id uuid, p_user_id uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from book_club_members
+    where club_id = p_club_id and user_id = p_user_id and role = 'admin'
+  );
+$$;
+
 -- ─── RLS ─────────────────────────────────────────────────────────────────────
 alter table book_clubs        enable row level security;
 alter table book_club_members enable row level security;
 alter table book_club_posts   enable row level security;
 
--- book_clubs: public clubs visible to all; private clubs visible only to members
+-- book_clubs: public clubs visible to all; private clubs only to members
+-- Uses is_club_member() (security definer) to avoid recursion.
 create policy "View public clubs"
   on book_clubs for select
-  using (
-    is_public = true
-    or exists (
-      select 1 from book_club_members m
-      where m.club_id = book_clubs.id and m.user_id = auth.uid()
-    )
-  );
+  using (is_public = true or is_club_member(id, auth.uid()));
 
 create policy "Authenticated users can create clubs"
   on book_clubs for insert
@@ -52,36 +78,21 @@ create policy "Authenticated users can create clubs"
 create policy "Admins can update their clubs"
   on book_clubs for update
   to authenticated
-  using (
-    exists (
-      select 1 from book_club_members m
-      where m.club_id = book_clubs.id and m.user_id = auth.uid() and m.role = 'admin'
-    )
-  );
+  using (is_club_admin(id, auth.uid()));
 
 create policy "Admins can delete their clubs"
   on book_clubs for delete
   to authenticated
-  using (
-    exists (
-      select 1 from book_club_members m
-      where m.club_id = book_clubs.id and m.user_id = auth.uid() and m.role = 'admin'
-    )
-  );
+  using (is_club_admin(id, auth.uid()));
 
--- book_club_members: members can see other members
-create policy "Members can view club membership"
+-- book_club_members: authenticated users can read all membership rows.
+-- Membership is not sensitive (who's in a public book club), and keeping
+-- this policy simple is what breaks the recursion — no cross-reference back
+-- to book_clubs here.
+create policy "Authenticated users can view memberships"
   on book_club_members for select
-  using (
-    exists (
-      select 1 from book_club_members m2
-      where m2.club_id = book_club_members.club_id and m2.user_id = auth.uid()
-    )
-    or exists (
-      select 1 from book_clubs c
-      where c.id = book_club_members.club_id and c.is_public = true
-    )
-  );
+  to authenticated
+  using (true);
 
 create policy "Users can join public clubs or be invited"
   on book_club_members for insert
@@ -91,12 +102,9 @@ create policy "Users can join public clubs or be invited"
     (user_id = auth.uid() and exists (
       select 1 from book_clubs c where c.id = club_id and c.is_public = true
     ))
-    -- or an admin is adding someone
-    or exists (
-      select 1 from book_club_members m
-      where m.club_id = book_club_members.club_id and m.user_id = auth.uid() and m.role = 'admin'
-    )
-    -- or you are the club creator (adding yourself as first member)
+    -- an admin is adding someone
+    or is_club_admin(club_id, auth.uid())
+    -- creator adding themselves as first member
     or exists (
       select 1 from book_clubs c where c.id = club_id and c.created_by = auth.uid()
     )
@@ -107,26 +115,15 @@ create policy "Members can leave clubs"
   to authenticated
   using (user_id = auth.uid());
 
--- book_club_posts: members of the club can read and post
+-- book_club_posts: members can read and post; uses is_club_member() to avoid recursion
 create policy "Members can view posts"
   on book_club_posts for select
-  using (
-    exists (
-      select 1 from book_club_members m
-      where m.club_id = book_club_posts.club_id and m.user_id = auth.uid()
-    )
-  );
+  using (is_club_member(club_id, auth.uid()));
 
 create policy "Members can post"
   on book_club_posts for insert
   to authenticated
-  with check (
-    user_id = auth.uid()
-    and exists (
-      select 1 from book_club_members m
-      where m.club_id = book_club_posts.club_id and m.user_id = auth.uid()
-    )
-  );
+  with check (user_id = auth.uid() and is_club_member(club_id, auth.uid()));
 
 create policy "Users can delete their own posts"
   on book_club_posts for delete

@@ -636,7 +636,6 @@ export default function Profile({ session }) {
           session={session}
           accentColor={accentColor}
           featuredBook={featuredBook}
-          userBooks={books}
           onAccentChange={setAccentColor}
           onFeaturedChange={setFeaturedBook}
           onClose={() => setShowCustomize(false)}
@@ -677,18 +676,36 @@ const ACCENT_PRESETS = [
   { name: 'Forest', color: '#2d5a27' },
 ]
 
-function CustomizePanel({ session, accentColor, featuredBook, userBooks, onAccentChange, onFeaturedChange, onClose, theme }) {
+function CustomizePanel({ session, accentColor, featuredBook, onAccentChange, onFeaturedChange, onClose, theme }) {
   const [localAccent,  setLocalAccent]  = useState(accentColor)
   const [localFeatured, setLocalFeatured] = useState(featuredBook)
   const [bookSearch,   setBookSearch]   = useState('')
   const [saving,       setSaving]       = useState(false)
   const [saved,        setSaved]        = useState(false)
+  const [myBooks,      setMyBooks]      = useState([])
 
-  // Filter user's collection by search query
-  const bookOptions = userBooks
-    .map(e => e.books)
-    .filter(Boolean)
-    .filter((b, idx, arr) => arr.findIndex(x => x.id === b.id) === idx) // deduplicate
+  // Fetch the user's own library directly so we never rely on parent state
+  useEffect(() => {
+    supabase
+      .from('collection_entries')
+      .select('books(id, title, author, cover_image_url)')
+      .eq('user_id', session.user.id)
+      .order('added_at', { ascending: false })
+      .then(({ data }) => {
+        const unique = []
+        const seen = new Set()
+        for (const e of data || []) {
+          if (e.books && !seen.has(e.books.id)) {
+            seen.add(e.books.id)
+            unique.push(e.books)
+          }
+        }
+        setMyBooks(unique)
+      })
+  }, [session.user.id])
+
+  // Filter by search query
+  const bookOptions = myBooks
     .filter(b => {
       if (!bookSearch.trim()) return true
       const q = bookSearch.toLowerCase()

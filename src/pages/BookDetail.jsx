@@ -690,7 +690,7 @@ export default function BookDetail({ bookId, session, onBack }) {
               onClick={() => coverFileInputRef.current?.click()}
               disabled={coverUploading}
               title="Upload a custom cover"
-              style={{ position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.65)', border: 'none', borderRadius: 8, padding: '5px 9px', cursor: 'pointer', color: 'white', fontSize: 15, opacity: 0, transition: 'opacity 0.2s', lineHeight: 1, backdropFilter: 'blur(4px)' }}>
+              style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.65)', border: 'none', borderRadius: 8, padding: '5px 9px', cursor: 'pointer', color: 'white', fontSize: 15, opacity: 0, transition: 'opacity 0.2s', lineHeight: 1, backdropFilter: 'blur(4px)' }}>
               {coverUploading ? '⏳' : '📷'}
             </button>
           </div>

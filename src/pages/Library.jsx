@@ -34,6 +34,7 @@ export default function Library({ session }) {
   const [loading, setLoading]         = useState(true)
   const [filter, setFilter]           = useState('all')
   const [sort, setSort]               = useState('added')
+  const [sortDir, setSortDir]         = useState('desc') // 'desc' | 'asc' — used for price sort
   const [showImport, setShowImport]         = useState(false)
   const [showShelfPlanner, setShowShelfPlanner] = useState(false)
   const [coverUploadTarget, setCoverUploadTarget] = useState(null) // { id, title }
@@ -121,10 +122,14 @@ export default function Library({ session }) {
       usedCount:   usedRows.length,
       total,
     })
-    // Build per-book map so we can show prices on cards and filter by value
+    // Embed valuations directly into books state so filtering is always in sync
     const vMap = {}
     for (const v of rows) vMap[v.book_id] = { list_price: v.list_price, avg_price: v.avg_price }
     setValuationMap(vMap)
+    setBooks(prev => prev.map(e => ({
+      ...e,
+      valuation: vMap[e.books?.id] || null,
+    })))
   }
 
   async function fetchCollection() {
@@ -369,8 +374,8 @@ export default function Library({ session }) {
   const filtered = books
     .filter(e => {
       if (filter === 'all')           return true
-      if (filter === 'valued-retail') return valuationMap[e.books.id]?.list_price != null
-      if (filter === 'valued-used')   return valuationMap[e.books.id]?.avg_price  != null
+      if (filter === 'valued-retail') return e.valuation?.list_price != null
+      if (filter === 'valued-used')   return e.valuation?.avg_price  != null
       return e.read_status === filter
     })
     .filter(e => !searchLower || e.books.title.toLowerCase().includes(searchLower) || (e.books.author || '').toLowerCase().includes(searchLower))
@@ -382,6 +387,14 @@ export default function Library({ session }) {
       case 'author': return [...arr].sort((a, b) => (a.books.author||'').localeCompare(b.books.author||''))
       case 'rating': return [...arr].sort((a, b) => (b.user_rating||0) - (a.user_rating||0))
       case 'year':   return [...arr].sort((a, b) => (b.books.published_year||0) - (a.books.published_year||0))
+      case 'price': {
+        const getPrice = e => filter === 'valued-used'
+          ? (e.valuation?.avg_price  ?? -1)
+          : (e.valuation?.list_price ?? -1)
+        return [...arr].sort((a, b) =>
+          sortDir === 'asc' ? getPrice(a) - getPrice(b) : getPrice(b) - getPrice(a)
+        )
+      }
       default:       return arr  // 'added' - already sorted by added_at desc
     }
   }
@@ -657,7 +670,7 @@ export default function Library({ session }) {
                   const active = filter === f
                   return (
                     <div key={f}
-                      onClick={() => setFilter(active ? 'all' : f)}
+                      onClick={() => { const next = active ? 'all' : f; setFilter(next); if (!active) { setSort('price'); setSortDir('desc') } else setSort('added') }}
                       style={{
                         ...s.statCard,
                         cursor: 'pointer',
@@ -749,8 +762,12 @@ export default function Library({ session }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
               <span style={{ fontSize: 12, color: theme.textSubtle, fontWeight: 500, flexShrink: 0 }}>Sort:</span>
               <select
-                value={sort}
-                onChange={e => setSort(e.target.value)}
+                value={sort === 'price' ? `price-${sortDir}` : sort}
+                onChange={e => {
+                  const v = e.target.value
+                  if (v.startsWith('price-')) { setSort('price'); setSortDir(v === 'price-asc' ? 'asc' : 'desc') }
+                  else setSort(v)
+                }}
                 style={{
                   flex: 1, padding: '7px 10px', border: `1px solid ${theme.border}`,
                   borderRadius: 8, fontSize: 13, background: theme.bgCard,
@@ -763,6 +780,12 @@ export default function Library({ session }) {
                 <option value="author">Author</option>
                 <option value="rating">Rating</option>
                 <option value="year">Year</option>
+                {(filter === 'valued-retail' || filter === 'valued-used') && (
+                  <option value="price-desc">Price: High → Low</option>
+                )}
+                {(filter === 'valued-retail' || filter === 'valued-used') && (
+                  <option value="price-asc">Price: Low → High</option>
+                )}
               </select>
             </div>
           ) : (
@@ -775,10 +798,18 @@ export default function Library({ session }) {
                 { key: 'author', label: 'Author' },
                 { key: 'rating', label: 'Rating' },
                 { key: 'year',   label: 'Year' },
+                ...((filter === 'valued-retail' || filter === 'valued-used') ? [{ key: 'price', label: `Price ${sortDir === 'asc' && sort === 'price' ? '↑' : '↓'}` }] : []),
               ].map(opt => (
                 <button key={opt.key}
                   style={sort === opt.key ? s.filterActive : s.filterInactive}
-                  onClick={() => setSort(opt.key)}>
+                  onClick={() => {
+                    if (opt.key === 'price' && sort === 'price') {
+                      setSortDir(d => d === 'desc' ? 'asc' : 'desc')
+                    } else {
+                      setSort(opt.key)
+                      if (opt.key === 'price') setSortDir('desc')
+                    }
+                  }}>
                   {opt.label}
                 </button>
               ))}
@@ -940,7 +971,7 @@ export default function Library({ session }) {
                             key={entry.id}
                             entry={entry}
                             listing={activeListings[entry.books.id] || null}
-                            valuation={valuationMap[entry.books.id] || null}
+                            valuation={entry.valuation || null}
                             showValuation={filter === 'valued-retail' || filter === 'valued-used'}
                             valuationMode={filter === 'valued-retail' ? 'retail' : filter === 'valued-used' ? 'used' : null}
                             onUpdate={fetchCollection}
@@ -1277,8 +1308,29 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
             )}
           </div>
         )}
-        {listing && (
+        {listing && !showValuation && (
           <div style={s.forSaleBadge}>${Number(listing.price).toFixed(2)}</div>
+        )}
+        {/* Price badge — pinned to bottom-right of cover so all prices align across the row */}
+        {showValuation && (
+          <div style={{
+            position: 'absolute', bottom: 6, right: 6, zIndex: 4,
+            background: 'rgba(0,0,0,0.58)',
+            backdropFilter: 'blur(6px)',
+            borderRadius: 5,
+            padding: '2px 7px',
+          }}>
+            {valuation && (valuationMode === 'retail' ? valuation.list_price : valuation.avg_price) != null ? (
+              <span style={{
+                fontSize: 11, fontWeight: 700, letterSpacing: 0.2,
+                color: valuationMode === 'retail' ? '#9de09d' : '#f5cc60',
+              }}>
+                ${Number(valuationMode === 'retail' ? valuation.list_price : valuation.avg_price).toFixed(2)}
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.38)' }}>—</span>
+            )}
+          </div>
         )}
         {/* Reading progress bar at bottom of cover */}
         {status === 'reading' && (book.pages || currentPage > 0) && (
@@ -1327,20 +1379,6 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
       <div style={{ marginTop: 8 }}>
         <div style={s.bookTitle}>{book.title}</div>
         <div style={s.bookAuthor}>{book.author}</div>
-        {showValuation && valuation && (
-          <div style={{ marginTop: 5, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {valuationMode === 'retail' && valuation.list_price != null && (
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#5a7a5a', background: '#5a7a5a18', borderRadius: 4, padding: '2px 6px' }}>
-                💰 ${Number(valuation.list_price).toFixed(2)}
-              </span>
-            )}
-            {valuationMode === 'used' && valuation.avg_price != null && (
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#b8860b', background: '#b8860b18', borderRadius: 4, padding: '2px 6px' }}>
-                📊 ${Number(valuation.avg_price).toFixed(2)}
-              </span>
-            )}
-          </div>
-        )}
         {status === 'reading' && (
           <div style={{ marginTop: 5 }} onClick={e => e.stopPropagation()}>
             {editingPage ? (

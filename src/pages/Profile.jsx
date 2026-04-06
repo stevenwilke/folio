@@ -30,12 +30,15 @@ export default function Profile({ session }) {
   const [isFriend, setIsFriend]           = useState(false)
   const [borrowTarget, setBorrowTarget]   = useState(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [uploadingBanner, setUploadingBanner] = useState(false)
   const [showEditProfile, setShowEditProfile] = useState(false)
-  const fileInputRef = useRef(null)
+  const fileInputRef   = useRef(null)
+  const bannerInputRef = useRef(null)
 
   // ── CUSTOMIZATION STATE ──
   const [accentColor,    setAccentColor]    = useState('#c0521e')
   const [featuredBook,   setFeaturedBook]   = useState(null)
+  const [bannerUrl,      setBannerUrl]      = useState(null)
   const [showCustomize,  setShowCustomize]  = useState(false)
 
   // ── GOAL STATE ──
@@ -75,6 +78,31 @@ export default function Profile({ session }) {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  async function handleBannerUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file || !session) return
+    setUploadingBanner(true)
+    const ext  = file.name.split('.').pop()
+    const path = `${session.user.id}/banner.${ext}`
+    const { error: uploadError } = await supabase.storage
+      .from('banners')
+      .upload(path, file, { upsert: true, contentType: file.type })
+    if (!uploadError) {
+      const { data: { publicUrl } } = supabase.storage.from('banners').getPublicUrl(path)
+      await supabase.from('profiles').update({ banner_url: publicUrl }).eq('id', session.user.id)
+      setBannerUrl(publicUrl)
+      setProfile(prev => ({ ...prev, banner_url: publicUrl }))
+    }
+    setUploadingBanner(false)
+    if (bannerInputRef.current) bannerInputRef.current.value = ''
+  }
+
+  async function removeBanner() {
+    await supabase.from('profiles').update({ banner_url: null }).eq('id', session.user.id)
+    setBannerUrl(null)
+    setProfile(prev => ({ ...prev, banner_url: null }))
+  }
+
   async function fetchProfile() {
     setLoading(true)
     setNotFound(false)
@@ -83,7 +111,7 @@ export default function Profile({ session }) {
 
     const { data: prof } = await supabase
       .from('profiles')
-      .select('id, username, bio, is_public, created_at, avatar_url, accent_color, featured_book_id, paypal_handle, venmo_handle, books!profiles_featured_book_id_fkey(id, title, author, cover_image_url)')
+      .select('id, username, bio, is_public, created_at, avatar_url, banner_url, accent_color, featured_book_id, paypal_handle, venmo_handle, books!profiles_featured_book_id_fkey(id, title, author, cover_image_url)')
       .eq('username', username)
       .maybeSingle()
 
@@ -91,6 +119,7 @@ export default function Profile({ session }) {
     setProfile(prof)
     setAccentColor(prof.accent_color || '#c0521e')
     setFeaturedBook(prof.books || null)
+    setBannerUrl(prof.banner_url || null)
 
     const isOwn = session?.user?.id === prof.id
     if (!isOwn && session?.user?.id) {
@@ -218,7 +247,45 @@ export default function Profile({ session }) {
       <NavBar session={session} />
 
       {/* ── HERO ── */}
-      <div style={{ ...s.hero, background: `linear-gradient(160deg, #1e140a 0%, #2e1f10 60%, ${accentColor}22 100%)` }}>
+      <div style={{
+        ...s.hero,
+        backgroundImage: bannerUrl
+          ? `linear-gradient(160deg, rgba(10,6,2,0.72) 0%, rgba(26,16,6,0.60) 55%, ${accentColor}44 100%), url(${bannerUrl})`
+          : `linear-gradient(160deg, #1e140a 0%, #2e1f10 60%, ${accentColor}22 100%)`,
+        backgroundSize: bannerUrl ? 'cover' : undefined,
+        backgroundPosition: bannerUrl ? 'center 30%' : undefined,
+      }}>
+        {/* Banner upload/remove controls — own profile only */}
+        {isOwnProfile && (
+          <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 6, zIndex: 10 }}>
+            <button
+              onClick={() => bannerInputRef.current?.click()}
+              disabled={uploadingBanner}
+              title={bannerUrl ? 'Change banner' : 'Add banner image'}
+              style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: "'DM Sans', sans-serif", backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', gap: 5 }}
+            >
+              {uploadingBanner ? '…' : (
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                    <circle cx="12" cy="13" r="4"/>
+                  </svg>
+                  {bannerUrl ? 'Change banner' : 'Add banner'}
+                </>
+              )}
+            </button>
+            {bannerUrl && (
+              <button
+                onClick={removeBanner}
+                title="Remove banner"
+                style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 7, padding: '5px 9px', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', fontSize: 12, fontFamily: "'DM Sans', sans-serif", backdropFilter: 'blur(6px)' }}
+              >
+                ✕
+              </button>
+            )}
+            <input ref={bannerInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
+          </div>
+        )}
         <div style={s.heroInner}>
 
           {/* Avatar */}

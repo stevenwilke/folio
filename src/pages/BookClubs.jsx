@@ -16,6 +16,11 @@ function timeAgo(dateStr) {
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+function fmtDate(d) {
+  const [y, m, day] = d.split('-').map(Number)
+  return new Date(y, m - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 function FakeCover({ title, size = 44 }) {
   const colors = ['#7b4f3a', '#4a6b8a', '#5a7a5a', '#2c3e50', '#8b2500', '#b8860b', '#3d5a5a', '#c0521e']
   const c1 = colors[(title || '?').charCodeAt(0) % colors.length]
@@ -259,6 +264,19 @@ function ClubDetail({ club, session, onBack, onClubUpdate, onClubDeleted }) {
   // Role changes
   const [promotingUser, setPromotingUser] = useState(null)
 
+  // History + nominations + voting
+  const [history, setHistory] = useState([])
+  const [nominations, setNominations] = useState([])
+  const [nomQuery, setNomQuery] = useState('')
+  const [nomResults, setNomResults] = useState([])
+  const [searchingNom, setSearchingNom] = useState(false)
+  const [nominating, setNominating] = useState(null)
+  const [voting, setVoting] = useState(null)
+
+  // Due date
+  const [dueDate, setDueDate] = useState(club.current_book_due_date || '')
+  const [savingDue, setSavingDue] = useState(false)
+
   const messagesEndRef = useRef(null)
   const isAdmin = members.some(m => m.user_id === session.user.id && m.role === 'admin')
     || club.book_club_members?.some(m => m.user_id === session.user.id && m.role === 'admin')
@@ -266,6 +284,8 @@ function ClubDetail({ club, session, onBack, onClubUpdate, onClubDeleted }) {
   useEffect(() => {
     fetchPosts()
     fetchMembers()
+    fetchHistory()
+    fetchNominations()
   }, [club.id])
 
   useEffect(() => {
@@ -332,14 +352,106 @@ function ClubDetail({ club, session, onBack, onClubUpdate, onClubDeleted }) {
     return () => clearTimeout(t)
   }, [bookQuery, showChangeBook])
 
+  async function fetchHistory() {
+    const { data } = await supabase
+      .from('book_club_history')
+      .select('id, finished_at, books(id, title, author, cover_image_url)')
+      .eq('club_id', club.id)
+      .order('finished_at', { ascending: false })
+    setHistory(data || [])
+  }
+
+  async function fetchNominations() {
+    const { data } = await supabase
+      .from('book_club_nominations')
+      .select('id, book_id, nominated_by, books(id, title, author, cover_image_url), profiles(username), book_club_votes(user_id)')
+      .eq('club_id', club.id)
+      .order('created_at', { ascending: true })
+    setNominations(data || [])
+  }
+
   async function changeBook(bookId) {
     setChangingBook(true)
-    await supabase.from('book_clubs').update({ current_book_id: bookId }).eq('id', club.id)
+    // Auto-archive the current book before switching
+    if (club.current_book_id) {
+      await supabase.from('book_club_history').upsert(
+        { club_id: club.id, book_id: club.current_book_id, finished_at: new Date().toISOString().split('T')[0] },
+        { onConflict: 'club_id,book_id' }
+      )
+    }
+    await supabase.from('book_clubs')
+      .update({ current_book_id: bookId, current_book_due_date: null })
+      .eq('id', club.id)
     setChangingBook(false)
     setShowChangeBook(false)
     setBookQuery('')
+    setDueDate('')
     onClubUpdate()
     fetchMembers()
+    fetchHistory()
+  }
+
+  async function saveDueDate() {
+    setSavingDue(true)
+    await supabase.from('book_clubs')
+      .update({ current_book_due_date: dueDate || null })
+      .eq('id', club.id)
+    setSavingDue(false)
+    onClubUpdate()
+  }
+
+  async function nominateBook(book) {
+    setNominating(book.id)
+    await supabase.from('book_club_nominations').insert({
+      club_id: club.id,
+      book_id: book.id,
+      nominated_by: session.user.id,
+    })
+    setNominating(null)
+    setNomQuery('')
+    setNomResults([])
+    fetchNominations()
+  }
+
+  async function removeNomination(nominationId) {
+    await supabase.from('book_club_nominations').delete().eq('id', nominationId)
+    fetchNominations()
+  }
+
+  async function toggleVote(nomination) {
+    const hasVoted = nomination.book_club_votes?.some(v => v.user_id === session.user.id)
+    setVoting(nomination.id)
+    if (hasVoted) {
+      await supabase.from('book_club_votes')
+        .delete().eq('nomination_id', nomination.id).eq('user_id', session.user.id)
+    } else {
+      await supabase.from('book_club_votes').insert({
+        nomination_id: nomination.id,
+        club_id: club.id,
+        user_id: session.user.id,
+      })
+    }
+    setVoting(null)
+    fetchNominations()
+  }
+
+  async function selectWinner(nomination) {
+    setChangingBook(true)
+    if (club.current_book_id) {
+      await supabase.from('book_club_history').upsert(
+        { club_id: club.id, book_id: club.current_book_id, finished_at: new Date().toISOString().split('T')[0] },
+        { onConflict: 'club_id,book_id' }
+      )
+    }
+    await supabase.from('book_clubs')
+      .update({ current_book_id: nomination.book_id, current_book_due_date: null })
+      .eq('id', club.id)
+    await supabase.from('book_club_nominations').delete().eq('club_id', club.id)
+    setChangingBook(false)
+    setDueDate('')
+    onClubUpdate()
+    fetchHistory()
+    fetchNominations()
   }
 
   // Invite search
@@ -412,6 +524,22 @@ function ClubDetail({ club, session, onBack, onClubUpdate, onClubDeleted }) {
     onClubUpdate()
   }
 
+  // Nomination book search
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!nomQuery.trim()) { setNomResults([]); return }
+      setSearchingNom(true)
+      const existingBookIds = nominations.map(n => n.book_id)
+      supabase.from('books').select('id, title, author, cover_image_url')
+        .ilike('title', `%${nomQuery}%`).limit(6)
+        .then(({ data }) => {
+          setNomResults((data || []).filter(b => !existingBookIds.includes(b.id)))
+          setSearchingNom(false)
+        })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [nomQuery, nominations])
+
   const progressMap = Object.fromEntries(memberProgress.map(e => [e.user_id, e]))
 
   return (
@@ -432,6 +560,11 @@ function ClubDetail({ club, session, onBack, onClubUpdate, onClubDeleted }) {
             <div>
               <div style={s.detailBookLabel}>Currently Reading</div>
               <div style={s.detailBookTitle}>{club.books.title}</div>
+              {club.current_book_due_date && (
+                <div style={{ fontSize: 11, color: theme.gold, marginTop: 3, fontWeight: 600 }}>
+                  📅 Due {fmtDate(club.current_book_due_date)}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -617,6 +750,136 @@ function ClubDetail({ club, session, onBack, onClubUpdate, onClubDeleted }) {
             </div>
           )}
 
+          {/* Past Reads */}
+          {history.length > 0 && (
+            <div style={s.panelSection}>
+              <div style={{ ...s.panelTitle, marginBottom: 12 }}>Past Reads</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {history.map(item => (
+                  <div key={item.id} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    {item.books?.cover_image_url
+                      ? <img src={item.books.cover_image_url} alt={item.books.title} style={{ width: 32, height: 48, objectFit: 'cover', borderRadius: 3, flexShrink: 0 }} />
+                      : <FakeCover title={item.books?.title || '?'} size={32} />
+                    }
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{item.books?.title}</div>
+                      <div style={{ fontSize: 11, color: theme.textSubtle }}>by {item.books?.author}</div>
+                      <div style={{ fontSize: 11, color: theme.textSubtle }}>Finished {fmtDate(item.finished_at)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Vote on Next Book */}
+          <div style={s.panelSection}>
+            <div style={{ ...s.panelTitle, marginBottom: 4 }}>Vote on Next Book</div>
+            <div style={{ fontSize: 12, color: theme.textSubtle, marginBottom: 12 }}>
+              Nominate a book and vote — the club admin picks the winner.
+            </div>
+
+            {/* Nominate search */}
+            <input
+              style={{ ...s.input, marginBottom: 4 }}
+              placeholder="Search to nominate a book…"
+              value={nomQuery}
+              onChange={e => setNomQuery(e.target.value)}
+            />
+            {nomQuery && (
+              <div style={{ ...s.inviteResults, marginBottom: 10 }}>
+                {searchingNom
+                  ? <div style={s.smallHint}>Searching…</div>
+                  : nomResults.length === 0
+                  ? <div style={s.smallHint}>No books found</div>
+                  : nomResults.map(book => (
+                    <div key={book.id} style={s.inviteRow}>
+                      {book.cover_image_url
+                        ? <img src={book.cover_image_url} alt={book.title} style={{ width: 24, height: 36, objectFit: 'cover', borderRadius: 2, flexShrink: 0 }} />
+                        : <FakeCover title={book.title} size={24} />
+                      }
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>{book.title}</div>
+                        <div style={{ fontSize: 11, color: theme.textSubtle }}>{book.author}</div>
+                      </div>
+                      <button
+                        style={{ ...s.btnSmall, opacity: nominating === book.id ? 0.6 : 1 }}
+                        onClick={() => nominateBook(book)}
+                        disabled={nominating === book.id}
+                      >
+                        {nominating === book.id ? '…' : 'Nominate'}
+                      </button>
+                    </div>
+                  ))
+                }
+              </div>
+            )}
+
+            {/* Nominations list */}
+            {nominations.length === 0 ? (
+              <div style={s.smallHint}>No nominations yet — search above to add one!</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {[...nominations]
+                  .sort((a, b) => (b.book_club_votes?.length || 0) - (a.book_club_votes?.length || 0))
+                  .map(nom => {
+                    const voteCount = nom.book_club_votes?.length || 0
+                    const hasVoted = nom.book_club_votes?.some(v => v.user_id === session.user.id)
+                    const canRemove = nom.nominated_by === session.user.id || isAdmin
+                    return (
+                      <div key={nom.id} style={{ background: theme.bg, borderRadius: 8, padding: '8px 10px', border: `1px solid ${theme.borderLight}` }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8 }}>
+                          {nom.books?.cover_image_url
+                            ? <img src={nom.books.cover_image_url} alt={nom.books.title} style={{ width: 28, height: 42, objectFit: 'cover', borderRadius: 3, flexShrink: 0 }} />
+                            : <FakeCover title={nom.books?.title || '?'} size={28} />
+                          }
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: theme.text }}>{nom.books?.title}</div>
+                            <div style={{ fontSize: 11, color: theme.textSubtle }}>{nom.books?.author}</div>
+                            <div style={{ fontSize: 10, color: theme.textSubtle, marginTop: 1 }}>
+                              by {nom.profiles?.username}
+                            </div>
+                          </div>
+                          {canRemove && (
+                            <button
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme.textSubtle, fontSize: 14, padding: '0 2px', lineHeight: 1 }}
+                              onClick={() => removeNomination(nom.id)}
+                              title="Remove nomination"
+                            >✕</button>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <button
+                            style={{
+                              padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                              background: hasVoted ? theme.rust : 'transparent',
+                              color: hasVoted ? '#fff' : theme.rust,
+                              border: `1px solid ${theme.rust}`,
+                              opacity: voting === nom.id ? 0.6 : 1,
+                            }}
+                            onClick={() => toggleVote(nom)}
+                            disabled={voting === nom.id}
+                          >
+                            {voting === nom.id ? '…' : hasVoted ? `❤️ ${voteCount}` : `🤍 ${voteCount}`}
+                          </button>
+                          {isAdmin && (
+                            <button
+                              style={{ ...s.btnSmall, fontSize: 11, padding: '3px 10px', opacity: changingBook ? 0.6 : 1 }}
+                              onClick={() => selectWinner(nom)}
+                              disabled={changingBook}
+                            >
+                              {changingBook ? '…' : '📖 Read This Next'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })
+                }
+              </div>
+            )}
+          </div>
+
           {/* Admin: Club Settings */}
           {isAdmin && (
             <div style={s.panelSection}>
@@ -663,6 +926,27 @@ function ClubDetail({ club, session, onBack, onClubUpdate, onClubDeleted }) {
                       }
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Reading deadline */}
+              {club.current_book_id && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 12, color: theme.textSubtle, marginBottom: 4 }}>Reading deadline:</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="date"
+                      style={{ ...s.input, flex: 1, padding: '5px 8px', fontSize: 13 }}
+                      value={dueDate}
+                      onChange={e => setDueDate(e.target.value)}
+                    />
+                    <button style={{ ...s.btnSmall, opacity: savingDue ? 0.6 : 1 }} onClick={saveDueDate} disabled={savingDue}>
+                      {savingDue ? '…' : 'Set'}
+                    </button>
+                    {dueDate && (
+                      <button style={s.btnSmallGhost} onClick={() => { setDueDate(''); saveDueDate() }}>Clear</button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -795,7 +1079,7 @@ export default function BookClubs({ session }) {
       const { data } = await supabase
         .from('book_clubs')
         .select(`
-          id, name, description, is_public, current_book_id, created_by,
+          id, name, description, is_public, current_book_id, current_book_due_date, created_by,
           books(id, title, author, cover_image_url),
           book_club_members(user_id, role, profiles(username, avatar_url))
         `)
@@ -808,7 +1092,7 @@ export default function BookClubs({ session }) {
     let discoverQuery = supabase
       .from('book_clubs')
       .select(`
-        id, name, description, is_public, current_book_id, created_by,
+        id, name, description, is_public, current_book_id, current_book_due_date, created_by,
         books(id, title, author, cover_image_url),
         book_club_members(user_id, role, profiles(username, avatar_url))
       `)
@@ -838,7 +1122,7 @@ export default function BookClubs({ session }) {
       const { data } = await supabase
         .from('book_clubs')
         .select(`
-          id, name, description, is_public, current_book_id, created_by,
+          id, name, description, is_public, current_book_id, current_book_due_date, created_by,
           books(id, title, author, cover_image_url),
           book_club_members(user_id, role, profiles(username, avatar_url))
         `)

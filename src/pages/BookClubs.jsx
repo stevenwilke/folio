@@ -146,7 +146,11 @@ function CreateClubModal({ session, onClose, onCreated }) {
 
     if (error || !club) {
       setSaving(false)
-      setErrorMsg(error?.message || 'Could not create club — please try again.')
+      setErrorMsg(
+        error?.code === '23505'
+          ? 'A club with that name already exists — please choose a different name.'
+          : error?.message || 'Could not create club — please try again.'
+      )
       return
     }
 
@@ -371,12 +375,20 @@ function ClubDetail({ club, session, onBack, onClubUpdate, onClubDeleted }) {
     const name = editName.trim()
     if (!name) return
     setSavingInfo(true)
-    await supabase.from('book_clubs').update({
+    const { error } = await supabase.from('book_clubs').update({
       name,
       description: editDesc.trim() || null,
       is_public: editPublic,
     }).eq('id', club.id)
     setSavingInfo(false)
+    if (error) {
+      alert(
+        error.code === '23505'
+          ? 'A club with that name already exists — please choose a different name.'
+          : 'Could not save changes — please try again.'
+      )
+      return
+    }
     setShowEditInfo(false)
     onClubUpdate()
   }

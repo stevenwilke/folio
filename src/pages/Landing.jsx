@@ -220,9 +220,9 @@ export default function Landing() {
       <footer style={s.footer}>
         <span>© 2026 Ex Libris Omnium</span>
         <span style={s.footerSep}>·</span>
-        <a href="#" style={s.footerLink}>Privacy</a>
+        <Link to="/privacy" style={s.footerLink}>Privacy</Link>
         <span style={s.footerSep}>·</span>
-        <a href="#" style={s.footerLink}>Terms</a>
+        <Link to="/terms" style={s.footerLink}>Terms</Link>
       </footer>
     </div>
   )

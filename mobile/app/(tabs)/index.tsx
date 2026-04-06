@@ -190,18 +190,27 @@ export default function LibraryScreen() {
 
   const ListHeader = () => (
     <View>
-      {/* Stats row */}
+      {/* Stats row — tapping a card filters the grid */}
       <View style={styles.statsRow}>
-        {[
-          { label: 'Total', value: stats.total },
-          { label: 'Read', value: stats.read },
-          { label: 'Reading', value: stats.reading },
-          { label: 'Want', value: stats.want },
-        ].map((stat) => (
-          <View key={stat.label} style={styles.statCard}>
-            <Text style={styles.statValue}>{stat.value}</Text>
-            <Text style={styles.statLabel}>{stat.label}</Text>
-          </View>
+        {([
+          { label: 'Total',   value: stats.total,   key: 'all'     },
+          { label: 'Read',    value: stats.read,    key: 'read'    },
+          { label: 'Reading', value: stats.reading, key: 'reading' },
+          { label: 'Want',    value: stats.want,    key: 'want'    },
+        ] as { label: string; value: number; key: FilterKey }[]).map((stat) => (
+          <TouchableOpacity
+            key={stat.label}
+            style={[styles.statCard, filter === stat.key && styles.statCardActive]}
+            onPress={() => setFilter(stat.key)}
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.statValue, filter === stat.key && styles.statValueActive]}>
+              {stat.value}
+            </Text>
+            <Text style={[styles.statLabel, filter === stat.key && styles.statLabelActive]}>
+              {stat.label}
+            </Text>
+          </TouchableOpacity>
         ))}
       </View>
 
@@ -619,17 +628,27 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
   },
+  statCardActive: {
+    backgroundColor: Colors.rust,
+    borderColor: Colors.rust,
+  },
   statValue: {
     fontSize: 20,
     fontWeight: '700',
     color: Colors.rust,
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
   },
+  statValueActive: {
+    color: '#fff',
+  },
   statLabel: {
     fontSize: 10,
     color: Colors.muted,
     marginTop: 2,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  statLabelActive: {
+    color: 'rgba(255,255,255,0.8)',
   },
   filterList: {
     paddingHorizontal: 16,

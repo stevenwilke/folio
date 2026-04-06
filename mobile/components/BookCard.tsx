@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
   addCoverOverlay: {
     position: 'absolute',
     top: 6,
-    right: 6,
+    left: 6,
   },
   cameraBtn: {
     backgroundColor: 'rgba(0,0,0,0.45)',

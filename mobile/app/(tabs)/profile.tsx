@@ -10,10 +10,12 @@ import {
   Platform,
   Alert,
   RefreshControl,
-  ScrollView,
+  Image,
+  Linking,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { BookCard, ReadStatus } from '../../components/BookCard';
@@ -23,6 +25,8 @@ interface Profile {
   id: string;
   username: string | null;
   bio: string | null;
+  avatar_url: string | null;
+  banner_url: string | null;
 }
 
 interface CollectionEntry {
@@ -49,11 +53,12 @@ function avatarColor(username: string): string {
 export default function ProfileScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [entries, setEntries] = useState<CollectionEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [showImport, setShowImport] = useState(false);
+  const [profile,       setProfile]       = useState<Profile | null>(null);
+  const [entries,       setEntries]        = useState<CollectionEntry[]>([]);
+  const [loading,       setLoading]        = useState(true);
+  const [refreshing,    setRefreshing]     = useState(false);
+  const [showImport,    setShowImport]     = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
 
   const COLUMNS = 2;
   const HORIZONTAL_PADDING = 16;
@@ -67,7 +72,7 @@ export default function ProfileScreen() {
     const [{ data: profileData }, { data: entriesData }] = await Promise.all([
       supabase
         .from('profiles')
-        .select('id, username, bio')
+        .select('id, username, bio, avatar_url, banner_url')
         .eq('id', user.id)
         .single(),
       supabase
@@ -118,6 +123,49 @@ export default function ProfileScreen() {
     ]);
   }
 
+  async function handleBannerUpload() {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Please allow access to your photo library.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [3, 1],
+      quality: 0.85,
+    });
+    if (result.canceled || !profile) return;
+
+    setUploadingBanner(true);
+    try {
+      const uri   = result.assets[0].uri;
+      const ext   = uri.split('.').pop() ?? 'jpg';
+      const path  = `${profile.id}/banner.${ext}`;
+      const resp  = await fetch(uri);
+      const blob  = await resp.blob();
+
+      const { error: uploadErr } = await supabase.storage
+        .from('banners')
+        .upload(path, blob, { upsert: true, contentType: `image/${ext}` });
+      if (uploadErr) throw uploadErr;
+
+      const { data: { publicUrl } } = supabase.storage.from('banners').getPublicUrl(path);
+      await supabase.from('profiles').update({ banner_url: publicUrl }).eq('id', profile.id);
+      setProfile(prev => prev ? { ...prev, banner_url: publicUrl } : prev);
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Could not upload banner.');
+    } finally {
+      setUploadingBanner(false);
+    }
+  }
+
+  async function handleRemoveBanner() {
+    if (!profile) return;
+    await supabase.from('profiles').update({ banner_url: null }).eq('id', profile.id);
+    setProfile(prev => prev ? { ...prev, banner_url: null } : prev);
+  }
+
   if (loading) {
     return (
       <View style={styles.loader}>
@@ -127,14 +175,14 @@ export default function ProfileScreen() {
   }
 
   const username = profile?.username ?? 'Reader';
-  const initial = username.charAt(0).toUpperCase();
-  const bgColor = avatarColor(username);
+  const initial  = username.charAt(0).toUpperCase();
+  const bgColor  = avatarColor(username);
 
   const stats = {
-    total: entries.length,
-    read: entries.filter((e) => e.read_status === 'read').length,
+    total:   entries.length,
+    read:    entries.filter((e) => e.read_status === 'read').length,
     reading: entries.filter((e) => e.read_status === 'reading').length,
-    want: entries.filter((e) => e.read_status === 'want').length,
+    want:    entries.filter((e) => e.read_status === 'want').length,
   };
 
   const renderItem = ({ item, index }: { item: CollectionEntry; index: number }) => {
@@ -156,26 +204,58 @@ export default function ProfileScreen() {
 
   const ListHeader = () => (
     <View>
-      {/* Profile header */}
-      <View style={styles.profileHeader}>
-        <View style={[styles.avatar, { backgroundColor: bgColor }]}>
-          <Text style={styles.avatarText}>{initial}</Text>
+      {/* ── Banner / Hero ── */}
+      <View style={styles.heroContainer}>
+        {profile?.banner_url ? (
+          <Image source={{ uri: profile.banner_url }} style={styles.bannerImage} resizeMode="cover" />
+        ) : (
+          <View style={styles.bannerPlaceholder} />
+        )}
+        {/* Dark overlay */}
+        <View style={styles.bannerOverlay} />
+
+        {/* Avatar + name sit on top of banner */}
+        <View style={styles.heroContent}>
+          <View style={[styles.avatar, { backgroundColor: bgColor }]}>
+            <Text style={styles.avatarText}>{initial}</Text>
+          </View>
+          <View style={styles.profileInfo}>
+            <Text style={styles.username}>{username}</Text>
+            {profile?.bio ? (
+              <Text style={styles.bio}>{profile.bio}</Text>
+            ) : null}
+          </View>
         </View>
-        <View style={styles.profileInfo}>
-          <Text style={styles.username}>{username}</Text>
-          {profile?.bio ? (
-            <Text style={styles.bio}>{profile.bio}</Text>
-          ) : null}
+
+        {/* Banner action buttons */}
+        <View style={styles.bannerActions}>
+          <TouchableOpacity
+            style={styles.bannerBtn}
+            onPress={handleBannerUpload}
+            disabled={uploadingBanner}
+          >
+            {uploadingBanner
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={styles.bannerBtnText}>
+                  {profile?.banner_url ? '🖼  Change Banner' : '🖼  Add Banner'}
+                </Text>
+            }
+          </TouchableOpacity>
+          {profile?.banner_url && (
+            <TouchableOpacity style={styles.bannerRemoveBtn} onPress={handleRemoveBanner}>
+              <Text style={styles.bannerRemoveBtnText}>✕</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
       {/* Stats row */}
       <View style={styles.statsRow}>
         {[
-          { label: 'Books', value: stats.total },
-          { label: 'Read', value: stats.read },
+          { label: 'Books',   value: stats.total },
+          { label: 'Read',    value: stats.read },
           { label: 'Reading', value: stats.reading },
-          { label: 'Want', value: stats.want },
+          { label: 'Want',    value: stats.want },
         ].map((stat) => (
           <View key={stat.label} style={styles.statCard}>
             <Text style={styles.statValue}>{stat.value}</Text>
@@ -190,35 +270,51 @@ export default function ProfileScreen() {
         <Text style={styles.friendsBtnArrow}>›</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.editProfileBtn} onPress={() => router.push('/edit-profile' as any)}>
-        <Text style={styles.editProfileBtnText}>✏️  Edit Profile</Text>
+      <TouchableOpacity style={styles.menuBtn} onPress={() => router.push('/edit-profile' as any)}>
+        <Text style={styles.menuBtnText}>✏️  Edit Profile</Text>
         <Text style={styles.friendsBtnArrow}>›</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.editProfileBtn} onPress={() => setShowImport(true)}>
-        <Text style={styles.editProfileBtnText}>📥  Import from Goodreads</Text>
+      <TouchableOpacity style={styles.menuBtn} onPress={() => setShowImport(true)}>
+        <Text style={styles.menuBtnText}>📥  Import from Goodreads</Text>
         <Text style={styles.friendsBtnArrow}>›</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.editProfileBtn} onPress={() => router.push('/stats' as any)}>
-        <Text style={styles.editProfileBtnText}>📊  My Stats</Text>
+      <TouchableOpacity style={styles.menuBtn} onPress={() => router.push('/stats' as any)}>
+        <Text style={styles.menuBtnText}>📊  My Stats</Text>
         <Text style={styles.friendsBtnArrow}>›</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.editProfileBtn} onPress={() => router.push('/shelves' as any)}>
-        <Text style={styles.editProfileBtnText}>📚  My Shelves</Text>
+      <TouchableOpacity style={styles.menuBtn} onPress={() => router.push('/badges' as any)}>
+        <Text style={styles.menuBtnText}>🏅  My Badges</Text>
         <Text style={styles.friendsBtnArrow}>›</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.editProfileBtn} onPress={() => router.push('/polls' as any)}>
-        <Text style={styles.editProfileBtnText}>🗳️  Reading Polls</Text>
+      <TouchableOpacity style={styles.menuBtn} onPress={() => router.push('/shelves' as any)}>
+        <Text style={styles.menuBtnText}>📚  My Shelves</Text>
         <Text style={styles.friendsBtnArrow}>›</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.editProfileBtn} onPress={() => router.push('/clubs' as any)}>
-        <Text style={styles.editProfileBtnText}>💬  Book Clubs</Text>
+      <TouchableOpacity style={styles.menuBtn} onPress={() => router.push('/polls' as any)}>
+        <Text style={styles.menuBtnText}>🗳️  Reading Polls</Text>
         <Text style={styles.friendsBtnArrow}>›</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity style={styles.menuBtn} onPress={() => router.push('/clubs' as any)}>
+        <Text style={styles.menuBtnText}>💬  Book Clubs</Text>
+        <Text style={styles.friendsBtnArrow}>›</Text>
+      </TouchableOpacity>
+
+      {/* Legal */}
+      <View style={styles.legalRow}>
+        <TouchableOpacity onPress={() => Linking.openURL('https://getfolio.app/privacy')}>
+          <Text style={styles.legalLink}>Privacy Policy</Text>
+        </TouchableOpacity>
+        <Text style={styles.legalSep}>·</Text>
+        <TouchableOpacity onPress={() => Linking.openURL('https://getfolio.app/terms')}>
+          <Text style={styles.legalLink}>Terms of Service</Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>My Collection</Text>
@@ -271,6 +367,8 @@ export default function ProfileScreen() {
   );
 }
 
+const BANNER_HEIGHT = 160;
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -282,41 +380,104 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: Colors.background,
   },
-  profileHeader: {
+
+  // ── Hero / Banner ──
+  heroContainer: {
+    height: BANNER_HEIGHT,
+    position: 'relative',
+    marginBottom: 12,
+  },
+  bannerImage: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+  },
+  bannerPlaceholder: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: '#2c1f10',
+  },
+  bannerOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(10,6,2,0.55)',
+  },
+  heroContent: {
+    position: 'absolute',
+    bottom: 14,
+    left: 16,
+    right: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 20,
-    gap: 16,
+    gap: 14,
   },
+  bannerActions: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  bannerBtn: {
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    minWidth: 36,
+    alignItems: 'center',
+  },
+  bannerBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  bannerRemoveBtn: {
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerRemoveBtnText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   avatarText: {
     color: Colors.white,
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
   },
   profileInfo: {
     flex: 1,
-    gap: 4,
+    gap: 3,
   },
   username: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
-    color: Colors.ink,
+    color: '#fff',
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
   },
   bio: {
-    fontSize: 13,
-    color: Colors.muted,
-    lineHeight: 18,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
+    lineHeight: 17,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
+
+  // ── Stats ──
   statsRow: {
     flexDirection: 'row',
     paddingHorizontal: 16,
@@ -344,34 +505,34 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
+
+  // ── Menu buttons ──
   friendsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 16,
-    marginBottom: 16,
-    backgroundColor: Colors.card,
+    marginBottom: 10,
+    backgroundColor: Colors.rust,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
   friendsBtnText: {
     flex: 1,
     fontSize: 15,
-    fontWeight: '600',
-    color: Colors.ink,
+    fontWeight: '700',
+    color: '#fff',
   },
   friendsBtnArrow: {
     fontSize: 20,
     color: Colors.muted,
     lineHeight: 22,
   },
-  editProfileBtn: {
+  menuBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 10,
     backgroundColor: Colors.card,
     borderRadius: 12,
     borderWidth: 1,
@@ -379,12 +540,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  editProfileBtnText: {
+  menuBtnText: {
     flex: 1,
     fontSize: 15,
     fontWeight: '600',
     color: Colors.ink,
   },
+
+  // ── Legal ──
+  legalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginBottom: 8,
+    gap: 8,
+  },
+  legalLink: {
+    fontSize: 12,
+    color: Colors.muted,
+    textDecorationLine: 'underline',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  legalSep: {
+    fontSize: 12,
+    color: Colors.muted,
+  },
+
+  // ── Collection section ──
   sectionHeader: {
     paddingHorizontal: 16,
     paddingBottom: 12,

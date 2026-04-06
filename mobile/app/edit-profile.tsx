@@ -10,22 +10,29 @@ import { Colors } from '../constants/colors';
 
 export default function EditProfileScreen() {
   const router = useRouter();
-  const [username, setUsername] = useState('');
-  const [bio,      setBio]      = useState('');
-  const [saving,   setSaving]   = useState(false);
-  const [loading,  setLoading]  = useState(true);
-  const [userId,   setUserId]   = useState<string | null>(null);
+  const [username,     setUsername]     = useState('');
+  const [bio,          setBio]          = useState('');
+  const [paypalHandle, setPaypalHandle] = useState('');
+  const [venmoHandle,  setVenmoHandle]  = useState('');
+  const [saving,       setSaving]       = useState(false);
+  const [loading,      setLoading]      = useState(true);
+  const [userId,       setUserId]       = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.back(); return; }
       setUserId(user.id);
-      const { data } = await supabase.from('profiles').select('username, bio')
-        .eq('id', user.id).single();
+      const { data } = await supabase
+        .from('profiles')
+        .select('username, bio, paypal_handle, venmo_handle')
+        .eq('id', user.id)
+        .single();
       if (data) {
         setUsername(data.username || '');
         setBio(data.bio || '');
+        setPaypalHandle(data.paypal_handle || '');
+        setVenmoHandle(data.venmo_handle || '');
       }
       setLoading(false);
     }
@@ -68,13 +75,23 @@ export default function EditProfileScreen() {
       return;
     }
     setSaving(true);
+
+    // Normalise payment handles — strip leading @ and URL prefixes
+    const paypal = paypalHandle.trim().replace(/^https?:\/\/paypal\.me\//i, '').replace(/^@/, '');
+    const venmo  = venmoHandle.trim().replace(/^@/, '');
+
     // Check uniqueness
     const { data: existing } = await supabase.from('profiles').select('id')
       .eq('username', u).neq('id', userId ?? '').maybeSingle();
     if (existing) { Alert.alert('Taken', 'That username is already taken.'); setSaving(false); return; }
 
     const { error } = await supabase.from('profiles')
-      .update({ username: u, bio: bio.trim() || null })
+      .update({
+        username:       u,
+        bio:            bio.trim() || null,
+        paypal_handle:  paypal || null,
+        venmo_handle:   venmo  || null,
+      })
       .eq('id', userId ?? '');
     setSaving(false);
     if (error) { Alert.alert('Error', 'Could not save changes.'); return; }
@@ -93,6 +110,8 @@ export default function EditProfileScreen() {
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+
+      {/* Profile Photo */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Profile Photo</Text>
         <TouchableOpacity style={styles.avatarBtn} onPress={changeAvatar} disabled={saving}>
@@ -100,6 +119,7 @@ export default function EditProfileScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Basic Info */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Basic Info</Text>
 
@@ -132,6 +152,42 @@ export default function EditProfileScreen() {
         </View>
       </View>
 
+      {/* Payment Methods */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>💳 Marketplace Payments</Text>
+        <Text style={styles.paymentDesc}>
+          Let buyers pay you via PayPal or Venmo when you sell books on the marketplace.
+        </Text>
+
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>PayPal Username</Text>
+          <TextInput
+            style={styles.input}
+            value={paypalHandle}
+            onChangeText={setPaypalHandle}
+            placeholder="your-paypal-username"
+            placeholderTextColor={Colors.muted}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Text style={styles.hint}>Just your username — e.g. "janedoe" (not the full URL).</Text>
+        </View>
+
+        <View style={[styles.field, { marginBottom: 0 }]}>
+          <Text style={styles.fieldLabel}>Venmo Handle</Text>
+          <TextInput
+            style={styles.input}
+            value={venmoHandle}
+            onChangeText={setVenmoHandle}
+            placeholder="your-venmo-handle"
+            placeholderTextColor={Colors.muted}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Text style={styles.hint}>Without the @, e.g. "janedoe".</Text>
+        </View>
+      </View>
+
       <TouchableOpacity
         style={[styles.saveBtn, saving && { opacity: 0.6 }]}
         onPress={save}
@@ -147,18 +203,19 @@ export default function EditProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  root:       { flex: 1, backgroundColor: Colors.background },
-  loader:     { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background },
-  content:    { padding: 16, paddingBottom: 40 },
-  section:    { backgroundColor: Colors.card, borderRadius: 14, borderWidth: 1, borderColor: Colors.border, padding: 16, marginBottom: 14 },
+  root:        { flex: 1, backgroundColor: Colors.background },
+  loader:      { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background },
+  content:     { padding: 16, paddingBottom: 40 },
+  section:     { backgroundColor: Colors.card, borderRadius: 14, borderWidth: 1, borderColor: Colors.border, padding: 16, marginBottom: 14 },
   sectionTitle:{ fontSize: 11, fontWeight: '700', color: Colors.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 },
-  field:      { marginBottom: 14 },
-  fieldLabel: { fontSize: 11, fontWeight: '600', color: '#3a3028', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 },
-  input:      { backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: Colors.ink },
-  textarea:   { minHeight: 80 },
-  hint:       { fontSize: 11, color: Colors.muted, marginTop: 4 },
-  avatarBtn:  { backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, padding: 14, alignItems: 'center' },
-  avatarBtnText: { fontSize: 14, color: Colors.rust, fontWeight: '600', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
-  saveBtn:    { backgroundColor: Colors.rust, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
-  saveBtnText:{ color: '#fff', fontSize: 16, fontWeight: '700', fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }) },
+  paymentDesc: { fontSize: 13, color: Colors.muted, lineHeight: 18, marginBottom: 14, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  field:       { marginBottom: 14 },
+  fieldLabel:  { fontSize: 11, fontWeight: '600', color: '#3a3028', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 },
+  input:       { backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: Colors.ink },
+  textarea:    { minHeight: 80 },
+  hint:        { fontSize: 11, color: Colors.muted, marginTop: 4 },
+  avatarBtn:   { backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, padding: 14, alignItems: 'center' },
+  avatarBtnText:{ fontSize: 14, color: Colors.rust, fontWeight: '600', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  saveBtn:     { backgroundColor: Colors.rust, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700', fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }) },
 });

@@ -449,58 +449,7 @@ export default function Profile({ session }) {
 
       {/* ── BADGES ── */}
       {badges.length > 0 && (
-        <div style={s.badgesSection}>
-          <div style={s.badgesSectionInner}>
-            <div style={s.badgesHeadRow}>
-              <span style={s.badgesTitle}>🏅 Badges</span>
-              <span style={s.badgesEarned}>
-                {badges.filter(b => b.earned).length} / {badges.length} earned
-              </span>
-            </div>
-            {BADGE_CATEGORIES.map(cat => {
-              const catBadges = badges.filter(b => b.category === cat)
-              if (!catBadges.length) return null
-              return (
-                <div key={cat} style={{ marginBottom: 20 }}>
-                  <div style={s.badgeCatLabel}>{cat}</div>
-                  <div style={s.badgeGrid}>
-                    {catBadges.map(b => {
-                      const ts = TIER_STYLES[b.tier]
-                      return (
-                        <div
-                          key={b.id}
-                          style={{
-                            ...s.badgeCard,
-                            background:   b.earned ? ts.bg     : theme.bgSubtle,
-                            borderColor:  b.earned ? ts.border : theme.borderLight,
-                            opacity:      b.earned ? 1 : 0.72,
-                          }}
-                          title={b.desc}
-                        >
-                          <div style={s.badgeEmoji}>{b.earned ? b.emoji : '🔒'}</div>
-                          <div style={s.badgeCardName}>{b.name}</div>
-                          <div style={s.badgeCardDesc}>{b.desc}</div>
-                          {b.earned ? (
-                            <div style={{ ...s.badgeTierPill, background: ts.bg, color: ts.text, border: `1px solid ${ts.border}` }}>
-                              {ts.label}
-                            </div>
-                          ) : (
-                            <div style={s.badgeProgressWrap}>
-                              <div style={s.badgeProgressBg}>
-                                <div style={{ ...s.badgeProgressFill, width: `${b.pct}%`, background: ts.text }} />
-                              </div>
-                              <span style={s.badgeProgressLabel}>{b.prog.value.toLocaleString()} / {b.prog.max.toLocaleString()} {b.prog.label}</span>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <BadgesSection badges={badges} theme={theme} isMobile={isMobile} />
       )}
 
       {/* ── CONTENT ── */}
@@ -937,6 +886,125 @@ function ShelfHeader({ label, count, accent, theme }) {
   )
 }
 
+// ── BADGES SECTION ──
+const TIER_CARD = {
+  bronze:   { cardBg: 'linear-gradient(135deg,rgba(180,100,40,0.14),rgba(180,100,40,0.07))', border: 'rgba(180,100,40,0.40)', glow: 'rgba(180,100,40,0.18)', ringBg: 'rgba(180,100,40,0.15)', ringBorder: 'rgba(180,100,40,0.45)', name: '#7a3e0e', pill: 'rgba(180,100,40,0.15)', pillText: '#7a3e0e', pillBorder: 'rgba(180,100,40,0.35)', label: 'Bronze',   bar: '#c06820' },
+  silver:   { cardBg: 'linear-gradient(135deg,rgba(110,110,140,0.12),rgba(110,110,140,0.05))', border: 'rgba(110,110,140,0.38)', glow: 'rgba(110,110,140,0.14)', ringBg: 'rgba(110,110,140,0.12)', ringBorder: 'rgba(110,110,140,0.42)', name: '#505070', pill: 'rgba(110,110,140,0.14)', pillText: '#505070', pillBorder: 'rgba(110,110,140,0.32)', label: 'Silver',   bar: '#7070a0' },
+  gold:     { cardBg: 'linear-gradient(135deg,rgba(184,134,11,0.16),rgba(184,134,11,0.06))', border: 'rgba(184,134,11,0.45)', glow: 'rgba(184,134,11,0.22)', ringBg: 'rgba(184,134,11,0.16)', ringBorder: 'rgba(184,134,11,0.50)', name: '#7a580a', pill: 'rgba(184,134,11,0.17)', pillText: '#7a580a', pillBorder: 'rgba(184,134,11,0.40)', label: 'Gold',     bar: '#b8860b' },
+  platinum: { cardBg: 'linear-gradient(135deg,rgba(0,148,148,0.13),rgba(0,148,148,0.05))',  border: 'rgba(0,148,148,0.38)',  glow: 'rgba(0,148,148,0.18)', ringBg: 'rgba(0,148,148,0.13)', ringBorder: 'rgba(0,148,148,0.44)', name: '#006868', pill: 'rgba(0,148,148,0.14)', pillText: '#006868', pillBorder: 'rgba(0,148,148,0.34)', label: 'Platinum', bar: '#009090' },
+}
+
+function BadgesSection({ badges, theme, isMobile }) {
+  const [showLocked, setShowLocked] = useState(false)
+  const earned = badges.filter(b => b.earned)
+  const locked = badges.filter(b => !b.earned)
+
+  return (
+    <div style={{ background: theme.bg, borderTop: `1px solid ${theme.border}`, borderBottom: `1px solid ${theme.border}` }}>
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: isMobile ? '24px 16px' : '32px 32px' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+          <span style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: theme.text }}>🏅 Badges</span>
+          <span style={{ fontSize: 12, color: theme.textSubtle, background: theme.bgSubtle, border: `1px solid ${theme.border}`, padding: '2px 10px', borderRadius: 20 }}>
+            {earned.length} / {badges.length} earned
+          </span>
+        </div>
+
+        {/* Earned — prominent grid */}
+        {earned.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '20px 0 28px', color: theme.textSubtle, fontSize: 14 }}>
+            No badges yet — keep reading to earn your first one!
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(auto-fill,minmax(150px,1fr))', gap: 12, marginBottom: locked.length ? 28 : 0 }}>
+            {earned.map(b => {
+              const t = TIER_CARD[b.tier] || TIER_CARD.bronze
+              return (
+                <div key={b.id} title={b.desc} style={{
+                  borderRadius: 14, border: `1.5px solid ${t.border}`,
+                  background: t.cardBg,
+                  boxShadow: `0 2px 16px ${t.glow}`,
+                  padding: '18px 12px 14px',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textAlign: 'center',
+                }}>
+                  {/* Emoji in a glowing ring */}
+                  <div style={{
+                    width: 56, height: 56, borderRadius: '50%',
+                    background: t.ringBg, border: `2px solid ${t.ringBorder}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 28, marginBottom: 4,
+                    boxShadow: `0 0 12px ${t.glow}`,
+                  }}>
+                    {b.emoji}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: t.name, lineHeight: 1.2 }}>{b.name}</div>
+                  <div style={{ fontSize: 10, color: theme.textSubtle, lineHeight: 1.4, flexGrow: 1 }}>{b.desc}</div>
+                  <div style={{ marginTop: 4, fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.8, padding: '3px 10px', borderRadius: 20, background: t.pill, color: t.pillText, border: `1px solid ${t.pillBorder}` }}>
+                    {t.label}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Locked — collapsed by default */}
+        {locked.length > 0 && (
+          <>
+            <button
+              onClick={() => setShowLocked(v => !v)}
+              style={{ background: 'none', border: `1px solid ${theme.border}`, borderRadius: 8, padding: '6px 14px', fontSize: 12, color: theme.textSubtle, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 6, marginBottom: showLocked ? 20 : 0 }}
+            >
+              <span>{showLocked ? '▾' : '▸'}</span>
+              {showLocked ? 'Hide' : 'Show'} {locked.length} locked badge{locked.length !== 1 ? 's' : ''}
+            </button>
+
+            {showLocked && BADGE_CATEGORIES.map(cat => {
+              const catBadges = locked.filter(b => b.category === cat)
+              if (!catBadges.length) return null
+              return (
+                <div key={cat} style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, color: theme.textSubtle, marginBottom: 8 }}>{cat}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(auto-fill,minmax(130px,1fr))', gap: 8 }}>
+                    {catBadges.map(b => {
+                      const t = TIER_CARD[b.tier] || TIER_CARD.bronze
+                      return (
+                        <div key={b.id} title={b.desc} style={{
+                          borderRadius: 12, border: `1px solid ${theme.border}`,
+                          background: theme.bgSubtle,
+                          padding: '14px 10px 12px',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, textAlign: 'center',
+                        }}>
+                          {/* Emoji greyed out with tiny lock chip */}
+                          <div style={{ position: 'relative', marginBottom: 2 }}>
+                            <div style={{ fontSize: 28, lineHeight: 1, filter: 'grayscale(1) opacity(0.28)' }}>{b.emoji}</div>
+                            <div style={{ position: 'absolute', bottom: -4, right: -6, fontSize: 10, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 10, padding: '0px 3px', lineHeight: '16px' }}>🔒</div>
+                          </div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: theme.textMuted, lineHeight: 1.2 }}>{b.name}</div>
+                          {/* Progress bar */}
+                          <div style={{ width: '100%', marginTop: 2 }}>
+                            <div style={{ height: 5, background: theme.borderLight, borderRadius: 3, overflow: 'hidden', marginBottom: 4 }}>
+                              <div style={{ height: '100%', width: `${b.pct}%`, background: t.bar, borderRadius: 3, transition: 'width 0.5s' }} />
+                            </div>
+                            <div style={{ fontSize: 9, color: theme.textSubtle }}>
+                              {b.prog.value.toLocaleString()} / {b.prog.max.toLocaleString()} {b.prog.label}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── SHELF CARD ──
 function ShelfCard({ entry, onSelect, canBorrow, onBorrow, theme }) {
   const book  = entry.books
@@ -1209,23 +1277,7 @@ function makeStyles(theme, accentColor = '#c0521e', isMobile = false) {
     goalPct:         { color: 'rgba(253,248,240,0.45)' },
     goalEditBtn:     { background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 13, padding: '2px 4px', opacity: 0.6, lineHeight: 1 },
 
-    // Badges strip — directly below hero, still dark
-    badgesSection:      { background: 'rgba(26,18,8,0.35)', borderBottom: '1px solid rgba(255,255,255,0.05)' },
-    badgesSectionInner: { maxWidth: 960, margin: '0 auto', padding: isMobile ? '16px 16px' : '20px 32px' },
-    badgesHeadRow:      { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 },
-    badgesTitle:        { fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 700, color: 'rgba(253,248,240,0.85)' },
-    badgesEarned:       { fontSize: 11, color: 'rgba(253,248,240,0.45)', background: 'rgba(255,255,255,0.08)', padding: '2px 10px', borderRadius: 20 },
-    badgeCatLabel:      { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: 'rgba(253,248,240,0.35)', marginBottom: 8 },
-    badgeGrid:          { display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(auto-fill,minmax(160px,1fr))', gap: 10 },
-    badgeCard:          { borderRadius: 10, border: '1px solid', padding: '12px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, textAlign: 'center', transition: 'opacity 0.2s' },
-    badgeEmoji:         { fontSize: 28, lineHeight: 1, marginBottom: 2 },
-    badgeCardName:      { fontSize: 12, fontWeight: 700, color: 'rgba(253,248,240,0.85)', lineHeight: 1.2 },
-    badgeCardDesc:      { fontSize: 10, color: 'rgba(253,248,240,0.45)', lineHeight: 1.3 },
-    badgeTierPill:      { marginTop: 4, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 8px', borderRadius: 20 },
-    badgeProgressWrap:  { marginTop: 4, width: '100%' },
-    badgeProgressBg:    { height: 3, background: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden', marginBottom: 3 },
-    badgeProgressFill:  { height: '100%', borderRadius: 2, transition: 'width 0.4s' },
-    badgeProgressLabel: { fontSize: 9, color: 'rgba(253,248,240,0.35)' },
+    // (badges moved to BadgesSection component with self-contained styles)
 
     // Content
     content:     { maxWidth: 960, margin: '0 auto', padding: isMobile ? '16px' : '36px 32px' },

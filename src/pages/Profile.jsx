@@ -83,7 +83,7 @@ export default function Profile({ session }) {
 
     const { data: prof } = await supabase
       .from('profiles')
-      .select('id, username, bio, is_public, created_at, avatar_url, accent_color, featured_book_id, books!profiles_featured_book_id_fkey(id, title, author, cover_image_url)')
+      .select('id, username, bio, is_public, created_at, avatar_url, accent_color, featured_book_id, paypal_handle, venmo_handle, books!profiles_featured_book_id_fkey(id, title, author, cover_image_url)')
       .eq('username', username)
       .maybeSingle()
 

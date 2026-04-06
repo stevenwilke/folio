@@ -33,6 +33,7 @@ export default function Marketplace({ session }) {
   const [myListings, setMyListings]     = useState([])
   const [purchases, setPurchases]       = useState([])
   const [sellingOrders, setSellingOrders] = useState([])
+  const [myProfile, setMyProfile]       = useState({})
   const [loading, setLoading]           = useState(true)
 
   // Browse filters
@@ -52,13 +53,14 @@ export default function Marketplace({ session }) {
       { data: mine },
       { data: myPurchases },
       { data: incomingOrders },
+      { data: ownProfile },
     ] = await Promise.all([
       supabase
         .from('listings')
         .select(`
           id, price, condition, description, created_at,
           books ( id, title, author, cover_image_url ),
-          profiles!listings_seller_id_fkey ( id, username )
+          profiles!listings_seller_id_fkey ( id, username, paypal_handle, venmo_handle )
         `)
         .eq('status', 'active')
         .neq('seller_id', session.user.id)
@@ -93,24 +95,33 @@ export default function Marketplace({ session }) {
         .eq('seller_id', session.user.id)
         .in('status', ['pending', 'confirmed', 'shipped'])
         .order('created_at', { ascending: false }),
+
+      supabase
+        .from('profiles')
+        .select('id, paypal_handle, venmo_handle')
+        .eq('id', session.user.id)
+        .single(),
     ])
 
-    // Resolve usernames separately (orders references auth.users, not profiles)
+    // Resolve usernames + payment handles (orders references auth.users, not profiles)
     const allOrderUserIds = [
-      ...(myPurchases   || []).map(o => o.seller_id),
+      ...(myPurchases    || []).map(o => o.seller_id),
       ...(incomingOrders || []).map(o => o.buyer_id),
     ].filter(Boolean)
     let orderProfileMap = {}
     if (allOrderUserIds.length) {
       const { data: ops } = await supabase
-        .from('profiles').select('id, username').in('id', [...new Set(allOrderUserIds)])
-      orderProfileMap = Object.fromEntries((ops || []).map(p => [p.id, p.username]))
+        .from('profiles')
+        .select('id, username, paypal_handle, venmo_handle')
+        .in('id', [...new Set(allOrderUserIds)])
+      orderProfileMap = Object.fromEntries((ops || []).map(p => [p.id, p]))
     }
 
     setListings(all || [])
     setMyListings(mine || [])
-    setPurchases((myPurchases    || []).map(o => ({ ...o, profiles: { username: orderProfileMap[o.seller_id] } })))
-    setSellingOrders((incomingOrders || []).map(o => ({ ...o, profiles: { username: orderProfileMap[o.buyer_id] } })))
+    setMyProfile(ownProfile || {})
+    setPurchases((myPurchases    || []).map(o => ({ ...o, profiles: orderProfileMap[o.seller_id] || {} })))
+    setSellingOrders((incomingOrders || []).map(o => ({ ...o, profiles: orderProfileMap[o.buyer_id] || {} })))
     setLoading(false)
   }, [session.user.id])
 
@@ -234,6 +245,7 @@ export default function Marketplace({ session }) {
             historyListings={historyListings}
             sellingOrders={sellingOrders}
             pendingByListing={pendingByListing}
+            myProfile={myProfile}
             loading={loading}
             onRemove={removeListing}
             onMarkSold={markSold}
@@ -434,7 +446,7 @@ function BrowseTab({ listings, loading, search, onSearch, condFilter, onCondFilt
 }
 
 // ---- SELLING TAB ----
-function SellingTab({ activeListings, historyListings, sellingOrders, pendingByListing, loading, onRemove, onMarkSold, onConfirmOrder, onDeclineOrder, onMarkShipped, navigate, s, theme }) {
+function SellingTab({ activeListings, historyListings, sellingOrders, pendingByListing, myProfile, loading, onRemove, onMarkSold, onConfirmOrder, onDeclineOrder, onMarkShipped, navigate, s, theme }) {
   if (loading) return <div style={s.empty}>Loading…</div>
 
   if (!activeListings.length && !historyListings.length) {
@@ -481,6 +493,7 @@ function SellingTab({ activeListings, historyListings, sellingOrders, pendingByL
               <SellerOrderRow
                 key={order.id}
                 order={order}
+                myProfile={myProfile}
                 onConfirm={onConfirmOrder}
                 onDecline={onDeclineOrder}
                 onMarkShipped={onMarkShipped}
@@ -658,7 +671,7 @@ function MyListingCard({ listing, pendingCount, onRemove, onMarkSold, s, theme }
 }
 
 // ---- SELLER ORDER ROW ----
-function SellerOrderRow({ order, onConfirm, onDecline, onMarkShipped, s, theme }) {
+function SellerOrderRow({ order, myProfile, onConfirm, onDecline, onMarkShipped, s, theme }) {
   const [acting, setActing] = useState(false)
   const book    = order.listings?.books
   const buyer   = order.profiles
@@ -708,9 +721,21 @@ function SellerOrderRow({ order, onConfirm, onDecline, onMarkShipped, s, theme }
             </>
           )}
           {order.status === 'confirmed' && (
-            <button style={s.btnShip} disabled={acting} onClick={() => act(() => onMarkShipped(order.id))}>
-              {acting ? '…' : 'Mark Shipped'}
-            </button>
+            <>
+              {(myProfile.paypal_handle || myProfile.venmo_handle) ? (
+                <div style={{ fontSize: 11, color: theme.textSubtle, textAlign: 'right', marginBottom: 6, lineHeight: 1.4 }}>
+                  Waiting for payment via{' '}
+                  {[myProfile.paypal_handle && 'PayPal', myProfile.venmo_handle && 'Venmo'].filter(Boolean).join(' or ')}
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: theme.rust, textAlign: 'right', marginBottom: 6, lineHeight: 1.4 }}>
+                  Add PayPal/Venmo in your profile so buyers can pay you.
+                </div>
+              )}
+              <button style={s.btnShip} disabled={acting} onClick={() => act(() => onMarkShipped(order.id))}>
+                {acting ? '…' : 'Mark Shipped'}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -765,6 +790,9 @@ function BuyerOrderRow({ order, onCancel, onMarkReceived, navigate, s, theme }) 
       <div style={s.orderRight}>
         <div style={{ ...s.listingPrice, fontSize: 18 }}>${Number(order.price).toFixed(2)}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8, alignItems: 'flex-end' }}>
+          {order.status === 'confirmed' && (
+            <PaymentButtons seller={seller} amount={order.price} book={book} theme={theme} />
+          )}
           {(order.status === 'pending' || order.status === 'confirmed') && (
             <button style={s.btnCancel} disabled={acting} onClick={() => act(() => onCancel(order.id))}>
               {acting ? '…' : 'Cancel'}
@@ -777,6 +805,56 @@ function BuyerOrderRow({ order, onCancel, onMarkReceived, navigate, s, theme }) 
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ---- PAYMENT BUTTONS ----
+function PaymentButtons({ seller, amount, book, theme }) {
+  if (!seller?.paypal_handle && !seller?.venmo_handle) {
+    return (
+      <div style={{ fontSize: 11, color: theme.textSubtle, textAlign: 'right', lineHeight: 1.4 }}>
+        Seller hasn't added payment info yet. Contact them to arrange payment.
+      </div>
+    )
+  }
+  const note  = encodeURIComponent(`Book: ${book?.title || 'purchase'}`)
+  const amt   = Number(amount).toFixed(2)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: theme.textSubtle, textAlign: 'right' }}>
+        Pay seller now:
+      </div>
+      {seller.paypal_handle && (
+        <a
+          href={`https://paypal.me/${seller.paypal_handle}/${amt}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '7px 14px', borderRadius: 8, textDecoration: 'none',
+            background: '#003087', color: 'white',
+            fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans', sans-serif",
+          }}
+        >
+          <span style={{ fontSize: 14 }}>𝐏</span> PayPal ${amt}
+        </a>
+      )}
+      {seller.venmo_handle && (
+        <a
+          href={`https://venmo.com/${seller.venmo_handle}?txn=pay&amount=${amt}&note=${note}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '7px 14px', borderRadius: 8, textDecoration: 'none',
+            background: '#008CFF', color: 'white',
+            fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans', sans-serif",
+          }}
+        >
+          <span style={{ fontSize: 14 }}>✌</span> Venmo ${amt}
+        </a>
+      )}
     </div>
   )
 }
@@ -865,6 +943,22 @@ function ListingDetailModal({ listing, onClose, onBuyNow, navigate, s, theme, is
               {seller?.username}
             </span>
           </div>
+
+          {(seller?.paypal_handle || seller?.venmo_handle) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, color: theme.textSubtle }}>Accepts:</span>
+              {seller.paypal_handle && (
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: 'rgba(0,48,135,0.12)', color: '#003087' }}>
+                  💳 PayPal
+                </span>
+              )}
+              {seller.venmo_handle && (
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20, background: 'rgba(0,140,255,0.12)', color: '#0070e0' }}>
+                  ✌ Venmo
+                </span>
+              )}
+            </div>
+          )}
 
           <button
             style={{ ...s.btnPrimary, fontSize: 15, padding: '12px 24px', marginTop: 8, alignSelf: 'flex-start' }}

@@ -18,6 +18,10 @@ create table if not exists book_club_members (
   joined_at  timestamptz not null default now(),
   unique (club_id, user_id)
 );
+-- FK to profiles so PostgREST can resolve profiles(username, avatar_url) joins
+alter table book_club_members
+  add constraint if not exists book_club_members_profiles_fkey
+  foreign key (user_id) references profiles(id) on delete cascade;
 
 -- ─── book_club_posts ──────────────────────────────────────────────────────────
 create table if not exists book_club_posts (
@@ -27,6 +31,10 @@ create table if not exists book_club_posts (
   content    text not null,
   created_at timestamptz not null default now()
 );
+-- FK to profiles so PostgREST can resolve profiles(username, avatar_url) joins
+alter table book_club_posts
+  add constraint if not exists book_club_posts_profiles_fkey
+  foreign key (user_id) references profiles(id) on delete cascade;
 
 -- ─── Helper functions (security definer breaks the RLS recursion cycle) ────────
 -- These query book_club_members bypassing RLS, so policies on book_clubs

@@ -150,11 +150,17 @@ function CreateClubModal({ session, onClose, onCreated }) {
       return
     }
 
-    await supabase.from('book_club_members').insert({
+    const { error: memberError } = await supabase.from('book_club_members').insert({
       club_id: club.id,
       user_id: session.user.id,
       role: 'admin',
     })
+
+    if (memberError) {
+      setSaving(false)
+      setErrorMsg(memberError.message || 'Club created but could not add you as a member.')
+      return
+    }
 
     setSaving(false)
     onCreated()
@@ -615,25 +621,31 @@ export default function BookClubs({ session }) {
     setLoading(true)
     const userId = session.user.id
 
-    // Clubs I'm a member of
+    // Step 1: get the IDs of clubs this user belongs to
     const { data: memberRows } = await supabase
       .from('book_club_members')
-      .select(`
-        club_id, role,
-        book_clubs(
+      .select('club_id')
+      .eq('user_id', userId)
+
+    const joinedIds = (memberRows || []).map(r => r.club_id)
+
+    // Step 2: fetch full club details for clubs the user has joined
+    let myClubsData = []
+    if (joinedIds.length > 0) {
+      const { data } = await supabase
+        .from('book_clubs')
+        .select(`
           id, name, description, is_public, current_book_id, created_by,
           books(id, title, author, cover_image_url),
           book_club_members(user_id, role, profiles(username, avatar_url))
-        )
-      `)
-      .eq('user_id', userId)
+        `)
+        .in('id', joinedIds)
+      myClubsData = data || []
+    }
+    setMyClubs(myClubsData)
 
-    const joined = (memberRows || []).map(r => r.book_clubs).filter(Boolean)
-    const joinedIds = joined.map(c => c.id)
-    setMyClubs(joined)
-
-    // Public clubs I haven't joined
-    const { data: publicClubs } = await supabase
+    // Step 3: public clubs the user hasn't joined
+    let discoverQuery = supabase
       .from('book_clubs')
       .select(`
         id, name, description, is_public, current_book_id, created_by,
@@ -641,9 +653,13 @@ export default function BookClubs({ session }) {
         book_club_members(user_id, role, profiles(username, avatar_url))
       `)
       .eq('is_public', true)
-      .not('id', 'in', `(${joinedIds.length ? joinedIds.join(',') : '00000000-0000-0000-0000-000000000000'})`)
       .limit(20)
 
+    if (joinedIds.length > 0) {
+      discoverQuery = discoverQuery.not('id', 'in', `(${joinedIds.join(',')})`)
+    }
+
+    const { data: publicClubs } = await discoverQuery
     setDiscoverClubs(publicClubs || [])
     setLoading(false)
   }

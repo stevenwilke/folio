@@ -43,6 +43,12 @@
           "color": "#c0521e",
           "defaultChannel": "default"
         }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Ex Libris uses your contacts to find friends who are already on the app. No contact data is stored or shared."
+        }
       ]
     ],
     "scheme": "exlibris",

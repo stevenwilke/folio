@@ -752,7 +752,11 @@ export default function BookDetail({ bookId, session, onBack }) {
                   )}
                   {valuation?.list_price != null && <span style={s.valuationDivider}>·</span>}
                   <a
-                    href={`https://bookshop.org/search?keywords=${encodeURIComponent(book.isbn_13 || book.isbn_10 || book.title)}`}
+                    href={
+                      (book.isbn_13 || book.isbn_10)
+                        ? `https://bookshop.org/a/122832/${book.isbn_13 || book.isbn_10}`
+                        : `https://bookshop.org/search?keywords=${encodeURIComponent(book.title)}`
+                    }
                     target="_blank" rel="noopener noreferrer"
                     style={{ ...s.valuationSub, color: theme.rust, textDecoration: 'none', fontStyle: 'italic' }}
                   >

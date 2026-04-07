@@ -55,10 +55,103 @@ export default function AuthorScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [myId, setMyId] = useState<string | null>(null);
 
+  // Author record, follow, posts
+  const [authorRecord, setAuthorRecord] = useState<any>(null);
+  const [bio, setBio]                   = useState<string | null>(null);
+  const [olPhoto, setOlPhoto]           = useState<string | null>(null);
+  const [followed, setFollowed]         = useState(false);
+  const [isFavorite, setIsFavorite]     = useState(false);
+  const [followId, setFollowId]         = useState<string | null>(null);
+  const [followCount, setFollowCount]   = useState(0);
+  const [toggling, setToggling]         = useState(false);
+  const [posts, setPosts]               = useState<any[]>([]);
+
+  async function loadAuthorRecord(userId: string) {
+    // Upsert author by name
+    const { data: existing } = await supabase
+      .from('authors').select('*').ilike('name', authorName).maybeSingle();
+    let record = existing;
+    if (!record) {
+      const { data: inserted } = await supabase
+        .from('authors').insert({ name: authorName }).select('*').single();
+      record = inserted;
+    }
+    if (!record) return;
+    setAuthorRecord(record);
+
+    // Follow count
+    const { count } = await supabase
+      .from('author_follows').select('*', { count: 'exact', head: true }).eq('author_id', record.id);
+    setFollowCount(count ?? 0);
+
+    // My follow status
+    const { data: myFollow } = await supabase
+      .from('author_follows').select('id, is_favorite')
+      .eq('author_id', record.id).eq('user_id', userId).maybeSingle();
+    setFollowed(!!myFollow);
+    setIsFavorite(myFollow?.is_favorite ?? false);
+    setFollowId(myFollow?.id ?? null);
+
+    // Posts
+    const { data: postsData } = await supabase
+      .from('author_posts').select('*').eq('author_id', record.id)
+      .order('created_at', { ascending: false });
+    setPosts(postsData || []);
+
+    // Bio
+    if (record.bio) { setBio(record.bio); }
+    if (record.photo_url) { setOlPhoto(record.photo_url); }
+    if (!record.bio) fetchOLBio();
+  }
+
+  async function fetchOLBio() {
+    try {
+      const r = await fetch(`https://openlibrary.org/search/authors.json?q=${encodeURIComponent(authorName)}&limit=1`);
+      const j = await r.json();
+      const olid = j.docs?.[0]?.key;
+      if (!olid) return;
+      const r2 = await fetch(`https://openlibrary.org/authors/${olid}.json`);
+      const j2 = await r2.json();
+      const bioRaw = j2.bio;
+      const bioText = typeof bioRaw === 'string' ? bioRaw : bioRaw?.value ?? null;
+      if (bioText) setBio(bioText.slice(0, 500));
+      const photoId = j2.photos?.[0];
+      if (photoId && photoId > 0) setOlPhoto(`https://covers.openlibrary.org/a/id/${photoId}-L.jpg`);
+    } catch {}
+  }
+
+  async function toggleFollow() {
+    if (!myId || !authorRecord) return;
+    setToggling(true);
+    if (followed) {
+      await supabase.from('author_follows').delete().eq('id', followId);
+      setFollowed(false); setIsFavorite(false); setFollowId(null);
+      setFollowCount(c => c - 1);
+    } else {
+      const { data } = await supabase
+        .from('author_follows')
+        .insert({ user_id: myId, author_id: authorRecord.id, is_favorite: false })
+        .select('id').single();
+      setFollowed(true); setFollowId(data?.id ?? null);
+      setFollowCount(c => c + 1);
+    }
+    setToggling(false);
+  }
+
+  async function toggleFavorite() {
+    if (!myId || !authorRecord || !followed) return;
+    setToggling(true);
+    const next = !isFavorite;
+    await supabase.from('author_follows').update({ is_favorite: next }).eq('id', followId);
+    setIsFavorite(next);
+    setToggling(false);
+  }
+
   async function fetchData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     setMyId(user.id);
+    loadAuthorRecord(user.id);
 
     // Folio books by this author
     const { data: folio } = await supabase
@@ -242,7 +335,20 @@ export default function AuthorScreen() {
       ListHeaderComponent={
         <>
           {/* Author header */}
-          <Text style={styles.authorName}>{authorName}</Text>
+          <View style={styles.authorHeaderRow}>
+            <View style={styles.authorAvatar}>
+              {olPhoto
+                ? <Image source={{ uri: olPhoto }} style={styles.authorAvatarImg} />
+                : <Text style={styles.authorAvatarInitial}>{authorName.charAt(0).toUpperCase()}</Text>
+              }
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.authorName}>{authorName}</Text>
+              {authorRecord?.is_verified && (
+                <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>✓ Verified Author</Text></View>
+              )}
+            </View>
+          </View>
 
           {/* Stats row */}
           <Text style={styles.statsRow}>
@@ -252,7 +358,71 @@ export default function AuthorScreen() {
             <Text style={styles.statLabel}>Read by </Text>
             <Text style={styles.statValue}>{friendCount}</Text>
             <Text style={styles.statLabel}> friend{friendCount !== 1 ? 's' : ''}</Text>
+            {followCount > 0 ? `  ·  ${followCount} follower${followCount !== 1 ? 's' : ''}` : ''}
           </Text>
+
+          {/* Follow / Favorite buttons */}
+          <View style={styles.followRow}>
+            <TouchableOpacity
+              style={[styles.followBtn, followed && styles.followBtnActive]}
+              onPress={toggleFollow}
+              disabled={toggling}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.followBtnText, followed && styles.followBtnTextActive]}>
+                {followed ? '✓ Following' : '+ Follow'}
+              </Text>
+            </TouchableOpacity>
+            {followed && (
+              <TouchableOpacity
+                style={[styles.favoriteBtn, isFavorite && styles.favoriteBtnActive]}
+                onPress={toggleFavorite}
+                disabled={toggling}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.favoriteBtnText, isFavorite && styles.favoriteBtnTextActive]}>
+                  {isFavorite ? '★ Favorite' : '☆ Favorite'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Bio */}
+          {bio ? (
+            <View style={styles.bioCard}>
+              <Text style={styles.bioText}>{bio}</Text>
+            </View>
+          ) : null}
+
+          {/* Author posts */}
+          {posts.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>From the Author</Text>
+              {posts.map(post => {
+                const typeMap: Record<string, { emoji: string; color: string; label: string }> = {
+                  update:       { emoji: '📝', color: '#5a7a5a', label: 'Update' },
+                  giveaway:     { emoji: '🎁', color: '#b8860b', label: 'Giveaway' },
+                  announcement: { emoji: '📣', color: '#c0521e', label: 'Announcement' },
+                  new_book:     { emoji: '📚', color: '#7b5ea8', label: 'New Book' },
+                };
+                const pt = typeMap[post.type] || typeMap.update;
+                return (
+                  <View key={post.id} style={styles.postCard}>
+                    <View style={styles.postCardHeader}>
+                      <View style={[styles.postTypeBadge, { backgroundColor: `${pt.color}22` }]}>
+                        <Text style={[styles.postTypeBadgeText, { color: pt.color }]}>{pt.emoji} {pt.label}</Text>
+                      </View>
+                      <Text style={styles.postDate}>
+                        {new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </Text>
+                    </View>
+                    {post.title ? <Text style={styles.postTitle}>{post.title}</Text> : null}
+                    <Text style={styles.postContent}>{post.content}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
 
           {/* Progress bar */}
           {totalFolio > 0 && (
@@ -556,6 +726,159 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: Colors.rust,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+
+  // Author header
+  authorHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 12,
+  },
+  authorAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: Colors.rust,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  authorAvatarImg: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+  },
+  authorAvatarInitial: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: '#fff',
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(90,122,90,0.15)',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginTop: 4,
+  },
+  verifiedBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#5a7a5a',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+
+  // Follow / Favorite buttons
+  followRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  followBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: Colors.rust,
+    backgroundColor: 'transparent',
+  },
+  followBtnActive: {
+    backgroundColor: Colors.rust,
+    borderColor: Colors.rust,
+  },
+  followBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.rust,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  followBtnTextActive: {
+    color: '#fff',
+  },
+  favoriteBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: Colors.gold,
+    backgroundColor: 'transparent',
+  },
+  favoriteBtnActive: {
+    backgroundColor: Colors.gold,
+    borderColor: Colors.gold,
+  },
+  favoriteBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.gold,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  favoriteBtnTextActive: {
+    color: '#fff',
+  },
+
+  // Bio
+  bioCard: {
+    backgroundColor: Colors.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 14,
+    marginBottom: 20,
+  },
+  bioText: {
+    fontSize: 14,
+    color: Colors.ink,
+    lineHeight: 22,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+
+  // Author posts
+  postCard: {
+    backgroundColor: Colors.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 14,
+    marginBottom: 10,
+  },
+  postCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  postTypeBadge: {
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  postTypeBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  postDate: {
+    fontSize: 12,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  postTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.ink,
+    marginBottom: 4,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  postContent: {
+    fontSize: 14,
+    color: Colors.ink,
+    lineHeight: 20,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
 

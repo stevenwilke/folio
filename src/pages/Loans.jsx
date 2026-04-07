@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
@@ -90,10 +90,11 @@ export default function Loans({ session }) {
   async function submitBorrowRequest() {
     if (!requestModal) return
     setRequesting(true)
-    const friend = friends.find(f => f.id === browseFriend)
+    // _ownerId is set when requesting from a cross-friend search result
+    const ownerId = requestModal._ownerId || browseFriend
     await supabase.from('borrow_requests').insert({
       requester_id: session.user.id,
-      owner_id: browseFriend,
+      owner_id: ownerId,
       book_id: requestModal.books.id,
       message: requestMsg || null,
       due_date: requestDue || null,
@@ -218,7 +219,13 @@ export default function Loans({ session }) {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 28, width: 420, maxWidth: '95vw' }}>
             <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text, marginBottom: 4 }}>Request to Borrow</div>
-            <div style={{ fontSize: 14, color: theme.textSubtle, marginBottom: 20 }}>{requestModal.books.title} by {requestModal.books.author}</div>
+            <div style={{ fontSize: 14, color: theme.textSubtle, marginBottom: 4 }}>{requestModal.books.title} by {requestModal.books.author}</div>
+            {requestModal._ownerId && (
+              <div style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 16 }}>
+                from <span style={{ color: theme.rust, fontWeight: 600 }}>{friends.find(f => f.id === requestModal._ownerId)?.username}</span>
+              </div>
+            )}
+            {!requestModal._ownerId && <div style={{ marginBottom: 16 }} />}
             <div style={{ marginBottom: 14 }}>
               <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: theme.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Message (optional)</label>
               <textarea
@@ -247,7 +254,56 @@ export default function Loans({ session }) {
 
 // ---- BROWSE FRIENDS' BOOKS ----
 function BrowseTab({ friends, browseFriend, friendBooks, browseLoading, borrowing, onSelectFriend, onRequest, s, theme }) {
+  const [searchQuery, setSearchQuery]   = useState('')
+  const [allResults, setAllResults]     = useState([])
+  const [searching, setSearching]       = useState(false)
+  const debounceRef = useRef(null)
+
   const alreadyRequested = new Set(borrowing.filter(r => r.status === 'pending' || r.status === 'active').map(r => r.books?.id))
+  const friendMap = Object.fromEntries(friends.map(f => [f.id, f]))
+
+  // When no friend is selected, debounce-search across ALL friends
+  useEffect(() => {
+    if (browseFriend) return // friend selected → client-side filter only
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!searchQuery.trim()) { setAllResults([]); return }
+    debounceRef.current = setTimeout(() => searchAllFriends(searchQuery.trim()), 350)
+    return () => clearTimeout(debounceRef.current)
+  }, [searchQuery, browseFriend])
+
+  async function searchAllFriends(query) {
+    if (!friends.length) return
+    setSearching(true)
+    const friendIds = friends.map(f => f.id)
+
+    // Step 1: find book IDs matching the query
+    const { data: bookMatches } = await supabase
+      .from('books')
+      .select('id')
+      .or(`title.ilike.%${query}%,author.ilike.%${query}%`)
+
+    if (!bookMatches?.length) { setAllResults([]); setSearching(false); return }
+
+    // Step 2: find which friends own any of those books
+    const { data: entries } = await supabase
+      .from('collection_entries')
+      .select('id, user_id, books(id, title, author, cover_image_url, isbn_13, isbn_10)')
+      .in('user_id', friendIds)
+      .in('book_id', bookMatches.map(b => b.id))
+      .eq('read_status', 'owned')
+
+    setAllResults(entries || [])
+    setSearching(false)
+  }
+
+  // Client-side filter when a specific friend is selected
+  const q = searchQuery.toLowerCase()
+  const filteredFriendBooks = searchQuery.trim()
+    ? friendBooks.filter(e =>
+        e.books?.title?.toLowerCase().includes(q) ||
+        e.books?.author?.toLowerCase().includes(q)
+      )
+    : friendBooks
 
   if (!friends.length) {
     return (
@@ -259,55 +315,147 @@ function BrowseTab({ friends, browseFriend, friendBooks, browseLoading, borrowin
     )
   }
 
+  const showingAllSearch = !browseFriend && searchQuery.trim()
+
   return (
     <div>
-      <div style={{ marginBottom: 20 }}>
-        <label style={{ fontSize: 12, fontWeight: 600, color: theme.textSubtle, marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>Choose a friend</label>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {friends.map(f => (
-            <button key={f.id}
-              onClick={() => onSelectFriend(f.id)}
-              style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${browseFriend === f.id ? theme.rust : theme.border}`, background: browseFriend === f.id ? 'rgba(192,82,30,0.1)' : 'transparent', color: browseFriend === f.id ? theme.rust : theme.text, fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: browseFriend === f.id ? 600 : 400, cursor: 'pointer' }}>
-              {f.username}
-            </button>
-          ))}
+      {/* Search bar */}
+      <div style={{ marginBottom: 20, position: 'relative' }}>
+        <div style={{ position: 'relative' }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 15, color: theme.textSubtle, pointerEvents: 'none' }}>🔍</span>
+          <input
+            type="text"
+            placeholder="Search friends' books by title or author…"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              padding: '10px 36px 10px 36px',
+              border: `1px solid ${theme.border}`, borderRadius: 10,
+              fontSize: 14, fontFamily: "'DM Sans', sans-serif",
+              background: theme.bgCard, color: theme.text, outline: 'none',
+            }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => { setSearchQuery(''); setAllResults([]) }}
+              style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: theme.textSubtle, lineHeight: 1 }}
+            >×</button>
+          )}
         </div>
       </div>
 
-      {browseLoading && <div style={s.empty}>Loading books…</div>}
-
-      {!browseLoading && browseFriend && friendBooks.length === 0 && (
-        <div style={s.empty}>This friend has no books marked as "In Library" yet.</div>
+      {/* Friend picker (hide when doing a cross-friend search) */}
+      {!showingAllSearch && (
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: theme.textSubtle, marginBottom: 8, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            {browseFriend ? 'Browsing' : 'Choose a friend'}
+          </label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {friends.map(f => (
+              <button key={f.id}
+                onClick={() => onSelectFriend(f.id)}
+                style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${browseFriend === f.id ? theme.rust : theme.border}`, background: browseFriend === f.id ? 'rgba(192,82,30,0.1)' : 'transparent', color: browseFriend === f.id ? theme.rust : theme.text, fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: browseFriend === f.id ? 600 : 400, cursor: 'pointer' }}>
+                {f.username}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
-      {!browseLoading && friendBooks.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {friendBooks.map(entry => {
-            const book = entry.books
-            const requested = alreadyRequested.has(book.id)
-            const coverUrl = getCoverUrl(book)
-            return (
-              <div key={entry.id} style={{ ...s.loanCard, alignItems: 'center' }}>
-                <div style={s.loanCover}>
-                  {coverUrl
-                    ? <img src={coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }} onError={e => e.target.style.display='none'} />
-                    : <MiniCover title={book.title} />}
-                </div>
-                <div style={s.loanInfo}>
-                  <div style={s.loanBookTitle}>{book.title}</div>
-                  <div style={s.loanBookAuthor}>{book.author}</div>
-                </div>
-                <div>
-                  {requested ? (
-                    <span style={{ fontSize: 12, color: theme.textSubtle, fontStyle: 'italic' }}>Requested</span>
-                  ) : (
-                    <button onClick={() => onRequest(entry)} style={s.btnAccept}>Request to Borrow</button>
-                  )}
-                </div>
+      {/* Cross-friend search results */}
+      {showingAllSearch && (
+        <>
+          {searching && <div style={s.empty}>Searching…</div>}
+          {!searching && allResults.length === 0 && (
+            <div style={s.empty}>No friends own a book matching "{searchQuery}".</div>
+          )}
+          {!searching && allResults.length > 0 && (
+            <>
+              <div style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 14 }}>
+                {allResults.length} result{allResults.length !== 1 ? 's' : ''} across your friends' libraries
               </div>
-            )
-          })}
-        </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {allResults.map(entry => {
+                  const book = entry.books
+                  const requested = alreadyRequested.has(book.id)
+                  const coverUrl = getCoverUrl(book)
+                  const owner = friendMap[entry.user_id]
+                  return (
+                    <div key={entry.id} style={{ ...s.loanCard, alignItems: 'center' }}>
+                      <div style={s.loanCover}>
+                        {coverUrl
+                          ? <img src={coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }} onError={e => e.target.style.display='none'} />
+                          : <MiniCover title={book.title} />}
+                      </div>
+                      <div style={s.loanInfo}>
+                        <div style={s.loanBookTitle}>{book.title}</div>
+                        <div style={s.loanBookAuthor}>{book.author}</div>
+                        {owner && (
+                          <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 4 }}>
+                            Owned by <span style={{ color: theme.rust, fontWeight: 600 }}>{owner.username}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        {requested ? (
+                          <span style={{ fontSize: 12, color: theme.textSubtle, fontStyle: 'italic' }}>Requested</span>
+                        ) : (
+                          <button onClick={() => onRequest({ ...entry, _ownerId: entry.user_id })} style={s.btnAccept}>Request to Borrow</button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {/* Single-friend browse */}
+      {!showingAllSearch && (
+        <>
+          {browseLoading && <div style={s.empty}>Loading books…</div>}
+
+          {!browseLoading && browseFriend && filteredFriendBooks.length === 0 && (
+            <div style={s.empty}>
+              {searchQuery.trim()
+                ? `No books matching "${searchQuery}" in this friend's library.`
+                : 'This friend has no books marked as "In Library" yet.'}
+            </div>
+          )}
+
+          {!browseLoading && filteredFriendBooks.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {filteredFriendBooks.map(entry => {
+                const book = entry.books
+                const requested = alreadyRequested.has(book.id)
+                const coverUrl = getCoverUrl(book)
+                return (
+                  <div key={entry.id} style={{ ...s.loanCard, alignItems: 'center' }}>
+                    <div style={s.loanCover}>
+                      {coverUrl
+                        ? <img src={coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }} onError={e => e.target.style.display='none'} />
+                        : <MiniCover title={book.title} />}
+                    </div>
+                    <div style={s.loanInfo}>
+                      <div style={s.loanBookTitle}>{book.title}</div>
+                      <div style={s.loanBookAuthor}>{book.author}</div>
+                    </div>
+                    <div>
+                      {requested ? (
+                        <span style={{ fontSize: 12, color: theme.textSubtle, fontStyle: 'italic' }}>Requested</span>
+                      ) : (
+                        <button onClick={() => onRequest(entry)} style={s.btnAccept}>Request to Borrow</button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

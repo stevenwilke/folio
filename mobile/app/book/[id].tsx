@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
   RefreshControl,
   TextInput,
+  Linking,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
@@ -30,6 +31,7 @@ interface Book {
   genre: string | null;
   description: string | null;
   isbn_13: string | null;
+  isbn_10: string | null;
   series_name?: string | null;
   series_number?: number | null;
 }
@@ -819,6 +821,23 @@ export default function BookDetailScreen() {
           </View>
         ) : null}
 
+        {/* Buy on Bookshop.org */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.bookshopBtn}
+            onPress={() => {
+              const isbn = book.isbn_13 || book.isbn_10;
+              const url = isbn
+                ? `https://bookshop.org/a/122832/${isbn}`
+                : `https://bookshop.org/search?keywords=${encodeURIComponent(book.title)}`;
+              Linking.openURL(url);
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.bookshopBtnText}>Buy new on Bookshop.org →</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Remove from collection */}
         {entry ? (
           <View style={styles.section}>
@@ -1028,6 +1047,20 @@ const styles = StyleSheet.create({
   pageInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   pageInput: { width: 72, backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6, fontSize: 13, color: Colors.ink, textAlign: 'center', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
   pageOf: { fontSize: 13, color: Colors.muted, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  bookshopBtn: {
+    borderWidth: 1.5,
+    borderColor: Colors.rust,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center' as const,
+    backgroundColor: 'transparent',
+  },
+  bookshopBtnText: {
+    color: Colors.rust,
+    fontSize: 14,
+    fontWeight: '600' as const,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
   removeBtn: {
     borderWidth: 1.5,
     borderColor: '#c0392b',

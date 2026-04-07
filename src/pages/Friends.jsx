@@ -387,6 +387,8 @@ export default function Friends({ session, initialTab }) {
   const [searching,      setSearching]      = useState(false)
   const [searched,       setSearched]       = useState(false)
   const [acting,         setActing]         = useState(null)
+  const [myUsername,     setMyUsername]     = useState(null)
+  const [inviteCopied,   setInviteCopied]   = useState(false)
 
   // ── Polls state
   const [polls,        setPolls]        = useState([])
@@ -394,7 +396,11 @@ export default function Friends({ session, initialTab }) {
   const [pollTab,      setPollTab]      = useState('active')
   const [showCreate,   setShowCreate]   = useState(false)
 
-  useEffect(() => { fetchAll(); fetchPolls() }, [])
+  useEffect(() => {
+    fetchAll(); fetchPolls()
+    supabase.from('profiles').select('username').eq('id', session.user.id).single()
+      .then(({ data }) => setMyUsername(data?.username ?? null))
+  }, [])
 
   // ── Friends data ──────────────────────────────────────────────────────────
 
@@ -605,6 +611,50 @@ export default function Friends({ session, initialTab }) {
                 </div>
               </section>
             )}
+
+            {/* Invite a Friend */}
+            {(() => {
+              const inviteLink = `https://exlibris.app/join${myUsername ? `?ref=${myUsername}` : ''}`
+              async function copyInvite() {
+                await navigator.clipboard.writeText(inviteLink)
+                setInviteCopied(true)
+                setTimeout(() => setInviteCopied(false), 2500)
+              }
+              async function shareInvite() {
+                if (navigator.share) {
+                  await navigator.share({ title: 'Join me on Ex Libris', text: `I'm using Ex Libris to track my book collection. Join me!`, url: inviteLink })
+                } else {
+                  copyInvite()
+                }
+              }
+              return (
+                <section style={s.section}>
+                  <div style={s.sectionHead}><div style={s.sectionTitle}>Invite a Friend</div></div>
+                  <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '18px 20px' }}>
+                    <div style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 12, lineHeight: 1.5 }}>
+                      Know someone who loves books? Share your invite link — they'll land right on Ex Libris.
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: theme.bgSubtle, border: `1px solid ${theme.border}`, borderRadius: 8, padding: '9px 12px', marginBottom: 12, fontFamily: 'monospace', fontSize: 13, color: theme.rust, overflow: 'hidden' }}>
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inviteLink}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={shareInvite}
+                        style={{ flex: 1, padding: '9px 0', background: theme.rust, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                      >
+                        📤 Share
+                      </button>
+                      <button
+                        onClick={copyInvite}
+                        style={{ flex: 1, padding: '9px 0', background: 'transparent', color: inviteCopied ? theme.sage : theme.text, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                      >
+                        {inviteCopied ? '✓ Copied!' : 'Copy Link'}
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              )
+            })()}
 
             {/* Find people */}
             <section style={s.section}>

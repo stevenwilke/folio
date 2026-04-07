@@ -14,6 +14,7 @@ import Stats from './pages/Stats'
 import Shelves from './pages/Shelves'
 import BookClubs from './pages/BookClubs'
 import Author from './pages/Author'
+import Admin from './pages/Admin'
 import Onboarding from './pages/Onboarding'
 import Landing from './pages/Landing'
 import Notifications from './pages/Notifications'
@@ -74,6 +75,10 @@ function AppRoutes({ session }) {
           <Route
             path="/author/:authorName"
             element={<Author session={session} />}
+          />
+          <Route
+            path="/admin"
+            element={<Admin session={session} />}
           />
           <Route
             path="/notifications"

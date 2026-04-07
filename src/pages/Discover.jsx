@@ -8,6 +8,39 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import { getCoverUrl } from '../lib/coverUrl'
 import { enrichBook } from '../lib/enrichBook'
 
+const NYT_API_KEY = import.meta.env.VITE_NYT_API_KEY
+
+const NYT_LISTS = [
+  { key: 'hardcover-fiction',                    label: 'Fiction',         emoji: '📖' },
+  { key: 'combined-print-and-e-book-nonfiction', label: 'Nonfiction',      emoji: '🧠' },
+  { key: 'trade-fiction-paperback',              label: 'Paperback',       emoji: '📄' },
+  { key: 'young-adult-hardcover',                label: 'Young Adult',     emoji: '🌟' },
+]
+
+async function fetchNYTList(listKey) {
+  try {
+    const r = await fetch(
+      `https://api.nytimes.com/svc/books/v3/lists/current/${listKey}.json?api-key=${NYT_API_KEY}`
+    )
+    if (!r.ok) return []
+    const j = await r.json()
+    return (j.results?.books ?? []).map(b => ({
+      rank:        b.rank,
+      title:       b.title,
+      author:      b.author,
+      description: b.description || null,
+      coverUrl:    b.book_image   || null,
+      isbn13:      b.primary_isbn13 || null,
+      isbn10:      b.primary_isbn10 || null,
+      publisher:   b.publisher    || null,
+      weeksOnList: b.weeks_on_list ?? 0,
+      // normalise to what the rest of Discover expects
+      olKey:       `nyt-${b.primary_isbn13 || b.title}`,
+      year:        null,
+    }))
+  } catch { return [] }
+}
+
 const GENRES = [
   { label: 'Fiction',            slug: 'fiction',                      emoji: '📖' },
   { label: 'Mystery',            slug: 'mystery_and_detective_stories', emoji: '🔍' },
@@ -224,7 +257,9 @@ function QuickPreview({ book, myBookIds, onAdd, onViewDetail, onClose, session }
 
   useEffect(() => {
     setDesc(null)
-    if (!book.olKey) return
+    // NYT books carry their own description
+    if (book.description) { setDesc(book.description); return }
+    if (!book.olKey || book.olKey.startsWith('nyt-')) return
     const key = book.olKey.replace('/works/', '')
     fetch(`https://openlibrary.org/works/${key}.json`)
       .then(r => r.json())
@@ -234,7 +269,7 @@ function QuickPreview({ book, myBookIds, onAdd, onViewDetail, onClose, session }
         setDesc(text ? text.split('\n')[0].slice(0, 300) + (text.length > 300 ? '…' : '') : null)
       })
       .catch(() => {})
-  }, [book.olKey])
+  }, [book.olKey, book.description])
 
   useEffect(() => {
     if (!session) return
@@ -440,6 +475,63 @@ function AIPickCard({ book, theme, myBookIds, onPreview }) {
   )
 }
 
+function NYTCard({ book, myBookIds, onPreview }) {
+  const { theme } = useTheme()
+  const [hover, setHover] = useState(false)
+  const have = myBookIds.has(titleKey(book.title, book.author))
+  const rankColors = ['#b8860b', '#8a9ba8', '#a0673a'] // gold, silver, bronze for top 3
+  const rankColor  = book.rank <= 3 ? rankColors[book.rank - 1] : theme.textSubtle
+
+  return (
+    <div
+      onClick={() => onPreview(book)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        flexShrink: 0, width: 130, cursor: 'pointer',
+        transform: hover ? 'translateY(-3px)' : 'none',
+        transition: 'transform 0.15s',
+      }}
+    >
+      <div style={{ position: 'relative', width: 130, height: 175, borderRadius: 10, overflow: 'hidden', marginBottom: 8, boxShadow: hover ? '0 8px 22px rgba(0,0,0,0.22)' : '0 2px 8px rgba(0,0,0,0.12)', background: '#2c2c2c' }}>
+        {book.coverUrl
+          ? <img src={book.coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none' }} />
+          : <FakeCover title={book.title} author={book.author} />
+        }
+        {/* Rank badge */}
+        <div style={{
+          position: 'absolute', top: 7, left: 7,
+          width: 26, height: 26, borderRadius: '50%',
+          background: rankColor, color: '#fff',
+          fontSize: 11, fontWeight: 800,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
+          fontFamily: "'DM Sans', sans-serif",
+        }}>
+          {book.rank}
+        </div>
+        {/* In library badge */}
+        {have && (
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(90,122,90,0.9)', color: '#fff', fontSize: 10, fontWeight: 700, textAlign: 'center', padding: '3px 0' }}>
+            In Library
+          </div>
+        )}
+      </div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: theme.text, lineHeight: 1.35, marginBottom: 3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+        {book.title}
+      </div>
+      {book.author && (
+        <div style={{ fontSize: 11, color: theme.textSubtle, marginBottom: 4 }}>{book.author}</div>
+      )}
+      {book.weeksOnList > 0 && (
+        <div style={{ fontSize: 10, background: 'rgba(184,134,11,0.12)', color: '#9a7200', borderRadius: 10, padding: '2px 7px', display: 'inline-block', fontWeight: 600 }}>
+          {book.weeksOnList === 1 ? 'New this week' : `${book.weeksOnList} weeks on list`}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function BookRow({ books, myBookIds, onPreview, loading }) {
   const { theme } = useTheme()
   const s = makeStyles(theme)
@@ -494,10 +586,42 @@ export default function Discover({ session }) {
   const [aiRecsLoad,    setAiRecsLoad]    = useState(true)
   const [aiRecsError,   setAiRecsError]   = useState(false)
 
+  const [nytList,      setNytList]      = useState(NYT_LISTS[0].key)
+  const [nytBooks,     setNytBooks]     = useState([])
+  const [nytLoad,      setNytLoad]      = useState(true)
+  const [nytError,     setNytError]     = useState(false)
+  const [nytCache,     setNytCache]     = useState({})    // key → books[]
+
   const [previewBook,  setPreviewBook]  = useState(null)   // OL book object for quick preview
   const [selectedBook, setSelectedBook] = useState(null)   // Supabase UUID for full detail
 
   const s = makeStyles(theme, isMobile)
+
+  // ── Back-button support ───────────────────────────────────────────────────
+  // Push a history entry whenever a modal opens so the browser back button
+  // closes it instead of leaving the Discover page entirely.
+  function openPreview(book) {
+    window.history.pushState({ discover: 'preview' }, '')
+    setPreviewBook(book)
+  }
+  function openDetail(bookId) {
+    window.history.pushState({ discover: 'detail' }, '')
+    setSelectedBook(bookId)
+  }
+  function closeAll() {
+    setSelectedBook(null)
+    setPreviewBook(null)
+  }
+
+  useEffect(() => {
+    function onPop() {
+      // Close the top-most layer
+      if (selectedBook) { setSelectedBook(null); return }
+      if (previewBook)  { setPreviewBook(null);  return }
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [selectedBook, previewBook])
 
   useEffect(() => {
     if (!session) return
@@ -507,6 +631,19 @@ export default function Discover({ session }) {
       setRecsLoading(false)
     })
   }, [session?.user?.id])
+
+  useEffect(() => {
+    async function loadNYT(key) {
+      if (nytCache[key]) { setNytBooks(nytCache[key]); setNytLoad(false); return }
+      setNytLoad(true); setNytError(false)
+      const books = await fetchNYTList(key)
+      if (!books.length) { setNytError(true); setNytLoad(false); return }
+      setNytCache(prev => ({ ...prev, [key]: books }))
+      setNytBooks(books)
+      setNytLoad(false)
+    }
+    loadNYT(nytList)
+  }, [nytList])
 
   useEffect(() => {
     async function init() {
@@ -802,7 +939,7 @@ export default function Discover({ session }) {
         cover_image_url: book.coverUrl || null,
         description: null,
       })
-      setSelectedBook(bookId)
+      openDetail(bookId)
       return
     }
     // Insert and get ID — if insert fails due to race condition, try finding again
@@ -817,7 +954,7 @@ export default function Discover({ session }) {
         cover_image_url: book.coverUrl || null,
         description: null,
       })
-      setSelectedBook(nb.id)
+      openDetail(nb.id)
       return
     }
     if (error) {
@@ -833,7 +970,7 @@ export default function Discover({ session }) {
           cover_image_url: book.coverUrl || null,
           description: null,
         })
-        setSelectedBook(bookId)
+        openDetail(bookId)
       }
     }
   }
@@ -893,7 +1030,7 @@ export default function Discover({ session }) {
           ) : aiRecs.length > 0 ? (
             <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8, WebkitOverflowScrolling: 'touch', scrollbarWidth: 'thin', scrollbarColor: `${theme.border} transparent` }}>
               {aiRecs.map((book, i) => (
-                <AIPickCard key={book.olKey ?? i} book={book} theme={theme} myBookIds={myBookIds} onPreview={() => setPreviewBook(book)} />
+                <AIPickCard key={book.olKey ?? i} book={book} theme={theme} myBookIds={myBookIds} onPreview={() => openPreview(book)} />
               ))}
             </div>
           ) : aiRecsError ? (
@@ -916,11 +1053,70 @@ export default function Discover({ session }) {
             <div style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 14 }}>Highly-rated by readers who share your taste</div>
             <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8, WebkitOverflowScrolling: 'touch' }}>
               {recommendations.map(book => (
-                <RecommendationCard key={book.id} book={book} theme={theme} onView={() => setSelectedBook(book.id)} />
+                <RecommendationCard key={book.id} book={book} theme={theme} onView={() => openDetail(book.id)} />
               ))}
             </div>
           </div>
         )}
+
+        {/* NYT Best Sellers */}
+        <section style={s.section}>
+          <div style={s.secHead}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+              <h2 style={s.secTitle}>📰 New York Times Best Sellers</h2>
+              <span style={{ fontSize: 11, color: theme.textSubtle, fontStyle: 'italic' }}>Updated weekly</span>
+            </div>
+            <p style={s.secSub}>This week's official bestseller lists</p>
+          </div>
+
+          {/* List tabs */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
+            {NYT_LISTS.map(list => (
+              <button
+                key={list.key}
+                onClick={() => setNytList(list.key)}
+                style={{
+                  padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                  fontSize: 13, fontWeight: nytList === list.key ? 700 : 400,
+                  fontFamily: "'DM Sans', sans-serif",
+                  background: nytList === list.key ? theme.rust : theme.bgCard,
+                  color:      nytList === list.key ? '#fff'     : theme.textSubtle,
+                  border:     nytList === list.key ? 'none'     : `1px solid ${theme.border}`,
+                  transition: 'all 0.15s',
+                }}
+              >
+                {list.emoji} {list.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Books */}
+          {nytLoad ? (
+            <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8 }}>
+              {[...Array(8)].map((_, i) => <div key={i} style={s.skeleton} />)}
+            </div>
+          ) : nytError ? (
+            <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '18px 22px', fontSize: 14, color: theme.textSubtle }}>
+              ⚠️ Couldn't load the bestseller list right now — try again in a moment.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8, WebkitOverflowScrolling: 'touch', scrollbarWidth: 'thin', scrollbarColor: `${theme.border} transparent` }}>
+              {nytBooks.map((book, i) => (
+                <NYTCard key={book.olKey ?? i} book={book} myBookIds={myBookIds} onPreview={openPreview} />
+              ))}
+            </div>
+          )}
+
+          {/* NYT attribution (required by their API ToS) */}
+          {!nytLoad && !nytError && (
+            <div style={{ marginTop: 10, fontSize: 11, color: theme.textSubtle, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span>Data provided by</span>
+              <a href="https://www.nytimes.com/books/best-sellers/" target="_blank" rel="noopener noreferrer" style={{ color: theme.rust, textDecoration: 'none', fontWeight: 600 }}>
+                The New York Times
+              </a>
+            </div>
+          )}
+        </section>
 
         {/* Trending in Your Network */}
         <section style={s.section}>
@@ -940,7 +1136,7 @@ export default function Discover({ session }) {
                 ? <div style={s.emptyRow}><span>📚</span><span>No activity from friends this week yet.</span></div>
                 : <div style={s.row}>
                     {trending.map((b, i) => (
-                      <TrendingCard key={b.olKey ?? i} book={b} myBookIds={myBookIds} onPreview={setPreviewBook} />
+                      <TrendingCard key={b.olKey ?? i} book={b} myBookIds={myBookIds} onPreview={openPreview} />
                     ))}
                   </div>
           }
@@ -952,7 +1148,7 @@ export default function Discover({ session }) {
             <h2 style={s.secTitle}>{forYouLabel}</h2>
             <p  style={s.secSub}>Tailored to your reading history</p>
           </div>
-          <BookRow books={forYou} myBookIds={myBookIds} onPreview={setPreviewBook} onAdd={handleAdd} loading={forYouLoad} />
+          <BookRow books={forYou} myBookIds={myBookIds} onPreview={openPreview} onAdd={handleAdd} loading={forYouLoad} />
         </section>
 
         {/* New from Authors You Love */}
@@ -968,7 +1164,7 @@ export default function Discover({ session }) {
                 ? <p style={s.rowEmpty}>Read more books to unlock author recommendations.</p>
                 : <div style={s.row}>
                     {fromAuthors.map((b, i) => (
-                      <AuthorCard key={b.olKey ?? i} book={b} myBookIds={myBookIds} onPreview={setPreviewBook} />
+                      <AuthorCard key={b.olKey ?? i} book={b} myBookIds={myBookIds} onPreview={openPreview} />
                     ))}
                   </div>
             }
@@ -981,7 +1177,7 @@ export default function Discover({ session }) {
             <h2 style={s.secTitle}>✨ New Releases</h2>
             <p  style={s.secSub}>Fresh titles published this year</p>
           </div>
-          <BookRow books={newReleases} myBookIds={myBookIds} onPreview={setPreviewBook} onAdd={handleAdd} loading={newRelLoad} />
+          <BookRow books={newReleases} myBookIds={myBookIds} onPreview={openPreview} onAdd={handleAdd} loading={newRelLoad} />
         </section>
 
         {/* Friends Are Reading */}
@@ -996,7 +1192,7 @@ export default function Discover({ session }) {
                 <span>Add friends to see what they're reading</span>
                 <button style={s.emptyBtn} onClick={() => navigate('/feed')}>Find Friends →</button>
               </div>
-            : <BookRow books={friends} myBookIds={myBookIds} onPreview={setPreviewBook} onAdd={handleAdd} loading={friendsLoad} />
+            : <BookRow books={friends} myBookIds={myBookIds} onPreview={openPreview} onAdd={handleAdd} loading={friendsLoad} />
           }
         </section>
 
@@ -1022,7 +1218,7 @@ export default function Discover({ session }) {
                 <span style={s.genrePanelTitle}>{activeGenre.emoji} {activeGenre.label}</span>
                 <button style={s.closeBtn} onClick={() => { setActiveGenre(null); setGenreBooks([]) }}>✕ Close</button>
               </div>
-              <BookRow books={genreBooks} myBookIds={myBookIds} onPreview={setPreviewBook} onAdd={handleAdd} loading={genreLoad} />
+              <BookRow books={genreBooks} myBookIds={myBookIds} onPreview={openPreview} onAdd={handleAdd} loading={genreLoad} />
             </div>
           )}
         </section>
@@ -1035,7 +1231,7 @@ export default function Discover({ session }) {
           myBookIds={myBookIds}
           onAdd={handleAdd}
           onViewDetail={() => handleBookClick(previewBook)}
-          onClose={() => setPreviewBook(null)}
+          onClose={() => { window.history.back() }}
           session={session}
         />
       )}
@@ -1046,7 +1242,7 @@ export default function Discover({ session }) {
           <BookDetail
             bookId={selectedBook}
             session={session}
-            onBack={() => { setSelectedBook(null); setPreviewBook(null) }}
+            onBack={() => { window.history.back() }}
           />
         </div>
       )}

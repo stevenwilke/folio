@@ -13,9 +13,13 @@ import {
   Platform,
   RefreshControl,
   SectionList,
+  Share,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import * as Contacts from 'expo-contacts';
+import * as Clipboard from 'expo-clipboard';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 
@@ -61,6 +65,15 @@ export default function FriendsScreen() {
   const [searching, setSearching]         = useState(false);
   const [searched, setSearched]           = useState(false);
 
+  // Contacts / People You May Know
+  const [contactMatches, setContactMatches]       = useState<SearchResult[]>([]);
+  const [contactsLoading, setContactsLoading]     = useState(false);
+  const [contactsChecked, setContactsChecked]     = useState(false);
+
+  // Invite
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const [myUsername, setMyUsername]     = useState<string | null>(null);
+
   useFocusEffect(
     useCallback(() => {
       loadAll();
@@ -72,8 +85,106 @@ export default function FriendsScreen() {
     if (!user) return;
     setMyId(user.id);
     setLoading(true);
-    await fetchAll(user.id);
+    const [, { data: profile }] = await Promise.all([
+      fetchAll(user.id),
+      supabase.from('profiles').select('username').eq('id', user.id).single(),
+    ]);
+    setMyUsername(profile?.username ?? null);
     setLoading(false);
+  }
+
+  // ── Contacts import ─────────────────────────────────────────
+  async function importContacts() {
+    setContactsLoading(true);
+    setContactsChecked(false);
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Contacts Access Needed',
+          'Allow Ex Libris to access your contacts so we can find friends who are already on the app.',
+          [{ text: 'OK' }]
+        );
+        setContactsLoading(false);
+        return;
+      }
+
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.Emails],
+      });
+
+      const emails: string[] = [];
+      for (const c of data) {
+        for (const e of c.emails ?? []) {
+          if (e.email) emails.push(e.email.toLowerCase());
+        }
+      }
+
+      if (!emails.length) {
+        setContactMatches([]);
+        setContactsChecked(true);
+        setContactsLoading(false);
+        return;
+      }
+
+      // Batch into chunks of 100 to stay within URL limits
+      const chunks: string[][] = [];
+      for (let i = 0; i < emails.length; i += 100) chunks.push(emails.slice(i, i + 100));
+
+      let allMatches: any[] = [];
+      for (const chunk of chunks) {
+        const { data: matches } = await supabase.rpc('match_contacts_by_email', { emails: chunk });
+        allMatches = allMatches.concat(matches ?? []);
+      }
+
+      // Deduplicate
+      const seen = new Set<string>();
+      allMatches = allMatches.filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
+
+      // Check friendship status for each match
+      if (allMatches.length && myId) {
+        const ids = allMatches.map((m: any) => m.id);
+        const { data: fs } = await supabase
+          .from('friendships')
+          .select('id, requester_id, addressee_id, status')
+          .or(
+            ids.map((id: string) =>
+              `and(requester_id.eq.${myId},addressee_id.eq.${id}),and(requester_id.eq.${id},addressee_id.eq.${myId})`
+            ).join(',')
+          );
+        const statusMap: Record<string, any> = {};
+        for (const f of fs ?? []) {
+          const otherId = f.requester_id === myId ? f.addressee_id : f.requester_id;
+          statusMap[otherId] = { friendshipId: f.id, status: f.status, iAmRequester: f.requester_id === myId };
+        }
+        allMatches = allMatches.map((m: any) => ({ ...m, friendship: statusMap[m.id] ?? null }));
+      }
+
+      setContactMatches(allMatches);
+      setContactsChecked(true);
+    } catch (err) {
+      console.error('Contacts error:', err);
+    }
+    setContactsLoading(false);
+  }
+
+  // ── Invite link ──────────────────────────────────────────────
+  const inviteLink = `https://exlibris.app/join${myUsername ? `?ref=${myUsername}` : ''}`;
+
+  async function shareInvite() {
+    try {
+      await Share.share({
+        message: `I'm using Ex Libris to track my book collection and share reads with friends. Join me! ${inviteLink}`,
+        url: inviteLink,
+        title: 'Join me on Ex Libris',
+      });
+    } catch {}
+  }
+
+  async function copyInviteLink() {
+    await Clipboard.setStringAsync(inviteLink);
+    setInviteCopied(true);
+    setTimeout(() => setInviteCopied(false), 2500);
   }
 
   async function fetchAll(userId: string) {
@@ -292,6 +403,95 @@ export default function FriendsScreen() {
         </View>
       )}
 
+      {/* ── Invite Friends ── */}
+      <View style={styles.section}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Invite Friends</Text>
+        </View>
+        <View style={styles.inviteCard}>
+          <Text style={styles.inviteText}>
+            Know someone who loves books? Share your invite link and they'll land right on Ex Libris.
+          </Text>
+          <View style={styles.inviteLinkRow}>
+            <Text style={styles.inviteLinkText} numberOfLines={1}>{inviteLink}</Text>
+          </View>
+          <View style={styles.inviteBtnRow}>
+            <TouchableOpacity style={styles.btnShare} onPress={shareInvite}>
+              <Text style={styles.btnShareText}>📤  Share</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.btnCopy} onPress={copyInviteLink}>
+              <Text style={styles.btnCopyText}>{inviteCopied ? '✓ Copied!' : 'Copy Link'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
+      {/* ── People You May Know (contacts) ── */}
+      <View style={styles.section}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>People You May Know</Text>
+        </View>
+        {!contactsChecked ? (
+          <TouchableOpacity
+            style={styles.contactsBtn}
+            onPress={importContacts}
+            disabled={contactsLoading}
+          >
+            {contactsLoading
+              ? <ActivityIndicator size="small" color={Colors.rust} />
+              : <Text style={styles.contactsBtnText}>📇  Find friends from your contacts</Text>
+            }
+          </TouchableOpacity>
+        ) : contactMatches.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyIcon}>🔍</Text>
+            <Text style={styles.emptyTitle}>No matches found</Text>
+            <Text style={styles.emptySub}>None of your contacts are on Ex Libris yet — invite them!</Text>
+            <TouchableOpacity style={[styles.contactsBtn, { marginTop: 12 }]} onPress={importContacts} disabled={contactsLoading}>
+              <Text style={styles.contactsBtnText}>🔄  Refresh contacts</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            {contactMatches.map((user) => {
+              const f = user.friendship;
+              return (
+                <View key={user.id} style={styles.searchResultRow}>
+                  <UserAvatar profile={user} size={40} />
+                  <Text
+                    style={styles.searchResultName}
+                    onPress={() => router.push(`/profile/${user.username}` as any)}
+                  >
+                    {user.username}
+                  </Text>
+                  <View>
+                    {!f && (
+                      <TouchableOpacity style={styles.btnAdd} onPress={() => addFriend(user.id)} disabled={acting === user.id}>
+                        <Text style={styles.btnAddText}>{acting === user.id ? '…' : '+ Add'}</Text>
+                      </TouchableOpacity>
+                    )}
+                    {f?.status === 'accepted' && <Text style={styles.friendChip}>Friends ✓</Text>}
+                    {f?.status === 'pending' && f?.iAmRequester && (
+                      <TouchableOpacity style={styles.btnPending} onPress={() => cancelSearchRequest(f.friendshipId, user.id)} disabled={acting === user.id}>
+                        <Text style={styles.btnPendingText}>{acting === user.id ? '…' : 'Requested'}</Text>
+                      </TouchableOpacity>
+                    )}
+                    {f?.status === 'pending' && !f?.iAmRequester && (
+                      <TouchableOpacity style={styles.btnAccept} onPress={() => respondToRequest(f.friendshipId, true)} disabled={acting === f.friendshipId}>
+                        <Text style={styles.btnAcceptText}>Accept</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+            <TouchableOpacity style={[styles.contactsBtn, { marginTop: 8 }]} onPress={importContacts} disabled={contactsLoading}>
+              <Text style={styles.contactsBtnText}>🔄  Refresh</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+
       {/* ── Find people ── */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Find People</Text>
@@ -509,6 +709,21 @@ const styles = StyleSheet.create({
   emptyIcon:  { fontSize: 32, marginBottom: 8 },
   emptyTitle: { fontSize: 17, fontWeight: '700', color: Colors.ink, marginBottom: 6, fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }) },
   emptySub:   { fontSize: 13, color: Colors.muted, textAlign: 'center', lineHeight: 18 },
+
+  // Invite
+  inviteCard:     { backgroundColor: Colors.card, borderRadius: 14, borderWidth: 1, borderColor: Colors.border, padding: 16, gap: 12 },
+  inviteText:     { fontSize: 13, color: Colors.muted, lineHeight: 19 },
+  inviteLinkRow:  { backgroundColor: Colors.background, borderRadius: 8, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 12, paddingVertical: 9 },
+  inviteLinkText: { fontSize: 12, color: Colors.rust, fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }) },
+  inviteBtnRow:   { flexDirection: 'row' as const, gap: 10 },
+  btnShare:       { flex: 1, backgroundColor: Colors.rust, borderRadius: 9, paddingVertical: 11, alignItems: 'center' as const },
+  btnShareText:   { color: '#fff', fontSize: 14, fontWeight: '600' as const },
+  btnCopy:        { flex: 1, borderRadius: 9, paddingVertical: 11, alignItems: 'center' as const, borderWidth: 1, borderColor: Colors.border },
+  btnCopyText:    { color: Colors.ink, fontSize: 14, fontWeight: '500' as const },
+
+  // Contacts
+  contactsBtn:     { backgroundColor: Colors.card, borderRadius: 12, borderWidth: 1, borderColor: Colors.border, paddingVertical: 14, alignItems: 'center' as const },
+  contactsBtnText: { fontSize: 14, color: Colors.rust, fontWeight: '600' as const },
 
   // Buttons
   btnAccept:      { backgroundColor: Colors.rust, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },

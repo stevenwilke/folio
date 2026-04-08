@@ -400,7 +400,6 @@ export default function Author({ session }) {
                     {friendsReading > 0 && `${friendsReading} reading`}
                     {friendsReading > 0 && friendsWant > 0 && ', '}
                     {friendsWant > 0 && `${friendsWant} want to read`}
-                    {' '}(click to see)
                   </span>
                 </>
               )}

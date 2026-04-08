@@ -9,6 +9,7 @@ const TABS = [
   { key: 'covers',    label: 'Covers',       emoji: '🖼️' },
   { key: 'claims',    label: 'Claims',       emoji: '📝' },
   { key: 'authors',   label: 'Authors',      emoji: '✍️' },
+  { key: 'books',     label: 'Books',        emoji: '📚' },
   { key: 'users',     label: 'Users',        emoji: '👥' },
 ]
 
@@ -26,6 +27,7 @@ export default function Admin({ session }) {
   const [authors,  setAuthors]  = useState([])
   const [users,    setUsers]    = useState([])
   const [covers,   setCovers]   = useState([])
+  const [books,    setBooks]    = useState([])
   const [stats,    setStats]    = useState(null)
   const [loading,  setLoading]  = useState(true)
   const [acting,   setActing]   = useState(null)
@@ -33,6 +35,11 @@ export default function Admin({ session }) {
   // Search
   const [authorSearch, setAuthorSearch] = useState('')
   const [userSearch,   setUserSearch]   = useState('')
+  const [bookSearch,   setBookSearch]   = useState('')
+
+  // Editing
+  const [editingAuthor, setEditingAuthor] = useState(null)
+  const [editingBook,   setEditingBook]   = useState(null)
 
   useEffect(() => { checkAdmin() }, [])
 
@@ -49,7 +56,7 @@ export default function Admin({ session }) {
 
   async function loadAll() {
     setLoading(true)
-    await Promise.all([loadClaims(), loadAuthors(), loadUsers(), loadCovers(), loadStats()])
+    await Promise.all([loadClaims(), loadAuthors(), loadUsers(), loadCovers(), loadBooks(), loadStats()])
     setLoading(false)
   }
 
@@ -83,6 +90,14 @@ export default function Admin({ session }) {
       .select('*, books(id, title, author, cover_image_url), profiles(username)')
       .order('submitted_at', { ascending: true })
     setCovers(data || [])
+  }
+
+  async function loadBooks() {
+    const { data } = await supabase
+      .from('books')
+      .select('id, title, author, isbn_13, isbn_10, genre, pages, published_year, cover_image_url, description')
+      .order('title', { ascending: true })
+    setBooks(data || [])
   }
 
   async function loadStats() {
@@ -244,6 +259,35 @@ export default function Admin({ session }) {
     loadStats()
   }
 
+  async function saveAuthor(id, updates) {
+    setActing(id)
+    await supabase.from('authors').update(updates).eq('id', id)
+    setActing(null)
+    setEditingAuthor(null)
+    loadAuthors()
+  }
+
+  async function saveBook(id, updates) {
+    setActing(id)
+    await supabase.from('books').update(updates).eq('id', id)
+    setActing(null)
+    setEditingBook(null)
+    loadBooks()
+  }
+
+  async function deleteBook(book) {
+    if (!window.confirm(`Delete "${book.title}"? This will remove all collection entries, reviews, and listings for this book.`)) return
+    setActing(book.id)
+    await Promise.all([
+      supabase.from('collection_entries').delete().eq('book_id', book.id),
+      supabase.from('pending_covers').delete().eq('book_id', book.id),
+    ])
+    await supabase.from('books').delete().eq('id', book.id)
+    setActing(null)
+    loadBooks()
+    loadStats()
+  }
+
   async function approveCover(cover) {
     setActing(cover.id)
     // Set the cover as the book's official cover
@@ -302,6 +346,10 @@ export default function Admin({ session }) {
     ? users.filter(u => (u.username || '').toLowerCase().includes(userSearch.toLowerCase()))
     : users
 
+  const filteredBooks = bookSearch
+    ? books.filter(b => b.title.toLowerCase().includes(bookSearch.toLowerCase()) || (b.author || '').toLowerCase().includes(bookSearch.toLowerCase()))
+    : books
+
   return (
     <div style={s.page}>
       <NavBar session={session} />
@@ -343,7 +391,7 @@ export default function Admin({ session }) {
               <div>
                 <div style={s.statsGrid}>
                   <StatCard theme={theme} emoji="👥" label="Total Users" value={stats.userCount} onClick={() => setTab('users')} />
-                  <StatCard theme={theme} emoji="📚" label="Books in Database" value={stats.bookCount} />
+                  <StatCard theme={theme} emoji="📚" label="Books in Database" value={stats.bookCount} onClick={() => setTab('books')} />
                   <StatCard theme={theme} emoji="📖" label="Collection Entries" value={stats.entryCount} />
                   <StatCard theme={theme} emoji="✍️" label="Author Pages" value={stats.authorCount} onClick={() => setTab('authors')} />
                   <StatCard theme={theme} emoji="❤️" label="Author Follows" value={stats.followCount} onClick={() => setTab('authors')} />
@@ -625,6 +673,13 @@ export default function Admin({ session }) {
                         </div>
                         <div style={{ display: 'flex', gap: 6 }}>
                           <button
+                            style={{ ...s.smallBtn, background: 'rgba(90,122,90,0.08)', color: '#5a7a5a' }}
+                            onClick={() => setEditingAuthor({ ...author })}
+                            title="Edit author"
+                          >
+                            Edit
+                          </button>
+                          <button
                             style={{ ...s.smallBtn, background: author.is_verified ? 'rgba(192,82,30,0.1)' : 'rgba(90,122,90,0.1)', color: author.is_verified ? theme.rust : '#5a7a5a' }}
                             onClick={() => toggleVerified(author)}
                             title={author.is_verified ? 'Unverify' : 'Verify'}
@@ -736,7 +791,115 @@ export default function Admin({ session }) {
                 )}
               </div>
             )}
+
+            {/* ════════════ BOOKS ════════════ */}
+            {tab === 'books' && (
+              <div>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20 }}>
+                  <input
+                    placeholder="Search books by title or author…"
+                    value={bookSearch}
+                    onChange={e => setBookSearch(e.target.value)}
+                    style={s.searchInput}
+                  />
+                  <span style={{ fontSize: 13, color: theme.textSubtle, whiteSpace: 'nowrap' }}>
+                    {filteredBooks.length} book{filteredBooks.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                {filteredBooks.length === 0 ? (
+                  <div style={s.emptyCard}>
+                    <div style={{ fontSize: 32, marginBottom: 10 }}>📚</div>
+                    <div style={{ fontWeight: 600, color: theme.text }}>No books found</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {filteredBooks.slice(0, 100).map(book => (
+                      <div key={book.id} style={s.userRow}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                          {book.cover_image_url
+                            ? <img src={book.cover_image_url} style={{ width: 32, height: 48, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} alt="" />
+                            : <div style={{ width: 32, height: 48, borderRadius: 4, background: theme.rust, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                                {(book.title || '?').charAt(0).toUpperCase()}
+                              </div>
+                          }
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, color: theme.text, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {book.title}
+                            </div>
+                            <div style={{ fontSize: 12, color: theme.textSubtle }}>
+                              {book.author || 'Unknown author'}
+                              {book.published_year ? ` · ${book.published_year}` : ''}
+                              {book.isbn_13 ? ` · ${book.isbn_13}` : ''}
+                              {book.pages ? ` · ${book.pages}p` : ''}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            style={{ ...s.smallBtn, background: 'rgba(90,122,90,0.08)', color: '#5a7a5a' }}
+                            onClick={() => setEditingBook({ ...book })}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            style={{ ...s.smallBtn, background: 'rgba(200,30,30,0.08)', color: '#c01e1e' }}
+                            onClick={() => deleteBook(book)}
+                            disabled={acting === book.id}
+                          >
+                            {acting === book.id ? '…' : 'Delete'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {filteredBooks.length > 100 && (
+                      <div style={{ fontSize: 13, color: theme.textSubtle, textAlign: 'center', padding: 16 }}>
+                        Showing first 100 of {filteredBooks.length} books. Use search to narrow results.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </>
+        )}
+
+        {/* ════════════ EDIT AUTHOR MODAL ════════════ */}
+        {editingAuthor && (
+          <EditModal
+            title={`Edit Author: ${editingAuthor.name}`}
+            theme={theme} s={s}
+            onClose={() => setEditingAuthor(null)}
+            onSave={(updates) => saveAuthor(editingAuthor.id, updates)}
+            saving={acting === editingAuthor.id}
+            fields={[
+              { key: 'name',      label: 'Name',      value: editingAuthor.name,      required: true },
+              { key: 'bio',       label: 'Bio',        value: editingAuthor.bio || '',  multiline: true },
+              { key: 'photo_url', label: 'Photo URL',  value: editingAuthor.photo_url || '' },
+              { key: 'website',   label: 'Website',    value: editingAuthor.website || '' },
+            ]}
+          />
+        )}
+
+        {/* ════════════ EDIT BOOK MODAL ════════════ */}
+        {editingBook && (
+          <EditModal
+            title={`Edit Book: ${editingBook.title}`}
+            theme={theme} s={s}
+            onClose={() => setEditingBook(null)}
+            onSave={(updates) => saveBook(editingBook.id, updates)}
+            saving={acting === editingBook.id}
+            fields={[
+              { key: 'title',           label: 'Title',          value: editingBook.title,                  required: true },
+              { key: 'author',          label: 'Author',         value: editingBook.author || '' },
+              { key: 'isbn_13',         label: 'ISBN-13',        value: editingBook.isbn_13 || '' },
+              { key: 'isbn_10',         label: 'ISBN-10',        value: editingBook.isbn_10 || '' },
+              { key: 'genre',           label: 'Genre',          value: editingBook.genre || '' },
+              { key: 'pages',           label: 'Pages',          value: editingBook.pages ?? '', type: 'number' },
+              { key: 'published_year',  label: 'Published Year', value: editingBook.published_year ?? '', type: 'number' },
+              { key: 'cover_image_url', label: 'Cover Image URL', value: editingBook.cover_image_url || '' },
+              { key: 'description',     label: 'Description',    value: editingBook.description || '', multiline: true },
+            ]}
+          />
         )}
       </div>
     </div>
@@ -744,6 +907,64 @@ export default function Admin({ session }) {
 }
 
 /* ── Helpers ─────────────────────────────────── */
+
+/* ── Edit Modal (reusable) ─────────────────── */
+
+function EditModal({ title, theme, s, onClose, onSave, saving, fields }) {
+  const [values, setValues] = useState(() => {
+    const init = {}
+    for (const f of fields) init[f.key] = f.value
+    return init
+  })
+
+  function handleSave() {
+    const updates = {}
+    for (const f of fields) {
+      let val = values[f.key]
+      if (f.type === 'number') val = val === '' ? null : Number(val)
+      else val = typeof val === 'string' ? (val.trim() || null) : val
+      if (f.required && !val) return
+      updates[f.key] = val
+    }
+    onSave(updates)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+      <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 28, width: 520, maxWidth: '95vw', maxHeight: '85vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text, marginBottom: 20 }}>{title}</div>
+        {fields.map(f => (
+          <div key={f.key} style={{ marginBottom: 14 }}>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+              {f.label} {f.required && <span style={{ color: '#c0521e' }}>*</span>}
+            </label>
+            {f.multiline ? (
+              <textarea
+                value={values[f.key]}
+                onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                rows={4}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", background: theme.bg, color: theme.text, outline: 'none', resize: 'vertical' }}
+              />
+            ) : (
+              <input
+                type={f.type || 'text'}
+                value={values[f.key]}
+                onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", background: theme.bg, color: theme.text, outline: 'none' }}
+              />
+            )}
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
+          <button onClick={onClose} style={{ padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", border: `1px solid ${theme.border}`, background: 'transparent', color: theme.text }}>Cancel</button>
+          <button onClick={handleSave} disabled={saving} style={{ padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", background: theme.rust, color: '#fff', border: 'none', opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B'

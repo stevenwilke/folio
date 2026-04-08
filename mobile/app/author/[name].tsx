@@ -51,6 +51,9 @@ export default function AuthorScreen() {
   const [folioBooks, setFolioBooks] = useState<FolioBook[]>([]);
   const [olBooks, setOlBooks] = useState<OLBook[]>([]);
   const [friendCount, setFriendCount] = useState(0);
+  const [friendsRead, setFriendsRead] = useState(0);
+  const [friendsWant, setFriendsWant] = useState(0);
+  const [friendsReading, setFriendsReading] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [myId, setMyId] = useState<string | null>(null);
@@ -193,13 +196,20 @@ export default function AuthorScreen() {
       const bookIds = folioList.map((b: any) => b.id);
       const { data: friendEntries } = await supabase
         .from('collection_entries')
-        .select('user_id')
+        .select('user_id, read_status')
         .in('user_id', friendIds)
         .in('book_id', bookIds);
       const uniqueFriends = new Set((friendEntries ?? []).map((e: any) => e.user_id));
       setFriendCount(uniqueFriends.size);
+      const readUsers = new Set((friendEntries ?? []).filter((e: any) => e.read_status === 'read').map((e: any) => e.user_id));
+      const wantUsers = new Set((friendEntries ?? []).filter((e: any) => e.read_status === 'want').map((e: any) => e.user_id));
+      const readingUsers = new Set((friendEntries ?? []).filter((e: any) => e.read_status === 'reading').map((e: any) => e.user_id));
+      setFriendsRead(readUsers.size);
+      setFriendsWant(wantUsers.size);
+      setFriendsReading(readingUsers.size);
     } else {
       setFriendCount(0);
+      setFriendsRead(0); setFriendsWant(0); setFriendsReading(0);
     }
 
     // Open Library results
@@ -357,7 +367,9 @@ export default function AuthorScreen() {
             <Text style={styles.statValue}>{totalKnown}</Text>
             <Text style={styles.statLabel}> known book{totalKnown !== 1 ? 's' : ''}</Text>
             {readCount > 0 ? <>{'  ·  '}<Text style={styles.statLabel}>You've read </Text><Text style={styles.statValue}>{readCount}</Text></> : null}
-            {friendCount > 0 ? <>{'  ·  '}<Text style={styles.statValue}>{friendCount}</Text><Text style={styles.statLabel}> friend{friendCount !== 1 ? 's' : ''} reading</Text></> : null}
+            {friendsRead > 0 ? <>{'  ·  '}<Text style={styles.statValue}>{friendsRead}</Text><Text style={styles.statLabel}> friend{friendsRead !== 1 ? 's' : ''} read</Text></> : null}
+            {friendsReading > 0 ? <>{'  ·  '}<Text style={styles.statValue}>{friendsReading}</Text><Text style={styles.statLabel}> reading</Text></> : null}
+            {friendsWant > 0 ? <>{'  ·  '}<Text style={styles.statValue}>{friendsWant}</Text><Text style={styles.statLabel}> want to read</Text></> : null}
             {followCount > 0 ? `  ·  ${followCount} follower${followCount !== 1 ? 's' : ''}` : ''}
           </Text>
 

@@ -307,8 +307,11 @@ export default function Author({ session }) {
   }
 
   // ── Claim ────────────────────────────────────────────────────────────────
+  const [claimAgreed, setClaimAgreed] = useState(false)
+  const [showFriendList, setShowFriendList] = useState(false)
+
   async function submitClaim() {
-    if (!session || !authorRecord || !claimMsg.trim()) return
+    if (!session || !authorRecord || !claimMsg.trim() || !claimProof.trim() || !claimAgreed) return
     setClaiming(true)
     const { data } = await supabase
       .from('author_claims')
@@ -343,6 +346,12 @@ export default function Author({ session }) {
   const totalKnown   = totalFolio + olBooks.length   // all known books (DB + Open Library)
   const allRead      = session && totalFolio > 0 && myReadCount === totalFolio
   const isVerifiedOwner = session && authorRecord?.claimed_by === session.user.id && authorRecord?.is_verified
+
+  // Friend stats breakdown
+  const allFriendEntries = Object.values(friendData).flat()
+  const friendsRead = new Set(allFriendEntries.filter(e => e.status === 'read').map(e => e.username)).size
+  const friendsWant = new Set(allFriendEntries.filter(e => e.status === 'want').map(e => e.username)).size
+  const friendsReading = new Set(allFriendEntries.filter(e => e.status === 'reading').map(e => e.username)).size
   const canClaim = session && authorRecord && !authorRecord.is_verified && !myClaim
 
   const s = makeStyles(theme)
@@ -379,9 +388,54 @@ export default function Author({ session }) {
             <div style={s.authorMeta}>
               <span>{totalKnown} known book{totalKnown !== 1 ? 's' : ''}</span>
               {session && myReadCount > 0 && <><span style={s.dot}>·</span><span>You've read {myReadCount}</span></>}
-              {friendCount > 0 && <><span style={s.dot}>·</span><span>{friendCount} friend{friendCount !== 1 ? 's' : ''} have read their work</span></>}
+              {friendCount > 0 && (
+                <>
+                  <span style={s.dot}>·</span>
+                  <span
+                    style={{ cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 3 }}
+                    onClick={() => setShowFriendList(v => !v)}
+                  >
+                    {friendsRead > 0 && `${friendsRead} read`}
+                    {friendsRead > 0 && (friendsReading > 0 || friendsWant > 0) && ', '}
+                    {friendsReading > 0 && `${friendsReading} reading`}
+                    {friendsReading > 0 && friendsWant > 0 && ', '}
+                    {friendsWant > 0 && `${friendsWant} want to read`}
+                    {' '}(click to see)
+                  </span>
+                </>
+              )}
               {followCount > 0 && <><span style={s.dot}>·</span><span>{followCount} follower{followCount !== 1 ? 's' : ''}</span></>}
             </div>
+            {/* Friend detail list */}
+            {showFriendList && friendCount > 0 && (() => {
+              // Collect unique friends with their statuses
+              const friendMap = {}
+              for (const entries of Object.values(friendData)) {
+                for (const e of entries) {
+                  if (!friendMap[e.username]) friendMap[e.username] = new Set()
+                  friendMap[e.username].add(e.status)
+                }
+              }
+              const statusLabel = { read: 'Read', reading: 'Reading', want: 'Want to read', owned: 'In Library' }
+              return (
+                <div style={{ marginTop: 10, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 10, padding: '12px 16px' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                    {Object.entries(friendMap).map(([name, statuses]) => (
+                      <span
+                        key={name}
+                        onClick={() => navigate(`/profile/${name}`)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', color: theme.text, background: theme.bg, borderRadius: 20, padding: '4px 12px', border: `1px solid ${theme.border}` }}
+                      >
+                        <strong>{name}</strong>
+                        <span style={{ color: theme.textSubtle, fontSize: 11 }}>
+                          {[...statuses].map(st => statusLabel[st] || st).join(', ')}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
             {allRead && (
               <div style={s.completionBadge}>
                 <span style={{ fontSize: 18 }}>🏆</span>
@@ -597,30 +651,59 @@ export default function Author({ session }) {
       {/* ── Claim Modal ── */}
       {showClaimModal && (
         <div style={s.modalBackdrop}>
-          <div style={s.modalBox}>
+          <div style={{ ...s.modalBox, maxWidth: 520 }}>
             <div style={s.modalTitle}>Claim this Author Page</div>
+
+            {/* Warning box */}
+            <div style={{ background: 'rgba(192,82,30,0.06)', border: '1px solid rgba(192,82,30,0.2)', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}>
+              <p style={{ fontSize: 13, color: theme.text, margin: 0, lineHeight: 1.6 }}>
+                <strong>This is only for the real author.</strong> Claiming an author page you don't own is a violation of our terms and will result in your account being banned. All claims are manually reviewed by an admin.
+              </p>
+            </div>
+
             <p style={{ fontSize: 14, color: theme.textSubtle, marginBottom: 20, lineHeight: 1.5 }}>
-              If you are <strong>{decoded}</strong>, you can request to claim this page. An admin will review your request and verify your identity before approving.
+              If you are <strong>{decoded}</strong>, please provide verifiable proof of your identity. We require a link to an official source that connects you to this author name.
             </p>
-            <label style={s.label}>Why are you the author? <span style={{ color: theme.rust }}>*</span></label>
-            <textarea
-              value={claimMsg}
-              onChange={e => setClaimMsg(e.target.value)}
-              placeholder="Briefly describe why you are this author (e.g. link to your official website, publisher page, etc.)"
-              rows={4}
-              style={{ ...s.postInput, marginBottom: 12 }}
-            />
-            <label style={s.label}>Proof URL (optional)</label>
+
+            <label style={s.label}>Proof URL <span style={{ color: theme.rust }}>*</span></label>
             <input
               value={claimProof}
               onChange={e => setClaimProof(e.target.value)}
-              placeholder="https://your-official-website.com"
+              placeholder="https://your-official-website.com or publisher page, social media profile, etc."
+              style={{ ...s.postInput, marginBottom: 6 }}
+            />
+            <p style={{ fontSize: 12, color: theme.textSubtle, margin: '0 0 16px', lineHeight: 1.5 }}>
+              Accepted proof: your official website, verified social media profile, publisher page, Amazon author page, or Goodreads author profile that shows your identity.
+            </p>
+
+            <label style={s.label}>Additional details <span style={{ color: theme.rust }}>*</span></label>
+            <textarea
+              value={claimMsg}
+              onChange={e => setClaimMsg(e.target.value)}
+              placeholder="Tell us how to verify you are this author. What books have you published? How does the proof URL connect to this author name?"
+              rows={4}
               style={{ ...s.postInput, marginBottom: 20 }}
             />
+
+            {/* Agreement checkbox */}
+            <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 20, cursor: 'pointer', fontSize: 13, color: theme.text, lineHeight: 1.5 }}>
+              <input
+                type="checkbox"
+                checked={claimAgreed}
+                onChange={e => setClaimAgreed(e.target.checked)}
+                style={{ marginTop: 3, accentColor: theme.rust }}
+              />
+              <span>I confirm that I am <strong>{decoded}</strong> and understand that falsely claiming an author page will result in my account being permanently banned.</span>
+            </label>
+
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowClaimModal(false)} style={{ ...s.btn, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.text }}>Cancel</button>
-              <button onClick={submitClaim} disabled={claiming || !claimMsg.trim()} style={{ ...s.btn, background: theme.rust, color: '#fff', border: 'none', opacity: claiming || !claimMsg.trim() ? 0.6 : 1 }}>
-                {claiming ? 'Submitting…' : 'Submit Claim'}
+              <button onClick={() => { setShowClaimModal(false); setClaimAgreed(false) }} style={{ ...s.btn, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.text }}>Cancel</button>
+              <button
+                onClick={submitClaim}
+                disabled={claiming || !claimMsg.trim() || !claimProof.trim() || !claimAgreed}
+                style={{ ...s.btn, background: theme.rust, color: '#fff', border: 'none', opacity: claiming || !claimMsg.trim() || !claimProof.trim() || !claimAgreed ? 0.6 : 1 }}
+              >
+                {claiming ? 'Submitting…' : 'Submit Claim for Review'}
               </button>
             </div>
           </div>

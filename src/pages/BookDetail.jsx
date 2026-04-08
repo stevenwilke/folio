@@ -509,6 +509,16 @@ export default function BookDetail({ bookId, session, onBack }) {
     setCurrentPage(p)
     clearTimeout(savePageTimer.current)
     savePageTimer.current = setTimeout(async () => {
+      // If page reaches or exceeds total pages, auto-mark as read
+      if (book.pages && p >= book.pages) {
+        await supabase
+          .from('collection_entries')
+          .update({ current_page: book.pages, read_status: 'read' })
+          .eq('id', entry.id)
+          .eq('user_id', session.user.id)
+        setEntry(prev => ({ ...prev, read_status: 'read' }))
+        return
+      }
       await supabase
         .from('collection_entries')
         .update({ current_page: p > 0 ? p : null })
@@ -893,6 +903,21 @@ export default function BookDetail({ bookId, session, onBack }) {
                     : <span style={{ fontSize: 13, color: theme.textSubtle }}>page</span>
                   }
                 </div>
+                <button
+                  style={{
+                    marginTop: 10, padding: '7px 16px', background: theme.sage,
+                    color: '#fff', border: 'none', borderRadius: 8, fontSize: 13,
+                    fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+                  }}
+                  onClick={async () => {
+                    await supabase.from('collection_entries')
+                      .update({ read_status: 'read', current_page: book.pages || currentPage || null })
+                      .eq('id', entry.id).eq('user_id', session.user.id)
+                    setEntry(prev => ({ ...prev, read_status: 'read' }))
+                  }}
+                >
+                  ✓ Mark as Finished
+                </button>
               </div>
             )}
           </div>

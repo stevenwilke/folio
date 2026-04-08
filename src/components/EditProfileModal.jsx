@@ -18,10 +18,10 @@ export default function EditProfileModal({ session, profile, onClose, onSaved })
     setSaving(true)
     setError(null)
 
-    // Check uniqueness (skip if unchanged)
-    if (u !== profile.username) {
+    // Check uniqueness — case-insensitive (skip if unchanged)
+    if (u.toLowerCase() !== (profile.username || '').toLowerCase()) {
       const { data: existing } = await supabase
-        .from('profiles').select('id').eq('username', u).maybeSingle()
+        .from('profiles').select('id').ilike('username', u).maybeSingle()
       if (existing) {
         setError('That username is already taken.')
         setSaving(false)

@@ -58,15 +58,15 @@ export default function NavBar({ session, extra }) {
     return () => document.removeEventListener('keydown', onKey)
   }, [])
 
-  // Fetch + cache profile (username + avatar)
+  // Fetch + cache profile (username + avatar + admin flag)
   useEffect(() => {
     if (!session) return
     if (session.user.id === _cachedId && _cachedProfile) return
-    supabase.from('profiles').select('username, avatar_url')
+    supabase.from('profiles').select('username, avatar_url, is_admin')
       .eq('id', session.user.id).maybeSingle()
       .then(({ data }) => {
         _cachedId      = session.user.id
-        _cachedProfile = data ? { username: data.username, avatar_url: data.avatar_url } : null
+        _cachedProfile = data ? { username: data.username, avatar_url: data.avatar_url, is_admin: !!data.is_admin } : null
         setProfile(_cachedProfile)
       })
   }, [session?.user?.id])
@@ -285,6 +285,7 @@ export default function NavBar({ session, extra }) {
                     isDark={isDark}
                     toggleTheme={toggleTheme}
                     goodreadsImported={goodreadsImported}
+                    isAdmin={profile?.is_admin}
                     onProfile={() => { setShowAvatar(false); navigate(`/profile/${profile.username}`) }}
                     onImport={() => { setShowAvatar(false); setShowImport(true) }}
                     onSignOut={async () => { setShowAvatar(false); await supabase.auth.signOut() }}
@@ -328,7 +329,7 @@ export default function NavBar({ session, extra }) {
 }
 
 // ---- AVATAR DROPDOWN ----
-function AvatarDropdown({ profile, isDark, toggleTheme, goodreadsImported, onProfile, onImport, onSignOut, onNavigate }) {
+function AvatarDropdown({ profile, isDark, toggleTheme, goodreadsImported, onProfile, onImport, onSignOut, onNavigate, isAdmin }) {
   return (
     <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, minWidth: 230, boxShadow: '0 8px 24px rgba(26,18,8,0.14)', zIndex: 200, overflow: 'hidden' }}>
       {/* Profile header */}
@@ -355,6 +356,12 @@ function AvatarDropdown({ profile, isDark, toggleTheme, goodreadsImported, onPro
         )}
         <div style={{ height: 1, background: '#e8dfc8', margin: '6px 0' }} />
         <MenuItem icon="⚙️" label="Account Settings" onClick={() => onNavigate(`/profile/${profile.username}`)} />
+        {isAdmin && (
+          <>
+            <div style={{ height: 1, background: '#e8dfc8', margin: '6px 0' }} />
+            <MenuItem icon="🛡️" label="Admin Dashboard" onClick={() => onNavigate('/admin')} />
+          </>
+        )}
         <div style={{ height: 1, background: '#e8dfc8', margin: '6px 0' }} />
         <MenuItem icon="🚪" label="Sign out" onClick={onSignOut} danger />
       </div>

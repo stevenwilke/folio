@@ -80,9 +80,9 @@ export default function EditProfileScreen() {
     const paypal = paypalHandle.trim().replace(/^https?:\/\/paypal\.me\//i, '').replace(/^@/, '');
     const venmo  = venmoHandle.trim().replace(/^@/, '');
 
-    // Check uniqueness
+    // Check uniqueness — case-insensitive
     const { data: existing } = await supabase.from('profiles').select('id')
-      .eq('username', u).neq('id', userId ?? '').maybeSingle();
+      .ilike('username', u).neq('id', userId ?? '').maybeSingle();
     if (existing) { Alert.alert('Taken', 'That username is already taken.'); setSaving(false); return; }
 
     const { error } = await supabase.from('profiles')

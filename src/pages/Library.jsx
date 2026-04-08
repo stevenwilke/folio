@@ -1201,6 +1201,15 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
     const p = Math.max(0, parseInt(val) || 0)
     setCurrentPage(p)
     setEditingPage(false)
+
+    // If the page equals or exceeds total pages, mark as read
+    if (book.pages && p >= book.pages) {
+      await supabase.from('collection_entries')
+        .update({ current_page: book.pages, read_status: 'read' })
+        .eq('id', entry.id)
+      onUpdate()
+      return
+    }
     await supabase.from('collection_entries').update({ current_page: p || null }).eq('id', entry.id)
   }
 
@@ -1397,13 +1406,21 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
                 {book.pages && <span style={{ fontSize: 10, color: theme.textSubtle }}>/ {book.pages}</span>}
               </div>
             ) : (
-              <div
-                style={{ fontSize: 11, color: theme.rust, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
-                onClick={() => { setPageInput(currentPage || ''); setEditingPage(true) }}
-              >
-                {currentPage > 0
-                  ? (book.pages ? `Pg ${currentPage} / ${book.pages}` : `Pg ${currentPage}`)
-                  : '+ Update page'}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div
+                  style={{ fontSize: 11, color: theme.rust, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                  onClick={() => { setPageInput(currentPage || ''); setEditingPage(true) }}
+                >
+                  {currentPage > 0
+                    ? (book.pages ? `Pg ${currentPage} / ${book.pages}` : `Pg ${currentPage}`)
+                    : '+ Update page'}
+                </div>
+                <span
+                  style={{ fontSize: 10, color: theme.sage, cursor: 'pointer', fontWeight: 600 }}
+                  onClick={() => changeStatus('read')}
+                >
+                  Finished
+                </span>
               </div>
             )}
           </div>

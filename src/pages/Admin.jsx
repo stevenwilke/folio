@@ -88,7 +88,33 @@ export default function Admin({ session }) {
       supabase.from('author_follows').select('*', { count: 'exact', head: true }),
       supabase.from('author_claims').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
     ])
-    setStats({ userCount, bookCount, entryCount, authorCount, followCount, claimPendingCount })
+
+    // Book cover images stored in Supabase Storage
+    let coverImageCount = 0
+    let coverImageSize  = 0
+    try {
+      const { data: files } = await supabase.storage.from('book-covers').list('', { limit: 1000 })
+      if (files) {
+        coverImageCount = files.length
+        coverImageSize  = files.reduce((sum, f) => sum + (f.metadata?.size || 0), 0)
+      }
+    } catch {}
+
+    // Avatar images
+    let avatarCount = 0
+    let avatarSize  = 0
+    try {
+      const { data: avFiles } = await supabase.storage.from('avatars').list('', { limit: 1000 })
+      if (avFiles) {
+        avatarCount = avFiles.length
+        avatarSize  = avFiles.reduce((sum, f) => sum + (f.metadata?.size || 0), 0)
+      }
+    } catch {}
+
+    setStats({
+      userCount, bookCount, entryCount, authorCount, followCount, claimPendingCount,
+      coverImageCount, coverImageSize, avatarCount, avatarSize,
+    })
   }
 
   async function reviewClaim(claim, decision, note = '') {
@@ -224,6 +250,17 @@ export default function Admin({ session }) {
                   <StatCard theme={theme} emoji="❤️" label="Author Follows" value={stats.followCount} />
                   <StatCard theme={theme} emoji="📝" label="Pending Claims" value={stats.claimPendingCount}
                     highlight={stats.claimPendingCount > 0} onClick={() => setTab('claims')} />
+                </div>
+
+                {/* Storage stats */}
+                <div style={{ marginTop: 28 }}>
+                  <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: theme.text, margin: '0 0 14px' }}>Storage</h3>
+                  <div style={s.statsGrid}>
+                    <StatCard theme={theme} emoji="🖼️" label="Book Cover Images" value={stats.coverImageCount}
+                      subtitle={stats.coverImageSize > 0 ? formatBytes(stats.coverImageSize) : null} />
+                    <StatCard theme={theme} emoji="👤" label="User Avatars" value={stats.avatarCount}
+                      subtitle={stats.avatarSize > 0 ? formatBytes(stats.avatarSize) : null} />
+                  </div>
                 </div>
 
                 {/* Quick actions */}
@@ -449,9 +486,19 @@ export default function Admin({ session }) {
   )
 }
 
+/* ── Helpers ─────────────────────────────────── */
+
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
 /* ── Stat Card ──────────────────────────────── */
 
-function StatCard({ theme, emoji, label, value, highlight, onClick }) {
+function StatCard({ theme, emoji, label, value, highlight, onClick, subtitle }) {
   return (
     <div
       onClick={onClick}
@@ -469,6 +516,7 @@ function StatCard({ theme, emoji, label, value, highlight, onClick }) {
         {(value ?? 0).toLocaleString()}
       </div>
       <div style={{ fontSize: 13, color: theme.textSubtle, marginTop: 4 }}>{label}</div>
+      {subtitle && <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 2, opacity: 0.7 }}>{subtitle}</div>}
     </div>
   )
 }

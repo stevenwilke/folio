@@ -1197,6 +1197,16 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
 
   const pct = book.pages && currentPage ? Math.min(100, Math.round((currentPage / book.pages) * 100)) : 0
 
+  // Auto-promote to "read" if page count already matches total pages
+  useEffect(() => {
+    if (status === 'reading' && book.pages && currentPage >= book.pages) {
+      supabase.from('collection_entries')
+        .update({ read_status: 'read' })
+        .eq('id', entry.id)
+        .then(() => onUpdate())
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function savePage(val) {
     const p = Math.max(0, parseInt(val) || 0)
     setCurrentPage(p)
@@ -1406,7 +1416,7 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
                 {book.pages && <span style={{ fontSize: 10, color: theme.textSubtle }}>/ {book.pages}</span>}
               </div>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <div
                   style={{ fontSize: 11, color: theme.rust, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
                   onClick={() => { setPageInput(currentPage || ''); setEditingPage(true) }}
@@ -1415,11 +1425,15 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
                     ? (book.pages ? `Pg ${currentPage} / ${book.pages}` : `Pg ${currentPage}`)
                     : '+ Update page'}
                 </div>
+                <span style={{ color: theme.borderLight || '#d4c9b0', fontSize: 10 }}>|</span>
                 <span
-                  style={{ fontSize: 10, color: theme.sage, cursor: 'pointer', fontWeight: 600 }}
-                  onClick={() => changeStatus('read')}
+                  style={{
+                    fontSize: 10, color: '#fff', cursor: 'pointer', fontWeight: 600,
+                    background: theme.sage, padding: '2px 7px', borderRadius: 4,
+                  }}
+                  onClick={(e) => { e.stopPropagation(); changeStatus('read') }}
                 >
-                  Finished
+                  ✓ Finished
                 </span>
               </div>
             )}

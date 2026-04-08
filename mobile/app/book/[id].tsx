@@ -41,6 +41,7 @@ interface CollectionEntry {
   read_status: ReadStatus;
   user_rating: number | null;
   review_text: string | null;
+  current_page: number | null;
 }
 
 const STATUS_OPTIONS: { key: ReadStatus; label: string }[] = [
@@ -180,7 +181,7 @@ export default function BookDetailScreen() {
         supabase.from('books').select('*').eq('id', id).single(),
         supabase
           .from('collection_entries')
-          .select('id, read_status, user_rating, review_text')
+          .select('id, read_status, user_rating, review_text, current_page')
           .eq('book_id', id)
           .eq('user_id', user.id)
           .maybeSingle(),
@@ -255,7 +256,7 @@ export default function BookDetailScreen() {
           .from('collection_entries')
           .update({ read_status: status })
           .eq('id', entry.id)
-          .select('id, read_status, user_rating, review_text')
+          .select('id, read_status, user_rating, review_text, current_page')
           .single();
         if (error) throw error;
         setEntry(data);
@@ -268,7 +269,7 @@ export default function BookDetailScreen() {
             book_id: book.id,
             read_status: status,
           })
-          .select('id, read_status, user_rating, review_text')
+          .select('id, read_status, user_rating, review_text, current_page')
           .single();
         if (error) throw error;
         setEntry(data);
@@ -293,7 +294,7 @@ export default function BookDetailScreen() {
           .from('collection_entries')
           .update({ user_rating: rating })
           .eq('id', entry.id)
-          .select('id, read_status, user_rating, review_text')
+          .select('id, read_status, user_rating, review_text, current_page')
           .single();
         if (error) throw error;
         setEntry(data);
@@ -306,7 +307,7 @@ export default function BookDetailScreen() {
             read_status: 'owned',
             user_rating: rating,
           })
-          .select('id, read_status, user_rating, review_text')
+          .select('id, read_status, user_rating, review_text, current_page')
           .single();
         if (error) throw error;
         setEntry(data);
@@ -355,9 +356,47 @@ export default function BookDetailScreen() {
     const page = Math.max(0, parseInt(pageStr) || 0);
     setCurrentPage(page);
     if (!entry) return;
-    await supabase.from('collection_entries')
-      .update({ current_page: page > 0 ? page : null })
-      .eq('id', entry.id);
+
+    const totalPages = (book as any)?.pages;
+    if (totalPages && page >= totalPages) {
+      // Auto-mark as finished when page count reaches total pages
+      const { data } = await supabase.from('collection_entries')
+        .update({ current_page: totalPages, read_status: 'read' })
+        .eq('id', entry.id)
+        .select('id, read_status, user_rating, review_text, current_page')
+        .single();
+      if (data) setEntry(data);
+      setCurrentPage(totalPages);
+    } else {
+      await supabase.from('collection_entries')
+        .update({ current_page: page > 0 ? page : null })
+        .eq('id', entry.id);
+    }
+  }
+
+  async function markAsFinished() {
+    if (!entry || !book) return;
+    setSaving(true);
+    try {
+      const totalPages = (book as any)?.pages;
+      const updateData: any = { read_status: 'read' };
+      if (totalPages) updateData.current_page = totalPages;
+
+      const { data, error } = await supabase.from('collection_entries')
+        .update(updateData)
+        .eq('id', entry.id)
+        .select('id, read_status, user_rating, review_text, current_page')
+        .single();
+      if (error) throw error;
+      if (data) {
+        setEntry(data);
+        if (totalPages) setCurrentPage(totalPages);
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Could not mark as finished.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function removeFromCollection() {
@@ -708,6 +747,22 @@ export default function BookDetailScreen() {
           </View>
         ) : null}
 
+        {/* Mark as Finished — shown when status is 'reading' */}
+        {entry?.read_status === 'reading' ? (
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={[styles.markFinishedBtn, saving && { opacity: 0.6 }]}
+              onPress={markAsFinished}
+              disabled={saving}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.markFinishedBtnText}>
+                {saving ? 'Saving...' : '\u2713 Mark as Finished'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {/* Series Tracking — shown above description when series_name is set */}
         {book.series_name && seriesBooks.length > 0 && (
           <View style={styles.seriesCard}>
@@ -1047,6 +1102,18 @@ const styles = StyleSheet.create({
   pageInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   pageInput: { width: 72, backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6, fontSize: 13, color: Colors.ink, textAlign: 'center', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
   pageOf: { fontSize: 13, color: Colors.muted, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  markFinishedBtn: {
+    backgroundColor: Colors.sage,
+    borderRadius: 8,
+    paddingVertical: 13,
+    alignItems: 'center' as const,
+  },
+  markFinishedBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700' as const,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
   bookshopBtn: {
     borderWidth: 1.5,
     borderColor: Colors.rust,

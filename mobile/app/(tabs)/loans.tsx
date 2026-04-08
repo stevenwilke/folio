@@ -352,6 +352,7 @@ export default function LoansScreen() {
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
   const [friendBooks, setFriendBooks] = useState<FriendBook[]>([]);
   const [browseLoading, setBrowseLoading] = useState(false);
+  const [browseSearch, setBrowseSearch] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Borrow request modal
@@ -652,6 +653,7 @@ export default function LoansScreen() {
               onPress={() => {
                 setSelectedFriendId(f.id);
                 setFriendBooks([]);
+                setBrowseSearch('');
                 fetchFriendBooks(f.id);
               }}
             >
@@ -661,6 +663,16 @@ export default function LoansScreen() {
             </TouchableOpacity>
           ))}
         </ScrollView>
+
+        {selectedFriendId && (
+          <TextInput
+            style={br.browseSearchInput}
+            placeholder="Search books..."
+            placeholderTextColor={Colors.muted}
+            value={browseSearch}
+            onChangeText={setBrowseSearch}
+          />
+        )}
 
         {selectedFriendId ? (
           browseLoading ? (
@@ -672,9 +684,16 @@ export default function LoansScreen() {
               <Text style={styles.emptyTitle}>No owned books</Text>
               <Text style={styles.emptySubtitle}>This friend hasn't marked any books as owned.</Text>
             </View>
-          ) : (
+          ) : (() => {
+            const filtered = browseSearch.trim()
+              ? friendBooks.filter(b =>
+                  b.title.toLowerCase().includes(browseSearch.toLowerCase()) ||
+                  (b.author || '').toLowerCase().includes(browseSearch.toLowerCase())
+                )
+              : friendBooks;
+            return (
             <View>
-              {friendBooks.map((book) => (
+              {filtered.map((book) => (
                 <View key={book.book_id} style={br.bookRow}>
                   <View style={br.coverBox}>
                     {book.cover_image_url ? (
@@ -699,7 +718,8 @@ export default function LoansScreen() {
                 </View>
               ))}
             </View>
-          )
+            );
+          })()
         ) : (
           <View style={styles.empty}>
             <Text style={styles.emptySubtitle}>Select a friend above to browse their library.</Text>
@@ -978,6 +998,19 @@ const br = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  browseSearchInput: {
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: Colors.ink,
+    margin: 16,
+    marginTop: 12,
+    marginBottom: 4,
   },
 });
 

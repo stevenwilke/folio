@@ -38,6 +38,7 @@ interface CollectionEntry {
   book_id: string;
   read_status: ReadStatus;
   user_rating: number | null;
+  current_page: number | null;
   books: {
     id: string;
     title: string;
@@ -47,6 +48,7 @@ interface CollectionEntry {
     published_year: number | null;
     series_name: string | null;
     series_position: number | null;
+    pages: number | null;
   };
 }
 
@@ -100,6 +102,7 @@ export default function LibraryScreen() {
         book_id,
         read_status,
         user_rating,
+        current_page,
         books (
           id,
           title,
@@ -108,14 +111,32 @@ export default function LibraryScreen() {
           genre,
           published_year,
           series_name,
-          series_position
+          series_position,
+          pages
         )
       `)
       .eq('user_id', user.id)
       .order('added_at', { ascending: false });
 
     if (!error && data) {
-      const entries = data as unknown as CollectionEntry[];
+      let entries = data as unknown as CollectionEntry[];
+
+      // Auto-promote finished books: if reading and current_page >= total pages, mark as read
+      const toPromote = entries.filter(e =>
+        e.read_status === 'reading' && e.books?.pages && e.current_page != null && e.current_page >= e.books.pages
+      );
+      if (toPromote.length) {
+        await Promise.all(toPromote.map(e =>
+          supabase.from('collection_entries').update({ read_status: 'read' }).eq('id', e.id)
+        ));
+        // Update local state to reflect the promotion without a full refetch
+        entries = entries.map(e =>
+          toPromote.some(p => p.id === e.id)
+            ? { ...e, read_status: 'read' as ReadStatus }
+            : e
+        );
+      }
+
       setEntries(entries);
 
       // New user check: no books + not yet onboarded → show onboarding wizard

@@ -32,6 +32,15 @@ const GENRES = [
   { label: 'Business',     slug: 'business_and_economics',        emoji: '💼' },
 ];
 
+const NYT_API_KEY = '2vGCkSNIV0d51GG4sERlG9pwoYG7b8ktvPLFBNmbsCWtK2oO';
+
+const NYT_LISTS = [
+  { key: 'hardcover-fiction',                    label: 'Fiction',     emoji: '📖' },
+  { key: 'combined-print-and-e-book-nonfiction', label: 'Nonfiction',  emoji: '🧠' },
+  { key: 'trade-fiction-paperback',              label: 'Paperback',   emoji: '📄' },
+  { key: 'young-adult-hardcover',                label: 'Young Adult', emoji: '🌟' },
+];
+
 interface DiscoverBook {
   olKey: string;
   title: string;
@@ -106,6 +115,25 @@ async function searchOL(query: string, limit = 8): Promise<DiscoverBook[]> {
       author: d.author_name?.[0] ?? null,
       coverUrl: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg` : null,
       year: d.first_publish_year ?? null,
+    }));
+  } catch { return []; }
+}
+
+async function fetchNYTList(listName: string): Promise<DiscoverBook[]> {
+  try {
+    const r = await fetch(
+      `https://api.nytimes.com/svc/books/v3/lists/current/${listName}.json?api-key=${NYT_API_KEY}`
+    );
+    const j = await r.json();
+    const books = j.results?.books ?? [];
+    return books.map((b: any) => ({
+      olKey: `nyt-${listName}-${b.rank}`,
+      title: b.title?.replace(/\b\w+/g, (w: string) => w[0] + w.slice(1).toLowerCase()) ?? b.title,
+      author: b.author ?? null,
+      coverUrl: b.book_image ?? null,
+      year: null,
+      rank: b.rank ?? null,
+      weeksOnList: b.weeks_on_list ?? 0,
     }));
   } catch { return []; }
 }
@@ -342,8 +370,30 @@ export default function DiscoverScreen() {
   const [previewBook,   setPreviewBook]   = useState<DiscoverBook | null>(null);
   const [aiRecs,        setAiRecs]        = useState<AIRec[]>([]);
   const [aiRecsLoad,    setAiRecsLoad]    = useState(true);
+  const [nytList,       setNytList]       = useState(NYT_LISTS[0].key);
+  const [nytBooks,      setNytBooks]      = useState<DiscoverBook[]>([]);
+  const [nytLoad,       setNytLoad]       = useState(true);
+  const nytCacheRef = useRef<Record<string, DiscoverBook[]>>({});
 
   useEffect(() => { init(); }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadNYT() {
+      if (nytCacheRef.current[nytList]) {
+        setNytBooks(nytCacheRef.current[nytList]);
+        return;
+      }
+      setNytLoad(true);
+      const books = await fetchNYTList(nytList);
+      if (cancelled) return;
+      nytCacheRef.current[nytList] = books;
+      setNytBooks(books);
+      setNytLoad(false);
+    }
+    loadNYT();
+    return () => { cancelled = true; };
+  }, [nytList]);
 
   async function init() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -540,6 +590,41 @@ export default function DiscoverScreen() {
         )}
       </View>
 
+      {/* NYT Best Sellers */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>NYT Best Sellers</Text>
+        <Text style={styles.nytAttribution}>From The New York Times</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.nytTabRow}>
+          {NYT_LISTS.map(l => (
+            <TouchableOpacity
+              key={l.key}
+              style={[styles.nytTab, nytList === l.key && styles.nytTabActive]}
+              onPress={() => setNytList(l.key)}
+            >
+              <Text style={[styles.nytTabText, nytList === l.key && styles.nytTabTextActive]}>
+                {l.emoji} {l.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        {nytLoad ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+            {[...Array(4)].map((_, i) => <View key={i} style={styles.skeleton} />)}
+          </ScrollView>
+        ) : nytBooks.length === 0 ? (
+          <Text style={styles.emptyText}>No best sellers found.</Text>
+        ) : (
+          <FlatList
+            horizontal
+            data={nytBooks}
+            keyExtractor={(b, i) => b.olKey ?? String(i)}
+            renderItem={({ item }) => <BookCard book={item} myKeys={myKeys} onPreview={setPreviewBook} />}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.row}
+          />
+        )}
+      </View>
+
       {/* For You */}
       <HorizontalSection
         title={forYouTitle}
@@ -651,6 +736,14 @@ const styles = StyleSheet.create({
   aiCardMeta:     { padding: 8, gap: 3 },
   aiReasonPill:   { backgroundColor: 'rgba(123,94,168,0.10)', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start', marginTop: 2 },
   aiReasonText:   { fontSize: 9, color: '#7b5ea8', fontWeight: '600', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+
+  // NYT Best Sellers
+  nytTabRow:       { paddingHorizontal: 16, gap: 8, marginBottom: 12 },
+  nytTab:          { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border },
+  nytTabActive:    { backgroundColor: Colors.rust, borderColor: Colors.rust },
+  nytTabText:      { fontSize: 12, fontWeight: '600', color: Colors.ink, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  nytTabTextActive:{ color: '#fff' },
+  nytAttribution:  { fontSize: 11, color: Colors.muted, marginBottom: 10, paddingHorizontal: 16, fontStyle: 'italic', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
 
   genreGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, marginBottom: 16 },
   genreChip:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border },

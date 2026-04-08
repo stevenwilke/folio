@@ -338,7 +338,10 @@ export default function Author({ session }) {
   }
 
   const myReadCount  = folioBooks.filter(b => myEntries[b.id]?.read_status === 'read').length
+  const myInLibrary  = folioBooks.filter(b => myEntries[b.id]).length
   const totalFolio   = folioBooks.length
+  const totalKnown   = totalFolio + olBooks.length   // all known books (DB + Open Library)
+  const allRead      = session && totalFolio > 0 && myReadCount === totalFolio
   const isVerifiedOwner = session && authorRecord?.claimed_by === session.user.id && authorRecord?.is_verified
   const canClaim = session && authorRecord && !authorRecord.is_verified && !myClaim
 
@@ -374,10 +377,17 @@ export default function Author({ session }) {
               )}
             </div>
             <div style={s.authorMeta}>
-              <span>{totalFolio} book{totalFolio !== 1 ? 's' : ''} in Ex Libris</span>
+              <span>{totalKnown} known book{totalKnown !== 1 ? 's' : ''}</span>
+              {session && myReadCount > 0 && <><span style={s.dot}>·</span><span>You've read {myReadCount}</span></>}
               {friendCount > 0 && <><span style={s.dot}>·</span><span>{friendCount} friend{friendCount !== 1 ? 's' : ''} have read their work</span></>}
               {followCount > 0 && <><span style={s.dot}>·</span><span>{followCount} follower{followCount !== 1 ? 's' : ''}</span></>}
             </div>
+            {allRead && (
+              <div style={s.completionBadge}>
+                <span style={{ fontSize: 18 }}>🏆</span>
+                <span>You've read every book by {decoded}!</span>
+              </div>
+            )}
 
             {/* Follow / Favorite buttons */}
             {session && (
@@ -440,11 +450,17 @@ export default function Author({ session }) {
         {session && totalFolio > 0 && (
           <div style={s.progressSection}>
             <div style={s.progressLabel}>
-              You've read <strong>{myReadCount}</strong> of <strong>{totalFolio}</strong> book{totalFolio !== 1 ? 's' : ''} by {decoded}
+              You've read <strong>{myReadCount}</strong> of <strong>{totalFolio}</strong> book{totalFolio !== 1 ? 's' : ''} in your library by {decoded}
+              {olBooks.length > 0 && <span style={{ color: theme.textSubtle }}> ({totalKnown} total known)</span>}
             </div>
             <div style={s.progressBarWrap}>
               <div style={{ ...s.progressBarFill, width: `${totalFolio > 0 ? Math.round((myReadCount / totalFolio) * 100) : 0}%` }} />
             </div>
+            {allRead && (
+              <div style={{ fontSize: 13, color: '#5a7a5a', fontWeight: 600, marginTop: 8 }}>
+                🏆 Complete! You've read all their books in your library.
+              </div>
+            )}
           </div>
         )}
 
@@ -707,7 +723,8 @@ function makeStyles(theme) {
     authorName:   { fontFamily: "'Playfair Display', Georgia, serif", fontSize: 32, fontWeight: 700, color: theme.text, margin: 0, lineHeight: 1.2 },
     authorMeta:   { display: 'flex', gap: 6, alignItems: 'center', fontSize: 14, color: theme.textSubtle, marginTop: 6, flexWrap: 'wrap' },
     dot:          { color: theme.border },
-    verifiedBadge:{ display: 'inline-flex', alignItems: 'center', fontSize: 12, fontWeight: 700, background: 'rgba(90,122,90,0.15)', color: '#5a7a5a', borderRadius: 20, padding: '3px 10px', marginTop: 4 },
+    verifiedBadge:   { display: 'inline-flex', alignItems: 'center', fontSize: 12, fontWeight: 700, background: 'rgba(90,122,90,0.15)', color: '#5a7a5a', borderRadius: 20, padding: '3px 10px', marginTop: 4 },
+    completionBadge: { display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, background: 'linear-gradient(135deg, rgba(184,134,11,0.15), rgba(192,82,30,0.12))', color: '#9a7200', borderRadius: 20, padding: '6px 14px', marginTop: 10, border: '1px solid rgba(184,134,11,0.2)' },
 
     btn:    { padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all 0.15s' },
     typeBtn:{ padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },

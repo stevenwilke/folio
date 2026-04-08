@@ -314,6 +314,8 @@ export default function AuthorScreen() {
   // Stats for progress bar
   const readCount = folioBooks.filter((b) => b.userStatus === 'read').length;
   const totalFolio = folioBooks.length;
+  const totalKnown = totalFolio + olBooks.length;
+  const allRead = totalFolio > 0 && readCount === totalFolio;
 
   if (loading) {
     return (
@@ -352,14 +354,19 @@ export default function AuthorScreen() {
 
           {/* Stats row */}
           <Text style={styles.statsRow}>
-            <Text style={styles.statValue}>{totalFolio}</Text>
-            <Text style={styles.statLabel}> in Ex Libris</Text>
-            {'  ·  '}
-            <Text style={styles.statLabel}>Read by </Text>
-            <Text style={styles.statValue}>{friendCount}</Text>
-            <Text style={styles.statLabel}> friend{friendCount !== 1 ? 's' : ''}</Text>
+            <Text style={styles.statValue}>{totalKnown}</Text>
+            <Text style={styles.statLabel}> known book{totalKnown !== 1 ? 's' : ''}</Text>
+            {readCount > 0 ? <>{'  ·  '}<Text style={styles.statLabel}>You've read </Text><Text style={styles.statValue}>{readCount}</Text></> : null}
+            {friendCount > 0 ? <>{'  ·  '}<Text style={styles.statValue}>{friendCount}</Text><Text style={styles.statLabel}> friend{friendCount !== 1 ? 's' : ''} reading</Text></> : null}
             {followCount > 0 ? `  ·  ${followCount} follower${followCount !== 1 ? 's' : ''}` : ''}
           </Text>
+
+          {/* Completion badge */}
+          {allRead && (
+            <View style={styles.completionBadge}>
+              <Text style={styles.completionBadgeText}>🏆 You've read every book by {authorName}!</Text>
+            </View>
+          )}
 
           {/* Follow / Favorite buttons */}
           <View style={styles.followRow}>
@@ -432,7 +439,8 @@ export default function AuthorScreen() {
                 <Text style={styles.progressBold}>{readCount}</Text>
                 {' of '}
                 <Text style={styles.progressBold}>{totalFolio}</Text>
-                {totalFolio !== 1 ? ' books by this author' : ' book by this author'}
+                {' in your library'}
+                {olBooks.length > 0 && <Text style={{ color: Colors.muted }}> ({totalKnown} total known)</Text>}
               </Text>
               <View style={styles.progressBarBg}>
                 <View
@@ -449,6 +457,9 @@ export default function AuthorScreen() {
               <Text style={styles.progressPct}>
                 {totalFolio > 0 ? `${Math.round((readCount / totalFolio) * 100)}%` : '0%'}
               </Text>
+              {allRead && (
+                <Text style={styles.completionNote}>🏆 Complete! You've read all their books in your library.</Text>
+              )}
             </View>
           )}
 
@@ -645,6 +656,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.sage,
     fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  completionNote: {
+    fontSize: 13,
+    color: Colors.sage,
+    fontWeight: '700',
+    marginTop: 8,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  completionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(184,134,11,0.12)',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(184,134,11,0.2)',
+  },
+  completionBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#9a7200',
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
 

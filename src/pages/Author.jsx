@@ -353,6 +353,7 @@ export default function Author({ session }) {
   const friendsWant = new Set(allFriendEntries.filter(e => e.status === 'want').map(e => e.username)).size
   const friendsReading = new Set(allFriendEntries.filter(e => e.status === 'reading').map(e => e.username)).size
   const canClaim = session && authorRecord && !authorRecord.is_verified && !myClaim
+  const displayName = authorRecord?.display_name || decoded
 
   const s = makeStyles(theme)
 
@@ -380,7 +381,7 @@ export default function Author({ session }) {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
-              <h1 style={s.authorName}>{decoded}</h1>
+              <h1 style={s.authorName}>{displayName}</h1>
               {authorRecord?.is_verified && (
                 <span style={s.verifiedBadge}>✓ Verified Author</span>
               )}
@@ -438,7 +439,7 @@ export default function Author({ session }) {
             {allRead && (
               <div style={s.completionBadge}>
                 <span style={{ fontSize: 18 }}>🏆</span>
-                <span>You've read every book by {decoded}!</span>
+                <span>You've read every book by {displayName}!</span>
               </div>
             )}
 
@@ -503,7 +504,7 @@ export default function Author({ session }) {
         {session && totalFolio > 0 && (
           <div style={s.progressSection}>
             <div style={s.progressLabel}>
-              You've read <strong>{myReadCount}</strong> of <strong>{totalFolio}</strong> book{totalFolio !== 1 ? 's' : ''} in your library by {decoded}
+              You've read <strong>{myReadCount}</strong> of <strong>{totalFolio}</strong> book{totalFolio !== 1 ? 's' : ''} in your library by {displayName}
               {olBooks.length > 0 && <span style={{ color: theme.textSubtle }}> ({totalKnown} total known)</span>}
             </div>
             <div style={s.progressBarWrap}>
@@ -629,8 +630,8 @@ export default function Author({ session }) {
         {/* ── More by this author (OL) ── */}
         {olBooks.length > 0 && (
           <section style={s.section}>
-            <h2 style={s.sectionTitle}>More by {decoded}</h2>
-            <div style={s.bookGrid}>
+            <h2 style={s.sectionTitle}>More by {displayName}</h2>
+            <div style={s.scrollRow}>
               {olBooks.map(book => (
                 <OlBookCard key={book.key} book={book} theme={theme} adding={addTarget === book.key} onAdd={addOlBook} />
               ))}
@@ -641,7 +642,7 @@ export default function Author({ session }) {
         {folioBooks.length === 0 && olBooks.length === 0 && (
           <div style={s.emptyState}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>📚</div>
-            <div style={s.emptyTitle}>No books found for "{decoded}"</div>
+            <div style={s.emptyTitle}>No books found for "{displayName}"</div>
             <div style={s.emptySub}>Try searching with a slightly different name.</div>
           </div>
         )}
@@ -661,7 +662,7 @@ export default function Author({ session }) {
             </div>
 
             <p style={{ fontSize: 14, color: theme.textSubtle, marginBottom: 20, lineHeight: 1.5 }}>
-              If you are <strong>{decoded}</strong>, please provide verifiable proof of your identity. We require a link to an official source that connects you to this author name.
+              If you are <strong>{displayName}</strong>, please provide verifiable proof of your identity. We require a link to an official source that connects you to this author name.
             </p>
 
             <label style={s.label}>Proof URL <span style={{ color: theme.rust }}>*</span></label>
@@ -692,7 +693,7 @@ export default function Author({ session }) {
                 onChange={e => setClaimAgreed(e.target.checked)}
                 style={{ marginTop: 3, accentColor: theme.rust }}
               />
-              <span>I confirm that I am <strong>{decoded}</strong> and understand that falsely claiming an author page will result in my account being permanently banned.</span>
+              <span>I confirm that I am <strong>{displayName}</strong> and understand that falsely claiming an author page will result in my account being permanently banned.</span>
             </label>
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
@@ -714,6 +715,7 @@ export default function Author({ session }) {
 
 // ── Folio book card ──────────────────────────────────────────────────────────
 function FolioBookCard({ book, entry, friends, theme, session, onStatusChange }) {
+  const navigate = useNavigate()
   const [hover,    setHover]    = useState(false)
   const [showMenu, setShowMenu] = useState(false)
   const [changing, setChanging] = useState(false)
@@ -723,24 +725,31 @@ function FolioBookCard({ book, entry, friends, theme, session, onStatusChange })
     await onStatusChange(status); setChanging(false)
   }
   return (
-    <div style={{ position: 'relative' }} onMouseLeave={() => { setHover(false); setShowMenu(false) }}>
+    <div style={{ position: 'relative' }} onMouseLeave={() => { setShowMenu(false) }}>
       <div
-        style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, overflow: 'hidden', transition: 'box-shadow 0.15s, transform 0.15s', boxShadow: hover ? theme.shadowCard : 'none', transform: hover ? 'translateY(-2px)' : 'none', cursor: 'pointer' }}
+        style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, overflow: 'hidden', transition: 'box-shadow 0.15s, transform 0.15s', boxShadow: hover ? theme.shadowCard : 'none', transform: hover ? 'translateY(-2px)' : 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column' }}
         onMouseEnter={() => setHover(true)}
-        onClick={() => setShowMenu(v => !v)}
+        onMouseLeave={() => setHover(false)}
+        onClick={() => navigate(`/?book=${book.id}`)}
       >
         <div style={{ position: 'relative', background: '#d4c9b0', aspectRatio: '2/3' }}>
           {coverUrl ? <img src={coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => e.target.style.display = 'none'} /> : <FakeCover title={book.title} />}
           {entry && <div style={{ position: 'absolute', top: 6, left: 6, ...STATUS_COLORS[entry.read_status], padding: '2px 7px', borderRadius: 10, fontSize: 10, fontWeight: 600, backdropFilter: 'blur(4px)' }}>{STATUS_LABELS[entry.read_status]}</div>}
         </div>
-        <div style={{ padding: '10px 10px 12px' }}>
+        <div style={{ padding: '10px 10px 12px', flex: 1 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, lineHeight: 1.3, marginBottom: 3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{book.title}</div>
           {book.published_year && <div style={{ fontSize: 11, color: theme.textSubtle }}>{book.published_year}</div>}
           {friends.length > 0 && <div style={{ fontSize: 11, color: theme.sage, marginTop: 4 }}>{friends.length} friend{friends.length !== 1 ? 's' : ''} have this</div>}
         </div>
       </div>
+      {session && (
+        <button
+          onClick={e => { e.stopPropagation(); setShowMenu(v => !v) }}
+          style={{ position: 'absolute', top: 6, right: 6, width: 26, height: 26, borderRadius: '50%', border: 'none', background: 'rgba(26,18,8,0.55)', color: '#fff', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)', lineHeight: 1 }}
+        >＋</button>
+      )}
       {showMenu && session && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 30, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 10, minWidth: 150, boxShadow: '0 6px 20px rgba(26,18,8,0.15)', marginTop: 4 }}>
+        <div style={{ position: 'absolute', top: 34, right: 0, zIndex: 30, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 10, minWidth: 150, boxShadow: '0 6px 20px rgba(26,18,8,0.15)', marginTop: 4 }}>
           {Object.entries(STATUS_LABELS).map(([status, label]) => (
             <div key={status} style={{ padding: '9px 14px', fontSize: 13, cursor: 'pointer', color: entry?.read_status === status ? '#c0521e' : theme.text, fontWeight: entry?.read_status === status ? 600 : 400, fontFamily: "'DM Sans', sans-serif" }} onClick={e => { e.stopPropagation(); handleStatus(status) }}>
               {changing ? '…' : label}{entry?.read_status === status && ' ✓'}
@@ -756,13 +765,19 @@ function FolioBookCard({ book, entry, friends, theme, session, onStatusChange })
 function OlBookCard({ book, theme, adding, onAdd }) {
   const [hover, setHover] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
+  const olUrl = book.key ? `https://openlibrary.org${book.key}` : null
   return (
-    <div style={{ position: 'relative' }} onMouseLeave={() => { setHover(false); setShowMenu(false) }}>
-      <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, overflow: 'hidden', transition: 'box-shadow 0.15s, transform 0.15s', boxShadow: hover ? theme.shadowCard : 'none', transform: hover ? 'translateY(-2px)' : 'none', cursor: 'pointer' }} onMouseEnter={() => setHover(true)} onClick={() => setShowMenu(v => !v)}>
+    <div style={{ position: 'relative', width: 140, flexShrink: 0 }} onMouseLeave={() => { setShowMenu(false) }}>
+      <div
+        style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, overflow: 'hidden', transition: 'box-shadow 0.15s, transform 0.15s', boxShadow: hover ? theme.shadowCard : 'none', transform: hover ? 'translateY(-2px)' : 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column' }}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        onClick={() => olUrl && window.open(olUrl, '_blank')}
+      >
         <div style={{ background: '#d4c9b0', aspectRatio: '2/3', position: 'relative' }}>
           {book.coverUrl ? <img src={book.coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => e.target.style.display = 'none'} /> : <FakeCover title={book.title} />}
         </div>
-        <div style={{ padding: '10px 10px 12px' }}>
+        <div style={{ padding: '10px 10px 12px', flex: 1 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, lineHeight: 1.3, marginBottom: 3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{book.title}</div>
           {book.year && <div style={{ fontSize: 11, color: theme.textSubtle }}>{book.year}</div>}
           <div style={{ marginTop: 6 }}>
@@ -770,8 +785,12 @@ function OlBookCard({ book, theme, adding, onAdd }) {
           </div>
         </div>
       </div>
+      <button
+        onClick={e => { e.stopPropagation(); setShowMenu(v => !v) }}
+        style={{ position: 'absolute', top: 6, right: 6, width: 26, height: 26, borderRadius: '50%', border: 'none', background: 'rgba(26,18,8,0.55)', color: '#fff', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)', lineHeight: 1 }}
+      >＋</button>
       {showMenu && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 30, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 10, minWidth: 150, boxShadow: '0 6px 20px rgba(26,18,8,0.15)', marginTop: 4 }}>
+        <div style={{ position: 'absolute', top: 34, right: 0, zIndex: 30, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 10, minWidth: 150, boxShadow: '0 6px 20px rgba(26,18,8,0.15)', marginTop: 4 }}>
           <div style={{ padding: '8px 14px 6px', fontSize: 11, fontWeight: 600, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Add to Library</div>
           {Object.entries(STATUS_LABELS).map(([status, label]) => (
             <div key={status} style={{ padding: '9px 14px', fontSize: 13, cursor: adding ? 'default' : 'pointer', color: theme.text, fontFamily: "'DM Sans', sans-serif" }} onClick={e => { e.stopPropagation(); !adding && onAdd(book, status) }}>
@@ -822,7 +841,8 @@ function makeStyles(theme) {
 
     section:      { marginBottom: 48 },
     sectionTitle: { fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text, marginBottom: 20, marginTop: 0 },
-    bookGrid:     { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 16 },
+    bookGrid:     { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 16, alignItems: 'start' },
+    scrollRow:    { display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 8, WebkitOverflowScrolling: 'touch' },
 
     postForm:      { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: 20, marginBottom: 24 },
     postInput:     { width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", background: theme.bg, color: theme.text, outline: 'none' },

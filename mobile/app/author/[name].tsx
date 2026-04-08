@@ -326,6 +326,7 @@ export default function AuthorScreen() {
   const totalFolio = folioBooks.length;
   const totalKnown = totalFolio + olBooks.length;
   const allRead = totalFolio > 0 && readCount === totalFolio;
+  const displayName = authorRecord?.display_name || authorName;
 
   if (loading) {
     return (
@@ -355,7 +356,7 @@ export default function AuthorScreen() {
               }
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.authorName}>{authorName}</Text>
+              <Text style={styles.authorName}>{displayName}</Text>
               {authorRecord?.is_verified && (
                 <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>✓ Verified Author</Text></View>
               )}
@@ -376,7 +377,7 @@ export default function AuthorScreen() {
           {/* Completion badge */}
           {allRead && (
             <View style={styles.completionBadge}>
-              <Text style={styles.completionBadgeText}>🏆 You've read every book by {authorName}!</Text>
+              <Text style={styles.completionBadgeText}>🏆 You've read every book by {displayName}!</Text>
             </View>
           )}
 

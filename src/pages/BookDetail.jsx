@@ -581,7 +581,7 @@ export default function BookDetail({ bookId, session, onBack }) {
     tab:                 { padding: '10px 20px', fontSize: 14, cursor: 'pointer', color: theme.textSubtle, borderBottom: '2px solid transparent', marginBottom: -1, transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6 },
     tabActive:           { color: theme.rust, borderBottom: `2px solid ${theme.rust}`, fontWeight: 500 },
     reviewCount:         { fontSize: 11, background: theme.bgSubtle, color: theme.textSubtle, padding: '1px 6px', borderRadius: 20 },
-    tabContent:          { maxWidth: 680, position: 'relative', zIndex: 1 },
+    tabContent:          { maxWidth: 680, position: 'relative', zIndex: 1, minHeight: 200 },
     description:         { fontSize: 14, lineHeight: 1.9, color: theme.text },
     descriptionMuted:    { fontSize: 14, color: theme.textSubtle, fontStyle: 'italic' },
     empty:               { color: theme.textSubtle, fontSize: 14, padding: '32px 0' },

@@ -656,8 +656,11 @@ export default function Admin({ session }) {
                               style={{ fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 15, color: theme.text, cursor: 'pointer', textDecoration: 'none' }}
                               onClick={() => navigate(`/author/${encodeURIComponent(author.name)}`)}
                             >
-                              {author.name}
+                              {author.display_name || author.name}
                             </span>
+                            {author.display_name && (
+                              <span style={{ fontSize: 11, color: theme.textSubtle, fontStyle: 'italic' }}>({author.name})</span>
+                            )}
                             {author.is_verified && (
                               <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: 'rgba(90,122,90,0.15)', color: '#5a7a5a' }}>✓ Verified</span>
                             )}
@@ -866,16 +869,16 @@ export default function Admin({ session }) {
         {/* ════════════ EDIT AUTHOR MODAL ════════════ */}
         {editingAuthor && (
           <EditModal
-            title={`Edit Author: ${editingAuthor.name}`}
+            title={`Edit Author: ${editingAuthor.display_name || editingAuthor.name}`}
             theme={theme} s={s}
             onClose={() => setEditingAuthor(null)}
             onSave={(updates) => saveAuthor(editingAuthor.id, updates)}
             saving={acting === editingAuthor.id}
             fields={[
-              { key: 'name',      label: 'Name',      value: editingAuthor.name,      required: true },
-              { key: 'bio',       label: 'Bio',        value: editingAuthor.bio || '',  multiline: true },
-              { key: 'photo_url', label: 'Photo URL',  value: editingAuthor.photo_url || '' },
-              { key: 'website',   label: 'Website',    value: editingAuthor.website || '' },
+              { key: 'display_name', label: 'Display Name', value: editingAuthor.display_name || '', placeholder: editingAuthor.name, hint: `Leave blank to use the original name: "${editingAuthor.name}"` },
+              { key: 'bio',          label: 'Bio',           value: editingAuthor.bio || '',          multiline: true },
+              { key: 'photo_url',    label: 'Photo URL',     value: editingAuthor.photo_url || '' },
+              { key: 'website',      label: 'Website',       value: editingAuthor.website || '' },
             ]}
           />
         )}
@@ -942,6 +945,7 @@ function EditModal({ title, theme, s, onClose, onSave, saving, fields }) {
               <textarea
                 value={values[f.key]}
                 onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                placeholder={f.placeholder || ''}
                 rows={4}
                 style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", background: theme.bg, color: theme.text, outline: 'none', resize: 'vertical' }}
               />
@@ -950,9 +954,11 @@ function EditModal({ title, theme, s, onClose, onSave, saving, fields }) {
                 type={f.type || 'text'}
                 value={values[f.key]}
                 onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                placeholder={f.placeholder || ''}
                 style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", background: theme.bg, color: theme.text, outline: 'none' }}
               />
             )}
+            {f.hint && <div style={{ fontSize: 11, color: theme.textSubtle, marginTop: 4, fontStyle: 'italic' }}>{f.hint}</div>}
           </div>
         ))}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>

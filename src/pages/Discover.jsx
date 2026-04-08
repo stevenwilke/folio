@@ -1011,39 +1011,6 @@ export default function Discover({ session }) {
           <p  style={s.pageSub}>Find your next great read</p>
         </div>
 
-        {/* AI Picks */}
-        <section style={{ marginBottom: 40 }}>
-          <div style={{ marginBottom: 14 }}>
-            <h2 style={{ ...s.secTitle, display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 4px' }}>
-              <span>✨</span>
-              <span>AI Picks For You</span>
-              <span style={{ fontSize: 11, fontWeight: 500, background: 'rgba(192,82,30,0.12)', color: '#c0521e', borderRadius: 20, padding: '2px 9px', letterSpacing: 0.3 }}>Powered by Claude</span>
-            </h2>
-            <p style={s.secSub}>Personalized suggestions based on your reading taste</p>
-          </div>
-          {aiRecsLoad ? (
-            <div style={{ ...s.row }}>
-              {[...Array(6)].map((_, i) => (
-                <div key={i} style={{ ...s.skeleton, opacity: 0.6 + i * 0.05 }} />
-              ))}
-            </div>
-          ) : aiRecs.length > 0 ? (
-            <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8, WebkitOverflowScrolling: 'touch', scrollbarWidth: 'thin', scrollbarColor: `${theme.border} transparent` }}>
-              {aiRecs.map((book, i) => (
-                <AIPickCard key={book.olKey ?? i} book={book} theme={theme} myBookIds={myBookIds} onPreview={() => openPreview(book)} />
-              ))}
-            </div>
-          ) : aiRecsError ? (
-            <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '18px 22px', fontSize: 14, color: theme.textSubtle }}>
-              ⚠️ Couldn't load AI recommendations right now — try refreshing the page.
-            </div>
-          ) : (
-            <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '18px 22px', fontSize: 14, color: theme.textSubtle }}>
-              ✨ Add at least 3 books to your library to unlock AI-powered recommendations!
-            </div>
-          )}
-        </section>
-
         {/* Collaborative Recommendations */}
         {!recsLoading && hasEnoughData && recommendations.length > 0 && (
           <div style={{ marginBottom: 32 }}>
@@ -1194,6 +1161,39 @@ export default function Discover({ session }) {
               </div>
             : <BookRow books={friends} myBookIds={myBookIds} onPreview={openPreview} onAdd={handleAdd} loading={friendsLoad} />
           }
+        </section>
+
+        {/* AI Picks — loads async, placed lower so page renders fast */}
+        <section style={{ marginBottom: 40 }}>
+          <div style={{ marginBottom: 14 }}>
+            <h2 style={{ ...s.secTitle, display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 4px' }}>
+              <span>✨</span>
+              <span>AI Picks For You</span>
+              <span style={{ fontSize: 11, fontWeight: 500, background: 'rgba(192,82,30,0.12)', color: '#c0521e', borderRadius: 20, padding: '2px 9px', letterSpacing: 0.3 }}>Powered by Claude</span>
+            </h2>
+            <p style={s.secSub}>Personalized suggestions based on your reading taste</p>
+          </div>
+          {aiRecsLoad ? (
+            <div style={{ ...s.row }}>
+              {[...Array(6)].map((_, i) => (
+                <div key={i} style={{ ...s.skeleton, opacity: 0.6 + i * 0.05 }} />
+              ))}
+            </div>
+          ) : aiRecs.length > 0 ? (
+            <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8, WebkitOverflowScrolling: 'touch', scrollbarWidth: 'thin', scrollbarColor: `${theme.border} transparent` }}>
+              {aiRecs.map((book, i) => (
+                <AIPickCard key={book.olKey ?? i} book={book} theme={theme} myBookIds={myBookIds} onPreview={() => openPreview(book)} />
+              ))}
+            </div>
+          ) : aiRecsError ? (
+            <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '18px 22px', fontSize: 14, color: theme.textSubtle }}>
+              ⚠️ Couldn't load AI recommendations right now — try refreshing the page.
+            </div>
+          ) : (
+            <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '18px 22px', fontSize: 14, color: theme.textSubtle }}>
+              ✨ Add at least 3 books to your library to unlock AI-powered recommendations!
+            </div>
+          )}
         </section>
 
         {/* Browse by Genre */}

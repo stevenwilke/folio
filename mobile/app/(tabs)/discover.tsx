@@ -565,31 +565,6 @@ export default function DiscoverScreen() {
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
-      {/* AI Picks */}
-      <View style={styles.section}>
-        <View style={styles.aiSectionHead}>
-          <Text style={styles.sectionTitle}>✨ AI Picks For You</Text>
-          <View style={styles.claudePill}><Text style={styles.claudePillText}>Claude AI</Text></View>
-        </View>
-        <Text style={styles.sectionSub}>Personalized suggestions based on your reading taste</Text>
-        {aiRecsLoad ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-            {[...Array(4)].map((_, i) => <View key={i} style={styles.skeleton} />)}
-          </ScrollView>
-        ) : aiRecs.length > 0 ? (
-          <FlatList
-            horizontal
-            data={aiRecs}
-            keyExtractor={(b, i) => b.olKey ?? String(i)}
-            renderItem={({ item }) => <AIPickCard book={item} myKeys={myKeys} onPreview={setPreviewBook} />}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.row}
-          />
-        ) : (
-          <Text style={styles.emptyText}>Add at least 3 books to unlock AI picks!</Text>
-        )}
-      </View>
-
       {/* NYT Best Sellers */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>NYT Best Sellers</Text>
@@ -655,6 +630,31 @@ export default function DiscoverScreen() {
                   renderItem={({ item }) => <BookCard book={item} myKeys={myKeys} onPreview={setPreviewBook} />}
                   showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row} />
         }
+      </View>
+
+      {/* AI Picks — placed lower so page renders fast */}
+      <View style={styles.section}>
+        <View style={styles.aiSectionHead}>
+          <Text style={styles.sectionTitle}>✨ AI Picks For You</Text>
+          <View style={styles.claudePill}><Text style={styles.claudePillText}>Claude AI</Text></View>
+        </View>
+        <Text style={styles.sectionSub}>Personalized suggestions based on your reading taste</Text>
+        {aiRecsLoad ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+            {[...Array(4)].map((_, i) => <View key={i} style={styles.skeleton} />)}
+          </ScrollView>
+        ) : aiRecs.length > 0 ? (
+          <FlatList
+            horizontal
+            data={aiRecs}
+            keyExtractor={(b, i) => b.olKey ?? String(i)}
+            renderItem={({ item }) => <AIPickCard book={item} myKeys={myKeys} onPreview={setPreviewBook} />}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.row}
+          />
+        ) : (
+          <Text style={styles.emptyText}>Add at least 3 books to unlock AI picks!</Text>
+        )}
       </View>
 
       {/* Genre Browser */}

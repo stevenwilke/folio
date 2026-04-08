@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
 
 const TABS = [
   { key: 'overview',  label: 'Overview',     emoji: '📊' },
+  { key: 'covers',    label: 'Covers',       emoji: '🖼️' },
   { key: 'claims',    label: 'Claims',       emoji: '📝' },
   { key: 'authors',   label: 'Authors',      emoji: '✍️' },
   { key: 'users',     label: 'Users',        emoji: '👥' },
@@ -13,14 +14,18 @@ const TABS = [
 
 export default function Admin({ session }) {
   const navigate   = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { theme }  = useTheme()
   const [isAdmin,  setIsAdmin]  = useState(null)
-  const [tab,      setTab]      = useState('overview')
+
+  const tab = searchParams.get('tab') || 'overview'
+  const setTab = (t) => setSearchParams({ tab: t }, { replace: false })
 
   // Data
   const [claims,   setClaims]   = useState([])
   const [authors,  setAuthors]  = useState([])
   const [users,    setUsers]    = useState([])
+  const [covers,   setCovers]   = useState([])
   const [stats,    setStats]    = useState(null)
   const [loading,  setLoading]  = useState(true)
   const [acting,   setActing]   = useState(null)
@@ -44,7 +49,7 @@ export default function Admin({ session }) {
 
   async function loadAll() {
     setLoading(true)
-    await Promise.all([loadClaims(), loadAuthors(), loadUsers(), loadStats()])
+    await Promise.all([loadClaims(), loadAuthors(), loadUsers(), loadCovers(), loadStats()])
     setLoading(false)
   }
 
@@ -67,9 +72,17 @@ export default function Admin({ session }) {
   async function loadUsers() {
     const { data } = await supabase
       .from('profiles')
-      .select('id, username, avatar_url, is_admin, created_at')
+      .select('id, username, avatar_url, is_admin, is_banned, created_at')
       .order('created_at', { ascending: false })
     setUsers(data || [])
+  }
+
+  async function loadCovers() {
+    const { data } = await supabase
+      .from('pending_covers')
+      .select('*, books(id, title, author, cover_image_url), profiles(username)')
+      .order('submitted_at', { ascending: true })
+    setCovers(data || [])
   }
 
   async function loadStats() {
@@ -111,9 +124,14 @@ export default function Admin({ session }) {
       }
     } catch {}
 
+    // Pending cover submissions
+    const { count: coverPendingCount } = await supabase
+      .from('pending_covers').select('*', { count: 'exact', head: true }).eq('status', 'pending')
+
     setStats({
       userCount, bookCount, entryCount, authorCount, followCount, claimPendingCount,
       coverImageCount, coverImageSize, avatarCount, avatarSize,
+      coverPendingCount: coverPendingCount ?? 0,
     })
   }
 
@@ -162,6 +180,33 @@ export default function Admin({ session }) {
     loadStats()
   }
 
+  async function seedAuthorsFromBooks() {
+    if (!window.confirm('Create author pages for every distinct author in your books database?')) return
+    setActing('seed')
+    const { data: books } = await supabase.from('books').select('author')
+    const { data: existing } = await supabase.from('authors').select('name')
+    const existingNames = new Set((existing || []).map(a => a.name.toLowerCase()))
+    const seen = new Set()
+    const toInsert = []
+    for (const b of (books || [])) {
+      if (!b.author) continue
+      const key = b.author.toLowerCase()
+      if (existingNames.has(key) || seen.has(key)) continue
+      seen.add(key)
+      toInsert.push({ name: b.author })
+    }
+    if (toInsert.length === 0) {
+      window.alert('All book authors already have pages!')
+    } else {
+      const { error } = await supabase.from('authors').insert(toInsert)
+      if (error) window.alert('Error: ' + error.message)
+      else window.alert(`Created ${toInsert.length} new author page${toInsert.length !== 1 ? 's' : ''}!`)
+    }
+    setActing(null)
+    loadAuthors()
+    loadStats()
+  }
+
   async function toggleAdmin(user) {
     const newVal = !user.is_admin
     if (user.id === session.user.id && !newVal) {
@@ -169,6 +214,57 @@ export default function Admin({ session }) {
     }
     await supabase.from('profiles').update({ is_admin: newVal }).eq('id', user.id)
     loadUsers()
+  }
+
+  async function toggleBan(user) {
+    const banning = !user.is_banned
+    const action = banning ? 'ban' : 'unban'
+    if (!window.confirm(`${banning ? 'Ban' : 'Unban'} user "${user.username || user.id}"?${banning ? ' They will no longer be able to log in.' : ''}`)) return
+    await supabase.from('profiles').update({ is_banned: banning }).eq('id', user.id)
+    loadUsers()
+  }
+
+  async function deleteUser(user) {
+    if (user.id === session.user.id) { window.alert('You cannot delete your own account.'); return }
+    if (!window.confirm(`Permanently delete user "${user.username || user.id}"?\n\nThis will remove:\n• Their profile\n• All collection entries\n• All author follows\n• All author claims\n• All pending covers\n• All loan records\n\nThis cannot be undone!`)) return
+    setActing(user.id)
+    // Delete user data from all tables
+    await Promise.all([
+      supabase.from('collection_entries').delete().eq('user_id', user.id),
+      supabase.from('author_follows').delete().eq('user_id', user.id),
+      supabase.from('author_claims').delete().eq('user_id', user.id),
+      supabase.from('pending_covers').delete().eq('user_id', user.id),
+      supabase.from('loans').delete().or(`lender_id.eq.${user.id},borrower_id.eq.${user.id}`),
+      supabase.from('friends').delete().or(`user_id.eq.${user.id},friend_id.eq.${user.id}`),
+    ])
+    // Delete profile last
+    await supabase.from('profiles').delete().eq('id', user.id)
+    setActing(null)
+    loadUsers()
+    loadStats()
+  }
+
+  async function approveCover(cover) {
+    setActing(cover.id)
+    // Set the cover as the book's official cover
+    const { data: urlData } = supabase.storage.from('book-covers').getPublicUrl(cover.storage_path)
+    if (urlData?.publicUrl) {
+      await supabase.from('books').update({ cover_image_url: urlData.publicUrl }).eq('id', cover.book_id)
+    }
+    await supabase.from('pending_covers').update({ status: 'approved', reviewed_at: new Date().toISOString() }).eq('id', cover.id)
+    setActing(null)
+    loadCovers()
+    loadStats()
+  }
+
+  async function rejectCover(cover) {
+    setActing(cover.id)
+    // Delete the uploaded file
+    await supabase.storage.from('book-covers').remove([cover.storage_path])
+    await supabase.from('pending_covers').update({ status: 'rejected', reviewed_at: new Date().toISOString() }).eq('id', cover.id)
+    setActing(null)
+    loadCovers()
+    loadStats()
   }
 
   const s = makeStyles(theme)
@@ -231,6 +327,9 @@ export default function Admin({ session }) {
               {t.key === 'claims' && pending.length > 0 && (
                 <span style={s.tabBadge}>{pending.length}</span>
               )}
+              {t.key === 'covers' && covers.filter(c => c.status === 'pending').length > 0 && (
+                <span style={s.tabBadge}>{covers.filter(c => c.status === 'pending').length}</span>
+              )}
             </button>
           ))}
         </div>
@@ -243,11 +342,11 @@ export default function Admin({ session }) {
             {tab === 'overview' && stats && (
               <div>
                 <div style={s.statsGrid}>
-                  <StatCard theme={theme} emoji="👥" label="Total Users" value={stats.userCount} />
+                  <StatCard theme={theme} emoji="👥" label="Total Users" value={stats.userCount} onClick={() => setTab('users')} />
                   <StatCard theme={theme} emoji="📚" label="Books in Database" value={stats.bookCount} />
                   <StatCard theme={theme} emoji="📖" label="Collection Entries" value={stats.entryCount} />
-                  <StatCard theme={theme} emoji="✍️" label="Author Pages" value={stats.authorCount} />
-                  <StatCard theme={theme} emoji="❤️" label="Author Follows" value={stats.followCount} />
+                  <StatCard theme={theme} emoji="✍️" label="Author Pages" value={stats.authorCount} onClick={() => setTab('authors')} />
+                  <StatCard theme={theme} emoji="❤️" label="Author Follows" value={stats.followCount} onClick={() => setTab('authors')} />
                   <StatCard theme={theme} emoji="📝" label="Pending Claims" value={stats.claimPendingCount}
                     highlight={stats.claimPendingCount > 0} onClick={() => setTab('claims')} />
                 </div>
@@ -257,7 +356,9 @@ export default function Admin({ session }) {
                   <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: theme.text, margin: '0 0 14px' }}>Storage</h3>
                   <div style={s.statsGrid}>
                     <StatCard theme={theme} emoji="🖼️" label="Book Cover Images" value={stats.coverImageCount}
-                      subtitle={stats.coverImageSize > 0 ? formatBytes(stats.coverImageSize) : null} />
+                      subtitle={stats.coverImageSize > 0 ? formatBytes(stats.coverImageSize) : null} onClick={() => setTab('covers')} />
+                    <StatCard theme={theme} emoji="📷" label="Pending Covers" value={stats.coverPendingCount}
+                      highlight={stats.coverPendingCount > 0} onClick={() => setTab('covers')} />
                     <StatCard theme={theme} emoji="👤" label="User Avatars" value={stats.avatarCount}
                       subtitle={stats.avatarSize > 0 ? formatBytes(stats.avatarSize) : null} />
                   </div>
@@ -345,10 +446,136 @@ export default function Admin({ session }) {
               </div>
             )}
 
+            {/* ════════════ COVERS ════════════ */}
+            {tab === 'covers' && (
+              <div>
+                {(() => {
+                  const pendingCovers  = covers.filter(c => c.status === 'pending')
+                  const resolvedCovers = covers.filter(c => c.status !== 'pending')
+                  return (
+                    <>
+                      <section style={{ marginBottom: 48 }}>
+                        <div style={s.sectionHead}>
+                          <h2 style={s.sectionTitle}>Pending Covers</h2>
+                          {pendingCovers.length > 0 && <span style={s.badge}>{pendingCovers.length}</span>}
+                        </div>
+                        {pendingCovers.length === 0 ? (
+                          <div style={s.emptyCard}>
+                            <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+                            <div style={{ fontWeight: 600, color: theme.text, marginBottom: 4 }}>All caught up!</div>
+                            <div style={{ fontSize: 13, color: theme.textSubtle }}>No pending cover submissions to review.</div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+                            {pendingCovers.map(cover => (
+                              <div key={cover.id} style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                {/* Cover image preview */}
+                                <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                                  <div style={{ width: 80, height: 120, borderRadius: 6, overflow: 'hidden', background: theme.bg, border: `1px solid ${theme.border}`, flexShrink: 0 }}>
+                                    <img
+                                      src={supabase.storage.from('book-covers').getPublicUrl(cover.storage_path).data?.publicUrl}
+                                      alt="Submitted cover"
+                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    />
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 15, color: theme.text, marginBottom: 4 }}>
+                                      {cover.books?.title || 'Unknown Book'}
+                                    </div>
+                                    <div style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 6 }}>
+                                      {cover.books?.author || 'Unknown Author'}
+                                    </div>
+                                    <div style={{ fontSize: 12, color: theme.textSubtle }}>
+                                      Submitted by <strong style={{ color: theme.text }}>{cover.profiles?.username || 'Unknown'}</strong>
+                                    </div>
+                                    <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 2 }}>
+                                      {new Date(cover.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    </div>
+                                  </div>
+                                </div>
+                                {/* Current cover comparison */}
+                                {cover.books?.cover_image_url && (
+                                  <div style={{ fontSize: 12, color: theme.textSubtle, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: theme.bg, borderRadius: 8 }}>
+                                    <img src={cover.books.cover_image_url} alt="Current" style={{ width: 32, height: 48, objectFit: 'cover', borderRadius: 3 }} />
+                                    <span>Current cover</span>
+                                  </div>
+                                )}
+                                {/* Actions */}
+                                <div style={{ display: 'flex', gap: 10, marginTop: 'auto' }}>
+                                  <button
+                                    onClick={() => approveCover(cover)}
+                                    disabled={acting === cover.id}
+                                    style={{ ...s.btnApprove, flex: 1, opacity: acting === cover.id ? 0.6 : 1 }}
+                                  >
+                                    {acting === cover.id ? '…' : '✓ Approve'}
+                                  </button>
+                                  <button
+                                    onClick={() => rejectCover(cover)}
+                                    disabled={acting === cover.id}
+                                    style={{ ...s.btnDecline, flex: 1 }}
+                                  >
+                                    Reject
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                      {resolvedCovers.length > 0 && (
+                        <section>
+                          <h2 style={{ ...s.sectionTitle, color: theme.textSubtle, marginBottom: 16 }}>Resolved</h2>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+                            {resolvedCovers.map(cover => {
+                              const isApproved = cover.status === 'approved'
+                              return (
+                                <div key={cover.id} style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: 14, opacity: 0.75, display: 'flex', gap: 12, alignItems: 'center' }}>
+                                  <div style={{ width: 48, height: 72, borderRadius: 4, overflow: 'hidden', background: theme.bg, flexShrink: 0 }}>
+                                    {cover.storage_path && isApproved ? (
+                                      <img
+                                        src={supabase.storage.from('book-covers').getPublicUrl(cover.storage_path).data?.publicUrl}
+                                        alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                      />
+                                    ) : (
+                                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+                                        {isApproved ? '✓' : '✕'}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 13, color: theme.text }}>{cover.books?.title || 'Unknown'}</div>
+                                    <div style={{ fontSize: 12, color: theme.textSubtle }}>by {cover.profiles?.username || 'Unknown'}</div>
+                                    <div style={{ marginTop: 4 }}>
+                                      <span style={{
+                                        fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20,
+                                        background: isApproved ? 'rgba(90,122,90,0.15)' : 'rgba(192,82,30,0.12)',
+                                        color: isApproved ? '#5a7a5a' : '#c0521e',
+                                      }}>
+                                        {isApproved ? 'Approved' : 'Rejected'}
+                                      </span>
+                                      {cover.reviewed_at && (
+                                        <span style={{ fontSize: 11, color: theme.textSubtle, marginLeft: 8 }}>
+                                          {new Date(cover.reviewed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </section>
+                      )}
+                    </>
+                  )
+                })()}
+              </div>
+            )}
+
             {/* ════════════ AUTHORS ════════════ */}
             {tab === 'authors' && (
               <div>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20 }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
                   <input
                     placeholder="Search authors…"
                     value={authorSearch}
@@ -358,6 +585,13 @@ export default function Admin({ session }) {
                   <span style={{ fontSize: 13, color: theme.textSubtle, whiteSpace: 'nowrap' }}>
                     {filteredAuthors.length} author{filteredAuthors.length !== 1 ? 's' : ''}
                   </span>
+                  <button
+                    style={{ ...s.actionBtn, fontSize: 13, padding: '8px 16px' }}
+                    onClick={seedAuthorsFromBooks}
+                    disabled={acting === 'seed'}
+                  >
+                    {acting === 'seed' ? 'Creating…' : '+ Seed from Books'}
+                  </button>
                 </div>
                 {filteredAuthors.length === 0 ? (
                   <div style={s.emptyCard}>
@@ -443,8 +677,11 @@ export default function Admin({ session }) {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {filteredUsers.map(user => (
-                      <div key={user.id} style={s.userRow}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                      <div key={user.id} style={{ ...s.userRow, opacity: user.is_banned ? 0.5 : 1 }}>
+                        <div
+                          style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, cursor: 'pointer' }}
+                          onClick={() => user.username && navigate(`/profile/${user.username}`)}
+                        >
                           {user.avatar_url
                             ? <img src={user.avatar_url} style={{ width: 36, height: 36, borderRadius: 18, objectFit: 'cover', flexShrink: 0 }} alt="" />
                             : <div style={{ width: 36, height: 36, borderRadius: 18, background: theme.rust, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, flexShrink: 0 }}>
@@ -457,22 +694,42 @@ export default function Admin({ session }) {
                               {user.is_admin && (
                                 <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: 'rgba(192,82,30,0.12)', color: theme.rust }}>Admin</span>
                               )}
+                              {user.is_banned && (
+                                <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: 'rgba(200,30,30,0.12)', color: '#c01e1e' }}>Banned</span>
+                              )}
                             </div>
                             <div style={{ fontSize: 12, color: theme.textSubtle }}>
                               Joined {new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                             </div>
                           </div>
                         </div>
-                        <button
-                          style={{
-                            ...s.smallBtn,
-                            background: user.is_admin ? 'rgba(192,82,30,0.1)' : 'rgba(90,122,90,0.1)',
-                            color: user.is_admin ? theme.rust : '#5a7a5a',
-                          }}
-                          onClick={() => toggleAdmin(user)}
-                        >
-                          {user.is_admin ? 'Remove Admin' : 'Make Admin'}
-                        </button>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            style={{
+                              ...s.smallBtn,
+                              background: user.is_admin ? 'rgba(192,82,30,0.1)' : 'rgba(90,122,90,0.1)',
+                              color: user.is_admin ? theme.rust : '#5a7a5a',
+                            }}
+                            onClick={() => toggleAdmin(user)}
+                          >
+                            {user.is_admin ? 'Remove Admin' : 'Make Admin'}
+                          </button>
+                          <button
+                            style={{ ...s.smallBtn, background: user.is_banned ? 'rgba(90,122,90,0.1)' : 'rgba(200,150,0,0.1)', color: user.is_banned ? '#5a7a5a' : '#9a7200' }}
+                            onClick={() => toggleBan(user)}
+                          >
+                            {user.is_banned ? 'Unban' : 'Ban'}
+                          </button>
+                          {user.id !== session.user.id && (
+                            <button
+                              style={{ ...s.smallBtn, background: 'rgba(200,30,30,0.08)', color: '#c01e1e' }}
+                              onClick={() => deleteUser(user)}
+                              disabled={acting === user.id}
+                            >
+                              {acting === user.id ? '…' : 'Delete'}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>

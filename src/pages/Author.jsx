@@ -278,6 +278,28 @@ export default function Author({ session }) {
     setToggling(false)
   }
 
+  // ── Navigate to OL book (create if needed) ──────────────────────────────
+  async function navigateToOlBook(book) {
+    const { data: existing } = await supabase
+      .from('books')
+      .select('id')
+      .or([
+        book.isbn13 ? `isbn_13.eq.${book.isbn13}` : null,
+        book.isbn10 ? `isbn_10.eq.${book.isbn10}` : null,
+      ].filter(Boolean).join(',') || `title.ilike.${book.title}`)
+      .maybeSingle()
+    let bookId = existing?.id
+    if (!bookId) {
+      const { data: inserted } = await supabase
+        .from('books')
+        .insert({ title: book.title, author: book.author, isbn_13: book.isbn13 || null, isbn_10: book.isbn10 || null, genre: book.genre || null, published_year: book.year || null, cover_image_url: book.coverUrl })
+        .select('id').single()
+      bookId = inserted?.id
+      if (bookId) enrichBook(bookId, { isbn_13: book.isbn13 || null, isbn_10: book.isbn10 || null, title: book.title, author: book.author, cover_image_url: book.coverUrl || null, description: null })
+    }
+    if (bookId) navigate(`/?book=${bookId}`)
+  }
+
   // ── Add OL book ──────────────────────────────────────────────────────────
   async function addOlBook(book, status) {
     setAddTarget(book.key)
@@ -633,7 +655,7 @@ export default function Author({ session }) {
             <h2 style={s.sectionTitle}>More by {displayName}</h2>
             <div style={s.scrollRow}>
               {olBooks.map(book => (
-                <OlBookCard key={book.key} book={book} theme={theme} adding={addTarget === book.key} onAdd={addOlBook} />
+                <OlBookCard key={book.key} book={book} theme={theme} adding={addTarget === book.key} onAdd={addOlBook} onNavigate={navigateToOlBook} />
               ))}
             </div>
           </section>
@@ -762,17 +784,23 @@ function FolioBookCard({ book, entry, friends, theme, session, onStatusChange })
 }
 
 // ── OL book card ─────────────────────────────────────────────────────────────
-function OlBookCard({ book, theme, adding, onAdd }) {
+function OlBookCard({ book, theme, adding, onAdd, onNavigate }) {
   const [hover, setHover] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
-  const olUrl = book.key ? `https://openlibrary.org${book.key}` : null
+  const [navigating, setNavigating] = useState(false)
+  async function handleClick() {
+    if (navigating) return
+    setNavigating(true)
+    await onNavigate(book)
+    setNavigating(false)
+  }
   return (
     <div style={{ position: 'relative', width: 140, flexShrink: 0 }} onMouseLeave={() => { setShowMenu(false) }}>
       <div
-        style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, overflow: 'hidden', transition: 'box-shadow 0.15s, transform 0.15s', boxShadow: hover ? theme.shadowCard : 'none', transform: hover ? 'translateY(-2px)' : 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column' }}
+        style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, overflow: 'hidden', transition: 'box-shadow 0.15s, transform 0.15s', boxShadow: hover ? theme.shadowCard : 'none', transform: hover ? 'translateY(-2px)' : 'none', cursor: navigating ? 'wait' : 'pointer', display: 'flex', flexDirection: 'column', opacity: navigating ? 0.7 : 1 }}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
-        onClick={() => olUrl && window.open(olUrl, '_blank')}
+        onClick={handleClick}
       >
         <div style={{ background: '#d4c9b0', aspectRatio: '2/3', position: 'relative' }}>
           {book.coverUrl ? <img src={book.coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => e.target.style.display = 'none'} /> : <FakeCover title={book.title} />}

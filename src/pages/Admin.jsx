@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
+import { getCoverUrl } from '../lib/coverUrl'
 
 const TABS = [
   { key: 'overview',  label: 'Overview',     emoji: '📊' },
@@ -32,6 +33,10 @@ export default function Admin({ session }) {
   const [loading,  setLoading]  = useState(true)
   const [acting,   setActing]   = useState(null)
 
+  // Storage files
+  const [coverFiles,   setCoverFiles]   = useState([])
+  const [coverSearch,  setCoverSearch]  = useState('')
+
   // Search
   const [authorSearch, setAuthorSearch] = useState('')
   const [userSearch,   setUserSearch]   = useState('')
@@ -56,8 +61,29 @@ export default function Admin({ session }) {
 
   async function loadAll() {
     setLoading(true)
-    await Promise.all([loadClaims(), loadAuthors(), loadUsers(), loadCovers(), loadBooks(), loadStats()])
+    await Promise.all([loadClaims(), loadAuthors(), loadUsers(), loadCovers(), loadBooks(), loadStats(), loadCoverFiles()])
     setLoading(false)
+  }
+
+  async function loadCoverFiles() {
+    try {
+      const { data: files } = await supabase.storage.from('book-covers').list('', { limit: 1000, sortBy: { column: 'created_at', order: 'desc' } })
+      if (files) {
+        setCoverFiles(files.map(f => ({
+          ...f,
+          publicUrl: supabase.storage.from('book-covers').getPublicUrl(f.name).data?.publicUrl,
+        })))
+      }
+    } catch {}
+  }
+
+  async function deleteCoverFile(fileName) {
+    if (!window.confirm(`Delete cover file "${fileName}" from storage? This will not affect any book records.`)) return
+    setActing(fileName)
+    await supabase.storage.from('book-covers').remove([fileName])
+    setActing(null)
+    loadCoverFiles()
+    loadStats()
   }
 
   async function loadClaims() {
@@ -436,7 +462,7 @@ export default function Admin({ session }) {
                     <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: theme.text, margin: '0 0 14px' }}>Recent Signups</h3>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {users.slice(0, 5).map(u => (
-                        <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 14, padding: '8px 14px', background: theme.bgCard, borderRadius: 8, border: `1px solid ${theme.border}` }}>
+                        <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 14, padding: '8px 14px', background: theme.bgCard, borderRadius: 8, border: `1px solid ${theme.border}`, cursor: u.username ? 'pointer' : 'default' }} onClick={() => u.username && navigate(`/profile/${u.username}`)}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                             {u.avatar_url
                               ? <img src={u.avatar_url} style={{ width: 28, height: 28, borderRadius: 14, objectFit: 'cover' }} alt="" />
@@ -570,6 +596,55 @@ export default function Admin({ session }) {
                           </div>
                         )}
                       </section>
+                      {/* All stored cover images */}
+                      <section style={{ marginBottom: 48 }}>
+                        <div style={s.sectionHead}>
+                          <h2 style={s.sectionTitle}>All Cover Images</h2>
+                          <span style={s.badge}>{coverFiles.length}</span>
+                        </div>
+                        <input
+                          placeholder="Search cover files…"
+                          value={coverSearch}
+                          onChange={e => setCoverSearch(e.target.value)}
+                          style={{ ...s.searchInput, marginBottom: 16 }}
+                        />
+                        {(() => {
+                          const filtered = coverSearch
+                            ? coverFiles.filter(f => f.name.toLowerCase().includes(coverSearch.toLowerCase()))
+                            : coverFiles
+                          return filtered.length === 0 ? (
+                            <div style={s.emptyCard}>
+                              <div style={{ fontWeight: 600, color: theme.text }}>No cover files{coverSearch ? ' match your search' : ' found'}</div>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 12 }}>
+                              {filtered.slice(0, 200).map(f => (
+                                <div key={f.name} style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 10, overflow: 'hidden', position: 'relative' }}>
+                                  <div style={{ aspectRatio: '2/3', background: theme.bg }}>
+                                    <img src={f.publicUrl} alt={f.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => e.target.style.display = 'none'} />
+                                  </div>
+                                  <div style={{ padding: '6px 8px' }}>
+                                    <div style={{ fontSize: 10, color: theme.textSubtle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.name}>{f.name}</div>
+                                    {f.metadata?.size && <div style={{ fontSize: 10, color: theme.textSubtle }}>{formatBytes(f.metadata.size)}</div>}
+                                  </div>
+                                  <button
+                                    onClick={() => deleteCoverFile(f.name)}
+                                    disabled={acting === f.name}
+                                    style={{ position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'rgba(200,30,30,0.8)', color: '#fff', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                    title="Delete cover file"
+                                  >✕</button>
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        })()}
+                        {coverFiles.length > 200 && !coverSearch && (
+                          <div style={{ fontSize: 13, color: theme.textSubtle, textAlign: 'center', padding: 16 }}>
+                            Showing first 200 of {coverFiles.length} files. Use search to narrow results.
+                          </div>
+                        )}
+                      </section>
+
                       {resolvedCovers.length > 0 && (
                         <section>
                           <h2 style={{ ...s.sectionTitle, color: theme.textSubtle, marginBottom: 16 }}>Resolved</h2>
@@ -899,7 +974,7 @@ export default function Admin({ session }) {
               { key: 'genre',           label: 'Genre',          value: editingBook.genre || '' },
               { key: 'pages',           label: 'Pages',          value: editingBook.pages ?? '', type: 'number' },
               { key: 'published_year',  label: 'Published Year', value: editingBook.published_year ?? '', type: 'number' },
-              { key: 'cover_image_url', label: 'Cover Image URL', value: editingBook.cover_image_url || '' },
+              { key: 'cover_image_url', label: 'Cover Image URL', value: editingBook.cover_image_url || getCoverUrl(editingBook) || '', placeholder: 'Auto-filled from book data if available' },
               { key: 'description',     label: 'Description',    value: editingBook.description || '', multiline: true },
             ]}
           />

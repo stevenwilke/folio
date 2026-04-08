@@ -42,6 +42,11 @@ export default function Marketplace({ session }) {
   const [minPrice, setMinPrice]         = useState('')
   const [maxPrice, setMaxPrice]         = useState('')
 
+  // Shop online
+  const [shopSearch, setShopSearch]     = useState('')
+  const [shopResults, setShopResults]   = useState([])
+  const [shopLoading, setShopLoading]   = useState(false)
+
   // Modals
   const [selectedListing, setSelectedListing] = useState(null) // ListingDetailModal
   const [buyListing, setBuyListing]           = useState(null) // BuyModal
@@ -210,6 +215,7 @@ export default function Marketplace({ session }) {
         <div style={s.tabRow}>
           {[
             { key: 'browse',    label: 'Browse' },
+            { key: 'shop',      label: 'Shop Online' },
             { key: 'selling',   label: `Selling${activeListings.length ? ` (${activeListings.length})` : ''}` },
             { key: 'purchases', label: `Purchases${pendingPurchases.length ? ` (${pendingPurchases.length})` : ''}` },
           ].map(t => (
@@ -234,6 +240,19 @@ export default function Marketplace({ session }) {
             onMinPrice={setMinPrice}
             onMaxPrice={setMaxPrice}
             onSelectListing={setSelectedListing}
+            s={s}
+            theme={theme}
+          />
+        )}
+
+        {tab === 'shop' && (
+          <ShopOnlineTab
+            search={shopSearch}
+            onSearch={setShopSearch}
+            results={shopResults}
+            setResults={setShopResults}
+            loading={shopLoading}
+            setLoading={setShopLoading}
             s={s}
             theme={theme}
           />
@@ -438,6 +457,110 @@ function BrowseTab({ listings, loading, search, onSearch, condFilter, onCondFilt
         <div style={s.grid}>
           {listings.map(l => (
             <ListingCard key={l.id} listing={l} onSelect={onSelectListing} s={s} />
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+// ---- SHOP ONLINE TAB ----
+function ShopOnlineTab({ search, onSearch, results, setResults, loading, setLoading, s, theme }) {
+  async function handleSearch() {
+    if (!search.trim()) return
+    setLoading(true)
+    try {
+      const q = encodeURIComponent(search.trim())
+      const res = await fetch(`https://openlibrary.org/search.json?q=${q}&limit=20&fields=key,title,author_name,isbn,cover_i,first_publish_year`)
+      const data = await res.json()
+      setResults((data.docs || []).map(d => ({
+        key: d.key,
+        title: d.title,
+        author: d.author_name?.[0] || '',
+        year: d.first_publish_year,
+        isbn: d.isbn?.[0] || null,
+        coverUrl: d.cover_i ? `https://covers.openlibrary.org/b/id/${d.cover_i}-M.jpg` : null,
+      })))
+    } catch { setResults([]) }
+    setLoading(false)
+  }
+  return (
+    <>
+      <div style={{ marginBottom: 8, fontSize: 14, color: theme.textSubtle }}>
+        Search for books and find them on popular bookstores
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+        <input
+          style={{ ...s.searchInput, flex: 1 }}
+          placeholder="Search by title, author, or ISBN…"
+          value={search}
+          onChange={e => onSearch(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSearch()}
+        />
+        <button onClick={handleSearch} disabled={loading || !search.trim()} style={{ ...s.btnPrimary, opacity: loading || !search.trim() ? 0.6 : 1 }}>
+          {loading ? '…' : 'Search'}
+        </button>
+      </div>
+      {loading ? (
+        <div style={s.empty}>Searching…</div>
+      ) : results.length === 0 && search.trim() ? (
+        <div style={s.emptyState}>
+          <div style={s.emptyIcon}>🔍</div>
+          <div style={s.emptyTitle}>No results found</div>
+          <div style={s.emptySub}>Try a different search term.</div>
+        </div>
+      ) : results.length === 0 ? (
+        <div style={s.emptyState}>
+          <div style={s.emptyIcon}>🛒</div>
+          <div style={s.emptyTitle}>Find books from online bookstores</div>
+          <div style={s.emptySub}>Search for a book to see where you can buy it from Bookshop.org, ThriftBooks, AbeBooks, and more.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {results.map(book => (
+            <div key={book.key} style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12, padding: 16, display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+              <div style={{ width: 60, height: 90, borderRadius: 6, overflow: 'hidden', background: '#d4c9b0', flexShrink: 0 }}>
+                {book.coverUrl ? (
+                  <img src={book.coverUrl} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => e.target.style.display = 'none'} />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'rgba(255,255,255,0.8)', fontFamily: 'Georgia, serif', textAlign: 'center', padding: 4 }}>{book.title?.slice(0, 30)}</div>
+                )}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 15, color: theme.text, marginBottom: 2 }}>{book.title}</div>
+                <div style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 2 }}>{book.author}{book.year ? ` · ${book.year}` : ''}</div>
+                {book.isbn && <div style={{ fontSize: 12, color: theme.textSubtle, fontFamily: 'monospace', marginBottom: 8 }}>ISBN: {book.isbn}</div>}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <a
+                    href={book.isbn ? `https://bookshop.org/a/122832/${book.isbn}` : `https://bookshop.org/search?keywords=${encodeURIComponent(book.title)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(90,122,90,0.1)', border: '1px solid rgba(90,122,90,0.2)', fontSize: 12, color: '#5a7a5a', textDecoration: 'none', fontWeight: 600 }}
+                  >Bookshop.org →</a>
+                  <a
+                    href={`https://www.thriftbooks.com/browse/?b.search=${encodeURIComponent(book.isbn || book.title)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(192,82,30,0.08)', border: '1px solid rgba(192,82,30,0.15)', fontSize: 12, color: '#c0521e', textDecoration: 'none', fontWeight: 600 }}
+                  >ThriftBooks →</a>
+                  <a
+                    href={book.isbn ? `https://www.abebooks.com/servlet/SearchResults?isbn=${book.isbn}` : `https://www.abebooks.com/servlet/SearchResults?tn=${encodeURIComponent(book.title)}&an=${encodeURIComponent(book.author || '')}`}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ padding: '6px 14px', borderRadius: 8, background: 'rgba(184,134,11,0.08)', border: '1px solid rgba(184,134,11,0.2)', fontSize: 12, color: '#9a7200', textDecoration: 'none', fontWeight: 600 }}
+                  >AbeBooks →</a>
+                  <a
+                    href={book.isbn ? `https://www.amazon.com/s?k=${book.isbn}` : `https://www.amazon.com/s?k=${encodeURIComponent(book.title + ' ' + (book.author || ''))}`}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ padding: '6px 14px', borderRadius: 8, background: theme.bgCard, border: `1px solid ${theme.border}`, fontSize: 12, color: theme.text, textDecoration: 'none', fontWeight: 600 }}
+                  >Amazon →</a>
+                  {book.isbn && (
+                    <a
+                      href={`https://openlibrary.org/isbn/${book.isbn}`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{ padding: '6px 14px', borderRadius: 8, background: theme.bgCard, border: `1px solid ${theme.border}`, fontSize: 12, color: theme.textSubtle, textDecoration: 'none', fontWeight: 600 }}
+                    >Open Library →</a>
+                  )}
+                </div>
+              </div>
+            </div>
           ))}
         </div>
       )}

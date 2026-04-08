@@ -1483,21 +1483,57 @@ function LendOutModal({ session, book, theme, onClose }) {
 // ---- FRIEND STATS ROW ----
 function FriendStatsRow({ stats }) {
   const { theme } = useTheme()
+  const navigate = useNavigate()
   if (stats === null) return <div style={{ display: 'flex', alignItems: 'center', gap: 4, margin: '8px 0', fontSize: 13, flexWrap: 'wrap' }}><span style={{ color: theme.textSubtle, fontStyle: 'italic' }}>Checking friends…</span></div>
-  if (!stats.length) return <div style={{ display: 'flex', alignItems: 'center', gap: 4, margin: '8px 0', fontSize: 13, flexWrap: 'wrap' }}><span style={{ color: theme.textSubtle, fontStyle: 'italic' }}>👥 No friends have read this yet</span></div>
+  if (!stats.length) return <div style={{ display: 'flex', alignItems: 'center', gap: 4, margin: '8px 0', fontSize: 13, flexWrap: 'wrap' }}><span style={{ color: theme.textSubtle, fontStyle: 'italic' }}>👥 No friends have this book yet</span></div>
+
   const withRating = stats.filter(s => s.user_rating)
   const avg = withRating.length
     ? (withRating.reduce((sum, s) => sum + s.user_rating, 0) / withRating.length).toFixed(1)
     : null
-  const names = stats.map(s => s.profiles?.username).filter(Boolean)
-  const display = names.length === 1 ? names[0]
-    : names.length === 2 ? `${names[0]} and ${names[1]}`
-    : `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length - 2 > 1 ? 's' : ''}`
+
+  const groups = { read: [], reading: [], want: [], owned: [] }
+  for (const s of stats) {
+    const name = s.profiles?.username
+    if (!name) continue
+    const st = s.read_status || 'owned'
+    if (groups[st]) groups[st].push(name)
+    else groups.owned.push(name)
+  }
+
+  function formatNames(names) {
+    if (names.length === 1) return names[0]
+    if (names.length === 2) return `${names[0]} and ${names[1]}`
+    return `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length - 2 > 1 ? 's' : ''}`
+  }
+
+  const parts = []
+  if (groups.read.length) parts.push({ names: groups.read, verb: 'read this' })
+  if (groups.reading.length) parts.push({ names: groups.reading, verb: groups.reading.length === 1 ? 'is reading this' : 'are reading this' })
+  if (groups.want.length) parts.push({ names: groups.want, verb: groups.want.length === 1 ? 'wants to read this' : 'want to read this' })
+  if (groups.owned.length) parts.push({ names: groups.owned, verb: groups.owned.length === 1 ? 'has this' : 'have this' })
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4, margin: '8px 0', fontSize: 13, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 15 }}>👥</span>
-      <span style={{ color: theme.textMuted }}><strong>{display}</strong> {stats.length === 1 ? 'has' : 'have'} read this</span>
-      {avg && <span style={{ color: theme.gold, fontWeight: 600 }}> · avg ★{avg}</span>}
+    <div style={{ margin: '8px 0', fontSize: 13 }}>
+      {parts.map((part, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginBottom: 2 }}>
+          {i === 0 && <span style={{ fontSize: 15 }}>👥</span>}
+          {i > 0 && <span style={{ width: 19 }} />}
+          <span style={{ color: theme.textMuted }}>
+            {part.names.map((name, j) => (
+              <span key={name}>
+                {j > 0 && (j === part.names.length - 1 ? ' and ' : ', ')}
+                <strong
+                  style={{ cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 2 }}
+                  onClick={() => navigate(`/profile/${name}`)}
+                >{name}</strong>
+              </span>
+            ))}
+            {' '}{part.verb}
+          </span>
+          {i === 0 && avg && <span style={{ color: theme.gold, fontWeight: 600 }}> · avg ★{avg}</span>}
+        </div>
+      ))}
     </div>
   )
 }

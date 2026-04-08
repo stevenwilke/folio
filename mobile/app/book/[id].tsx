@@ -53,18 +53,40 @@ const STATUS_OPTIONS: { key: ReadStatus; label: string }[] = [
 
 function MobileFriendStats({ stats }: { stats: any[] | null }) {
   if (stats === null) return <Text style={mfs.muted}>Checking friends…</Text>;
-  if (!stats.length) return <Text style={mfs.muted}>👥 No friends have read this yet</Text>;
+  if (!stats.length) return <Text style={mfs.muted}>👥 No friends have this book yet</Text>;
   const withRating = stats.filter((s: any) => s.user_rating);
   const avg = withRating.length
     ? (withRating.reduce((sum: number, s: any) => sum + s.user_rating, 0) / withRating.length).toFixed(1) : null;
-  const names = stats.map((s: any) => s.profiles?.username).filter(Boolean);
-  const display = names.length === 1 ? names[0]
-    : names.length === 2 ? `${names[0]} and ${names[1]}`
-    : `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length - 2 > 1 ? 's' : ''}`;
+
+  const groups: Record<string, string[]> = { read: [], reading: [], want: [], owned: [] };
+  for (const s of stats) {
+    const name = s.profiles?.username;
+    if (!name) continue;
+    const st = s.read_status || 'owned';
+    if (groups[st]) groups[st].push(name);
+    else groups.owned.push(name);
+  }
+
+  function formatNames(names: string[]) {
+    if (names.length === 1) return names[0];
+    if (names.length === 2) return `${names[0]} and ${names[1]}`;
+    return `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length - 2 > 1 ? 's' : ''}`;
+  }
+
+  const parts: { label: string }[] = [];
+  if (groups.read.length) parts.push({ label: `${formatNames(groups.read)} read this` });
+  if (groups.reading.length) parts.push({ label: `${formatNames(groups.reading)} ${groups.reading.length === 1 ? 'is' : 'are'} reading this` });
+  if (groups.want.length) parts.push({ label: `${formatNames(groups.want)} ${groups.want.length === 1 ? 'wants' : 'want'} to read this` });
+  if (groups.owned.length) parts.push({ label: `${formatNames(groups.owned)} ${groups.owned.length === 1 ? 'has' : 'have'} this` });
+
   return (
-    <View style={mfs.row}>
-      <Text style={mfs.base}>👥 <Text style={mfs.bold}>{display}</Text> {stats.length === 1 ? 'has' : 'have'} read this</Text>
-      {avg ? <Text style={mfs.avg}> · avg ★{avg}</Text> : null}
+    <View>
+      {parts.map((part, i) => (
+        <View key={i} style={mfs.row}>
+          <Text style={mfs.base}>{i === 0 ? '👥 ' : '      '}<Text style={mfs.bold}>{part.label.split(' ')[0]}</Text>{' '}{part.label.split(' ').slice(1).join(' ')}</Text>
+          {i === 0 && avg ? <Text style={mfs.avg}> · avg ★{avg}</Text> : null}
+        </View>
+      ))}
     </View>
   );
 }
@@ -204,7 +226,7 @@ export default function BookDetailScreen() {
     const friendIds = (fs || []).map((f: any) => f.requester_id === user.id ? f.addressee_id : f.requester_id);
     if (friendIds.length) {
       const { data: friendEntries } = await supabase.from('collection_entries')
-        .select('user_rating, profiles(username)').eq('book_id', id).in('user_id', friendIds);
+        .select('user_rating, read_status, profiles(username)').eq('book_id', id).in('user_id', friendIds);
       setFriendStats(friendEntries || []);
     } else {
       setFriendStats([]);

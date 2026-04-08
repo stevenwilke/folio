@@ -1034,7 +1034,7 @@ export default function BookDetail({ bookId, session, onBack }) {
 
         {/* Tabs */}
         <div style={s.tabs}>
-          {['about', 'reviews', 'your review'].map(t => (
+          {['about', 'details', 'reviews', 'your review'].map(t => (
             <div
               key={t}
               style={{ ...s.tab, ...(tab === t ? s.tabActive : {}) }}
@@ -1060,6 +1060,81 @@ export default function BookDetail({ bookId, session, onBack }) {
             {book.description && (
               <p style={s.description}>{book.description}</p>
             )}
+          </div>
+        )}
+
+        {/* Details */}
+        {tab === 'details' && (
+          <div style={s.tabContent}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '10px 20px', fontSize: 14, lineHeight: 1.6 }}>
+              {book.author && <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>Author</span><span style={{ color: theme.text, cursor: 'pointer' }} onClick={() => navigate(`/author/${encodeURIComponent(book.author)}`)}>{book.author}</span></>}
+              {book.published_year && <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>Published</span><span style={{ color: theme.text }}>{book.published_year}</span></>}
+              {book.publisher && <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>Publisher</span><span style={{ color: theme.text }}>{book.publisher}</span></>}
+              {book.format && <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>Format</span><span style={{ color: theme.text }}>{book.format}</span></>}
+              {book.pages && <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>Pages</span><span style={{ color: theme.text }}>{book.pages}</span></>}
+              {book.language && <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>Language</span><span style={{ color: theme.text }}>{book.language}</span></>}
+              {book.genre && <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>Genre</span><span style={{ color: theme.text }}>{book.genre}</span></>}
+              {book.isbn_13 && <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>ISBN-13</span><span style={{ color: theme.text, fontFamily: 'monospace', fontSize: 13 }}>{book.isbn_13}</span></>}
+              {book.isbn_10 && <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>ISBN-10</span><span style={{ color: theme.text, fontFamily: 'monospace', fontSize: 13 }}>{book.isbn_10}</span></>}
+              {book.series_name && <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>Series</span><span style={{ color: theme.text }}>{book.series_name}{book.series_number ? ` #${book.series_number}` : ''}</span></>}
+            </div>
+
+            {/* Pricing / Market Data */}
+            {valuation && (
+              <div style={{ marginTop: 28 }}>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 700, color: theme.text, marginBottom: 14 }}>Market Data</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '10px 20px', fontSize: 14, lineHeight: 1.6 }}>
+                  {valuation.list_price != null && (
+                    <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>Retail Price</span>
+                    <span style={{ color: theme.sage, fontWeight: 700 }}>
+                      ${Number(valuation.list_price).toFixed(2)}
+                      {valuation.list_price_currency && valuation.list_price_currency !== 'USD' ? ` ${valuation.list_price_currency}` : ''}
+                    </span></>
+                  )}
+                  {valuation.avg_price != null && (
+                    <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>Avg Used Price</span>
+                    <span style={{ color: theme.text }}>${Number(valuation.avg_price).toFixed(2)}</span></>
+                  )}
+                  {valuation.min_price != null && valuation.max_price != null && (
+                    <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>Price Range</span>
+                    <span style={{ color: theme.text }}>${Number(valuation.min_price).toFixed(2)} – ${Number(valuation.max_price).toFixed(2)}</span></>
+                  )}
+                  {valuation.sample_count != null && (
+                    <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>Based On</span>
+                    <span style={{ color: theme.text }}>{valuation.sample_count} listing{valuation.sample_count !== 1 ? 's' : ''}</span></>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* External Links */}
+            <div style={{ marginTop: 28 }}>
+              <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 700, color: theme.text, marginBottom: 14 }}>Find This Book</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <a
+                  href={(book.isbn_13 || book.isbn_10) ? `https://bookshop.org/a/122832/${book.isbn_13 || book.isbn_10}` : `https://bookshop.org/search?keywords=${encodeURIComponent(book.title)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  style={{ padding: '8px 16px', borderRadius: 8, background: theme.bgCard, border: `1px solid ${theme.border}`, fontSize: 13, color: theme.rust, textDecoration: 'none', fontWeight: 600 }}
+                >Buy new →</a>
+                <a
+                  href={`https://www.thriftbooks.com/browse/?b.search=${encodeURIComponent(book.isbn_13 || book.isbn_10 || book.title)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  style={{ padding: '8px 16px', borderRadius: 8, background: theme.bgCard, border: `1px solid ${theme.border}`, fontSize: 13, color: theme.text, textDecoration: 'none', fontWeight: 600 }}
+                >Find used →</a>
+                <a
+                  href={(book.isbn_13 || book.isbn_10) ? `https://www.abebooks.com/servlet/SearchResults?isbn=${book.isbn_13 || book.isbn_10}` : `https://www.abebooks.com/servlet/SearchResults?tn=${encodeURIComponent(book.title)}&an=${encodeURIComponent(book.author || '')}`}
+                  target="_blank" rel="noopener noreferrer"
+                  style={{ padding: '8px 16px', borderRadius: 8, background: 'rgba(184,134,11,0.08)', border: '1px solid rgba(184,134,11,0.2)', fontSize: 13, color: '#9a7200', textDecoration: 'none', fontWeight: 600 }}
+                >Rare & collectible →</a>
+                {(book.isbn_13 || book.isbn_10) && (
+                  <a
+                    href={`https://openlibrary.org/isbn/${book.isbn_13 || book.isbn_10}`}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ padding: '8px 16px', borderRadius: 8, background: theme.bgCard, border: `1px solid ${theme.border}`, fontSize: 13, color: theme.textSubtle, textDecoration: 'none', fontWeight: 600 }}
+                  >Open Library →</a>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

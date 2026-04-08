@@ -1401,33 +1401,24 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
         {status === 'reading' && (
           <div style={{ marginTop: 5 }} onClick={e => e.stopPropagation()}>
             {editingPage ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <input
-                  type="number"
-                  min="0"
-                  max={book.pages || undefined}
-                  autoFocus
-                  value={pageInput}
-                  onChange={e => setPageInput(e.target.value)}
-                  onBlur={() => savePage(pageInput)}
-                  onKeyDown={e => { if (e.key === 'Enter') savePage(pageInput); if (e.key === 'Escape') setEditingPage(false) }}
-                  style={{ width: 52, padding: '2px 6px', fontSize: 11, border: `1px solid ${theme.rust}`, borderRadius: 4, outline: 'none', fontFamily: "'DM Sans', sans-serif", color: theme.text, background: theme.bgCard }}
-                />
-                {book.pages && <span style={{ fontSize: 10, color: theme.textSubtle }}>/ {book.pages}</span>}
-              </div>
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div
-                  style={{ fontSize: 11, color: theme.rust, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
-                  onClick={() => { setPageInput(currentPage || ''); setEditingPage(true) }}
-                >
-                  {currentPage > 0
-                    ? (book.pages ? `Pg ${currentPage} / ${book.pages}` : `Pg ${currentPage}`)
-                    : '+ Update page'}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <input
+                    type="number"
+                    min="0"
+                    max={book.pages || undefined}
+                    autoFocus
+                    value={pageInput}
+                    onChange={e => setPageInput(e.target.value)}
+                    onBlur={() => savePage(pageInput)}
+                    onKeyDown={e => { if (e.key === 'Enter') savePage(pageInput); if (e.key === 'Escape') setEditingPage(false) }}
+                    style={{ width: 52, padding: '2px 6px', fontSize: 11, border: `1px solid ${theme.rust}`, borderRadius: 4, outline: 'none', fontFamily: "'DM Sans', sans-serif", color: theme.text, background: theme.bgCard }}
+                  />
+                  {book.pages && <span style={{ fontSize: 10, color: theme.textSubtle }}>/ {book.pages}</span>}
                 </div>
-                <span style={{ color: theme.borderLight || '#d4c9b0', fontSize: 10 }}>|</span>
                 <span
                   style={{
+                    display: 'inline-block', marginTop: 4,
                     fontSize: 10, color: '#fff', cursor: 'pointer', fontWeight: 600,
                     background: theme.sage, padding: '2px 7px', borderRadius: 4,
                   }}
@@ -1435,6 +1426,15 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
                 >
                   ✓ Finished
                 </span>
+              </div>
+            ) : (
+              <div
+                style={{ fontSize: 11, color: theme.rust, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                onClick={() => { setPageInput(currentPage || ''); setEditingPage(true) }}
+              >
+                {currentPage > 0
+                  ? (book.pages ? `Pg ${currentPage} / ${book.pages}` : `Pg ${currentPage}`)
+                  : '+ Update page'}
               </div>
             )}
           </div>

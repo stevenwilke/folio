@@ -4,13 +4,30 @@ import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
 
+const TABS = [
+  { key: 'overview',  label: 'Overview',     emoji: '📊' },
+  { key: 'claims',    label: 'Claims',       emoji: '📝' },
+  { key: 'authors',   label: 'Authors',      emoji: '✍️' },
+  { key: 'users',     label: 'Users',        emoji: '👥' },
+]
+
 export default function Admin({ session }) {
   const navigate   = useNavigate()
   const { theme }  = useTheme()
-  const [isAdmin,  setIsAdmin]  = useState(null)   // null = loading
+  const [isAdmin,  setIsAdmin]  = useState(null)
+  const [tab,      setTab]      = useState('overview')
+
+  // Data
   const [claims,   setClaims]   = useState([])
+  const [authors,  setAuthors]  = useState([])
+  const [users,    setUsers]    = useState([])
+  const [stats,    setStats]    = useState(null)
   const [loading,  setLoading]  = useState(true)
   const [acting,   setActing]   = useState(null)
+
+  // Search
+  const [authorSearch, setAuthorSearch] = useState('')
+  const [userSearch,   setUserSearch]   = useState('')
 
   useEffect(() => { checkAdmin() }, [])
 
@@ -22,17 +39,56 @@ export default function Admin({ session }) {
       .single()
     if (!profile?.is_admin) { setIsAdmin(false); return }
     setIsAdmin(true)
-    loadClaims()
+    loadAll()
+  }
+
+  async function loadAll() {
+    setLoading(true)
+    await Promise.all([loadClaims(), loadAuthors(), loadUsers(), loadStats()])
+    setLoading(false)
   }
 
   async function loadClaims() {
-    setLoading(true)
     const { data } = await supabase
       .from('author_claims')
       .select('*, authors(id, name), profiles(username, avatar_url)')
       .order('created_at', { ascending: true })
     setClaims(data || [])
-    setLoading(false)
+  }
+
+  async function loadAuthors() {
+    const { data } = await supabase
+      .from('authors')
+      .select('*')
+      .order('name', { ascending: true })
+    setAuthors(data || [])
+  }
+
+  async function loadUsers() {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, username, avatar_url, is_admin, created_at')
+      .order('created_at', { ascending: false })
+    setUsers(data || [])
+  }
+
+  async function loadStats() {
+    const [
+      { count: userCount },
+      { count: bookCount },
+      { count: entryCount },
+      { count: authorCount },
+      { count: followCount },
+      { count: claimPendingCount },
+    ] = await Promise.all([
+      supabase.from('profiles').select('*', { count: 'exact', head: true }),
+      supabase.from('books').select('*', { count: 'exact', head: true }),
+      supabase.from('collection_entries').select('*', { count: 'exact', head: true }),
+      supabase.from('authors').select('*', { count: 'exact', head: true }),
+      supabase.from('author_follows').select('*', { count: 'exact', head: true }),
+      supabase.from('author_claims').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+    ])
+    setStats({ userCount, bookCount, entryCount, authorCount, followCount, claimPendingCount })
   }
 
   async function reviewClaim(claim, decision, note = '') {
@@ -41,9 +97,7 @@ export default function Admin({ session }) {
       .from('author_claims')
       .update({ status: decision, admin_note: note || null })
       .eq('id', claim.id)
-
     if (decision === 'approved') {
-      // Mark the author as verified and set claimed_by
       await supabase
         .from('authors')
         .update({ is_verified: true, claimed_by: claim.user_id })
@@ -51,6 +105,44 @@ export default function Admin({ session }) {
     }
     setActing(null)
     loadClaims()
+    loadAuthors()
+    loadStats()
+  }
+
+  async function toggleVerified(author) {
+    await supabase
+      .from('authors')
+      .update({ is_verified: !author.is_verified })
+      .eq('id', author.id)
+    loadAuthors()
+  }
+
+  async function removeAuthorClaim(author) {
+    await supabase
+      .from('authors')
+      .update({ is_verified: false, claimed_by: null })
+      .eq('id', author.id)
+    loadAuthors()
+  }
+
+  async function deleteAuthor(author) {
+    if (!window.confirm(`Delete author "${author.name}"? This will remove all follows and posts for this author.`)) return
+    // Delete related data first
+    await supabase.from('author_follows').delete().eq('author_id', author.id)
+    await supabase.from('author_posts').delete().eq('author_id', author.id)
+    await supabase.from('author_claims').delete().eq('author_id', author.id)
+    await supabase.from('authors').delete().eq('id', author.id)
+    loadAuthors()
+    loadStats()
+  }
+
+  async function toggleAdmin(user) {
+    const newVal = !user.is_admin
+    if (user.id === session.user.id && !newVal) {
+      if (!window.confirm('Remove your own admin access? You will be locked out of this page.')) return
+    }
+    await supabase.from('profiles').update({ is_admin: newVal }).eq('id', user.id)
+    loadUsers()
   }
 
   const s = makeStyles(theme)
@@ -80,56 +172,308 @@ export default function Admin({ session }) {
   const pending  = claims.filter(c => c.status === 'pending')
   const resolved = claims.filter(c => c.status !== 'pending')
 
+  const filteredAuthors = authorSearch
+    ? authors.filter(a => a.name.toLowerCase().includes(authorSearch.toLowerCase()))
+    : authors
+
+  const filteredUsers = userSearch
+    ? users.filter(u => (u.username || '').toLowerCase().includes(userSearch.toLowerCase()))
+    : users
+
   return (
     <div style={s.page}>
       <NavBar session={session} />
       <div style={s.content}>
-        <div style={{ marginBottom: 32 }}>
-          <h1 style={s.pageTitle}>Admin Panel</h1>
-          <p style={{ fontSize: 14, color: theme.textSubtle, margin: 0 }}>Manage author page claims and site administration</p>
+        {/* Header */}
+        <div style={{ marginBottom: 28 }}>
+          <h1 style={s.pageTitle}>Admin Dashboard</h1>
+          <p style={{ fontSize: 14, color: theme.textSubtle, margin: 0 }}>Manage your Ex Libris community</p>
         </div>
 
-        {/* ── Pending claims ── */}
-        <section style={{ marginBottom: 48 }}>
-          <div style={s.sectionHead}>
-            <h2 style={s.sectionTitle}>Author Page Claims</h2>
-            {pending.length > 0 && (
-              <span style={s.badge}>{pending.length} pending</span>
+        {/* Tab bar */}
+        <div style={s.tabBar}>
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              style={{
+                ...s.tab,
+                ...(tab === t.key ? s.tabActive : {}),
+              }}
+            >
+              <span>{t.emoji}</span> {t.label}
+              {t.key === 'claims' && pending.length > 0 && (
+                <span style={s.tabBadge}>{pending.length}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {loading ? (
+          <div style={{ color: theme.textSubtle, fontSize: 14, padding: 40, textAlign: 'center' }}>Loading…</div>
+        ) : (
+          <>
+            {/* ════════════ OVERVIEW ════════════ */}
+            {tab === 'overview' && stats && (
+              <div>
+                <div style={s.statsGrid}>
+                  <StatCard theme={theme} emoji="👥" label="Total Users" value={stats.userCount} />
+                  <StatCard theme={theme} emoji="📚" label="Books in Database" value={stats.bookCount} />
+                  <StatCard theme={theme} emoji="📖" label="Collection Entries" value={stats.entryCount} />
+                  <StatCard theme={theme} emoji="✍️" label="Author Pages" value={stats.authorCount} />
+                  <StatCard theme={theme} emoji="❤️" label="Author Follows" value={stats.followCount} />
+                  <StatCard theme={theme} emoji="📝" label="Pending Claims" value={stats.claimPendingCount}
+                    highlight={stats.claimPendingCount > 0} onClick={() => setTab('claims')} />
+                </div>
+
+                {/* Quick actions */}
+                <div style={{ marginTop: 32 }}>
+                  <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: theme.text, margin: '0 0 14px' }}>Quick Actions</h3>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    {pending.length > 0 && (
+                      <button style={s.actionBtn} onClick={() => setTab('claims')}>
+                        Review {pending.length} pending claim{pending.length !== 1 ? 's' : ''}
+                      </button>
+                    )}
+                    <button style={s.actionBtnOutline} onClick={() => setTab('authors')}>
+                      Browse author pages
+                    </button>
+                    <button style={s.actionBtnOutline} onClick={() => setTab('users')}>
+                      Manage users
+                    </button>
+                  </div>
+                </div>
+
+                {/* Recent users */}
+                {users.length > 0 && (
+                  <div style={{ marginTop: 32 }}>
+                    <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: theme.text, margin: '0 0 14px' }}>Recent Signups</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {users.slice(0, 5).map(u => (
+                        <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 14, padding: '8px 14px', background: theme.bgCard, borderRadius: 8, border: `1px solid ${theme.border}` }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            {u.avatar_url
+                              ? <img src={u.avatar_url} style={{ width: 28, height: 28, borderRadius: 14, objectFit: 'cover' }} alt="" />
+                              : <div style={{ width: 28, height: 28, borderRadius: 14, background: theme.rust, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
+                                  {(u.username || '?').charAt(0).toUpperCase()}
+                                </div>
+                            }
+                            <span style={{ fontWeight: 600, color: theme.text }}>{u.username || 'No username'}</span>
+                          </div>
+                          <span style={{ fontSize: 12, color: theme.textSubtle }}>
+                            {new Date(u.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
-          </div>
 
-          {loading ? (
-            <div style={{ color: theme.textSubtle, fontSize: 14 }}>Loading…</div>
-          ) : pending.length === 0 ? (
-            <div style={s.emptyCard}>
-              <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
-              <div style={{ fontWeight: 600, color: theme.text, marginBottom: 4 }}>All caught up!</div>
-              <div style={{ fontSize: 13, color: theme.textSubtle }}>No pending claims to review.</div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {pending.map(claim => (
-                <ClaimCard key={claim.id} claim={claim} theme={theme} acting={acting === claim.id} s={s} onReview={reviewClaim} />
-              ))}
-            </div>
-          )}
-        </section>
+            {/* ════════════ CLAIMS ════════════ */}
+            {tab === 'claims' && (
+              <div>
+                <section style={{ marginBottom: 48 }}>
+                  <div style={s.sectionHead}>
+                    <h2 style={s.sectionTitle}>Pending Claims</h2>
+                    {pending.length > 0 && (
+                      <span style={s.badge}>{pending.length}</span>
+                    )}
+                  </div>
+                  {pending.length === 0 ? (
+                    <div style={s.emptyCard}>
+                      <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+                      <div style={{ fontWeight: 600, color: theme.text, marginBottom: 4 }}>All caught up!</div>
+                      <div style={{ fontSize: 13, color: theme.textSubtle }}>No pending claims to review.</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                      {pending.map(claim => (
+                        <ClaimCard key={claim.id} claim={claim} theme={theme} acting={acting === claim.id} s={s} onReview={reviewClaim} />
+                      ))}
+                    </div>
+                  )}
+                </section>
+                {resolved.length > 0 && (
+                  <section>
+                    <h2 style={{ ...s.sectionTitle, color: theme.textSubtle, marginBottom: 16 }}>Resolved</h2>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {resolved.map(claim => (
+                        <ClaimCard key={claim.id} claim={claim} theme={theme} acting={false} s={s} resolved />
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </div>
+            )}
 
-        {/* ── Resolved claims ── */}
-        {resolved.length > 0 && (
-          <section>
-            <h2 style={{ ...s.sectionTitle, color: theme.textSubtle }}>Resolved</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {resolved.map(claim => (
-                <ClaimCard key={claim.id} claim={claim} theme={theme} acting={false} s={s} resolved />
-              ))}
-            </div>
-          </section>
+            {/* ════════════ AUTHORS ════════════ */}
+            {tab === 'authors' && (
+              <div>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20 }}>
+                  <input
+                    placeholder="Search authors…"
+                    value={authorSearch}
+                    onChange={e => setAuthorSearch(e.target.value)}
+                    style={s.searchInput}
+                  />
+                  <span style={{ fontSize: 13, color: theme.textSubtle, whiteSpace: 'nowrap' }}>
+                    {filteredAuthors.length} author{filteredAuthors.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                {filteredAuthors.length === 0 ? (
+                  <div style={s.emptyCard}>
+                    <div style={{ fontSize: 32, marginBottom: 10 }}>✍️</div>
+                    <div style={{ fontWeight: 600, color: theme.text }}>No authors found</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {filteredAuthors.map(author => (
+                      <div key={author.id} style={s.authorRow}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <span
+                              style={{ fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 15, color: theme.text, cursor: 'pointer', textDecoration: 'none' }}
+                              onClick={() => navigate(`/author/${encodeURIComponent(author.name)}`)}
+                            >
+                              {author.name}
+                            </span>
+                            {author.is_verified && (
+                              <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: 'rgba(90,122,90,0.15)', color: '#5a7a5a' }}>✓ Verified</span>
+                            )}
+                            {author.claimed_by && !author.is_verified && (
+                              <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: 'rgba(184,134,11,0.12)', color: '#9a7200' }}>Claimed</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 12, color: theme.textSubtle }}>
+                            Created {new Date(author.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            {author.bio && (' · Bio set')}
+                            {author.website && (' · Has website')}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            style={{ ...s.smallBtn, background: author.is_verified ? 'rgba(192,82,30,0.1)' : 'rgba(90,122,90,0.1)', color: author.is_verified ? theme.rust : '#5a7a5a' }}
+                            onClick={() => toggleVerified(author)}
+                            title={author.is_verified ? 'Unverify' : 'Verify'}
+                          >
+                            {author.is_verified ? 'Unverify' : 'Verify'}
+                          </button>
+                          {author.claimed_by && (
+                            <button
+                              style={{ ...s.smallBtn, background: 'rgba(184,134,11,0.1)', color: '#9a7200' }}
+                              onClick={() => removeAuthorClaim(author)}
+                              title="Remove claim"
+                            >
+                              Unclaim
+                            </button>
+                          )}
+                          <button
+                            style={{ ...s.smallBtn, background: 'rgba(192,82,30,0.08)', color: '#c0521e' }}
+                            onClick={() => deleteAuthor(author)}
+                            title="Delete author"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ════════════ USERS ════════════ */}
+            {tab === 'users' && (
+              <div>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20 }}>
+                  <input
+                    placeholder="Search users…"
+                    value={userSearch}
+                    onChange={e => setUserSearch(e.target.value)}
+                    style={s.searchInput}
+                  />
+                  <span style={{ fontSize: 13, color: theme.textSubtle, whiteSpace: 'nowrap' }}>
+                    {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                {filteredUsers.length === 0 ? (
+                  <div style={s.emptyCard}>
+                    <div style={{ fontSize: 32, marginBottom: 10 }}>👥</div>
+                    <div style={{ fontWeight: 600, color: theme.text }}>No users found</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {filteredUsers.map(user => (
+                      <div key={user.id} style={s.userRow}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                          {user.avatar_url
+                            ? <img src={user.avatar_url} style={{ width: 36, height: 36, borderRadius: 18, objectFit: 'cover', flexShrink: 0 }} alt="" />
+                            : <div style={{ width: 36, height: 36, borderRadius: 18, background: theme.rust, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, flexShrink: 0 }}>
+                                {(user.username || '?').charAt(0).toUpperCase()}
+                              </div>
+                          }
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, color: theme.text, fontSize: 14 }}>
+                              {user.username || 'No username'}
+                              {user.is_admin && (
+                                <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: 'rgba(192,82,30,0.12)', color: theme.rust }}>Admin</span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 12, color: theme.textSubtle }}>
+                              Joined {new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          style={{
+                            ...s.smallBtn,
+                            background: user.is_admin ? 'rgba(192,82,30,0.1)' : 'rgba(90,122,90,0.1)',
+                            color: user.is_admin ? theme.rust : '#5a7a5a',
+                          }}
+                          onClick={() => toggleAdmin(user)}
+                        >
+                          {user.is_admin ? 'Remove Admin' : 'Make Admin'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
   )
 }
+
+/* ── Stat Card ──────────────────────────────── */
+
+function StatCard({ theme, emoji, label, value, highlight, onClick }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: highlight ? 'rgba(192,82,30,0.06)' : theme.bgCard,
+        border: `1px solid ${highlight ? 'rgba(192,82,30,0.3)' : theme.border}`,
+        borderRadius: 14,
+        padding: '22px 20px',
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'transform 0.15s',
+      }}
+    >
+      <div style={{ fontSize: 26, marginBottom: 8 }}>{emoji}</div>
+      <div style={{ fontSize: 28, fontWeight: 700, color: highlight ? '#c0521e' : theme.text, fontFamily: 'Georgia, serif' }}>
+        {(value ?? 0).toLocaleString()}
+      </div>
+      <div style={{ fontSize: 13, color: theme.textSubtle, marginTop: 4 }}>{label}</div>
+    </div>
+  )
+}
+
+/* ── Claim Card ─────────────────────────────── */
 
 function ClaimCard({ claim, theme, acting, s, onReview, resolved }) {
   const [note, setNote] = useState('')
@@ -150,7 +494,7 @@ function ClaimCard({ claim, theme, acting, s, onReview, resolved }) {
             <span style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: theme.text }}>
               {claim.authors?.name}
             </span>
-            <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, ...sc }}>
+            <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: sc.bg, color: sc.color }}>
               {claim.status.charAt(0).toUpperCase() + claim.status.slice(1)}
             </span>
           </div>
@@ -160,14 +504,14 @@ function ClaimCard({ claim, theme, acting, s, onReview, resolved }) {
             {new Date(claim.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
           </div>
           {claim.message && (
-            <div style={{ fontSize: 14, color: theme.text, lineHeight: 1.6, background: theme.bgSubtle, borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
+            <div style={{ fontSize: 14, color: theme.text, lineHeight: 1.6, background: theme.bgSubtle || theme.bg, borderRadius: 8, padding: '10px 14px', marginBottom: 8 }}>
               "{claim.message}"
             </div>
           )}
           {claim.proof_url && (
             <a href={claim.proof_url} target="_blank" rel="noopener noreferrer"
               style={{ fontSize: 13, color: theme.rust, textDecoration: 'none' }}>
-              🔗 {claim.proof_url}
+              View proof
             </a>
           )}
           {claim.admin_note && (
@@ -178,7 +522,6 @@ function ClaimCard({ claim, theme, acting, s, onReview, resolved }) {
         </div>
       </div>
 
-      {/* Actions (pending only) */}
       {!resolved && claim.status === 'pending' && (
         <div style={{ marginTop: 16, borderTop: `1px solid ${theme.border}`, paddingTop: 14 }}>
           {!showDecline ? (
@@ -220,10 +563,12 @@ function ClaimCard({ claim, theme, acting, s, onReview, resolved }) {
   )
 }
 
+/* ── Styles ─────────────────────────────────── */
+
 function makeStyles(theme) {
   return {
     page:    { minHeight: '100vh', background: theme.bg, fontFamily: "'DM Sans', sans-serif" },
-    content: { maxWidth: 800, margin: '0 auto', padding: '36px 32px' },
+    content: { maxWidth: 900, margin: '0 auto', padding: '36px 32px' },
     center:  { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 300, color: theme.textSubtle, fontSize: 15 },
 
     pageTitle:   { fontFamily: 'Georgia, serif', fontSize: 32, fontWeight: 700, color: theme.text, margin: '0 0 6px' },
@@ -231,8 +576,74 @@ function makeStyles(theme) {
     sectionTitle:{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text, margin: 0 },
     badge:       { display: 'inline-block', background: theme.rust, color: '#fff', borderRadius: 20, fontSize: 12, fontWeight: 700, padding: '3px 10px' },
 
+    // Tabs
+    tabBar: {
+      display: 'flex', gap: 6, marginBottom: 28, borderBottom: `1px solid ${theme.border}`, paddingBottom: 0,
+      overflowX: 'auto',
+    },
+    tab: {
+      display: 'flex', alignItems: 'center', gap: 6,
+      padding: '10px 16px', border: 'none', background: 'none',
+      fontSize: 14, fontWeight: 500, cursor: 'pointer',
+      color: theme.textSubtle, borderBottom: '2px solid transparent',
+      fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap',
+      transition: 'color 0.15s, border-color 0.15s',
+      position: 'relative',
+    },
+    tabActive: {
+      color: theme.rust, fontWeight: 700,
+      borderBottom: `2px solid ${theme.rust}`,
+    },
+    tabBadge: {
+      background: theme.rust, color: '#fff', borderRadius: 10,
+      fontSize: 11, fontWeight: 700, padding: '1px 7px', marginLeft: 2,
+    },
+
+    // Cards
     emptyCard:   { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '40px 32px', textAlign: 'center' },
     claimCard:   { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '20px 22px' },
+
+    // Stats grid
+    statsGrid: {
+      display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+      gap: 14,
+    },
+
+    // Author / User rows
+    authorRow: {
+      display: 'flex', alignItems: 'center', gap: 14,
+      background: theme.bgCard, border: `1px solid ${theme.border}`,
+      borderRadius: 10, padding: '14px 16px',
+    },
+    userRow: {
+      display: 'flex', alignItems: 'center', gap: 14,
+      background: theme.bgCard, border: `1px solid ${theme.border}`,
+      borderRadius: 10, padding: '12px 16px',
+    },
+
+    // Search input
+    searchInput: {
+      flex: 1, padding: '9px 14px', border: `1px solid ${theme.border}`,
+      borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif",
+      background: theme.bgCard, color: theme.text, outline: 'none',
+    },
+
+    // Buttons
+    smallBtn: {
+      padding: '5px 12px', border: 'none', borderRadius: 7,
+      fontSize: 12, fontWeight: 600, cursor: 'pointer',
+      fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap',
+    },
+    actionBtn: {
+      padding: '10px 20px', background: theme.rust, color: '#fff',
+      border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600,
+      cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+    },
+    actionBtnOutline: {
+      padding: '10px 20px', background: 'transparent', color: theme.text,
+      border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14,
+      cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+    },
 
     btnApprove:       { padding: '8px 18px', background: '#5a7a5a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     btnDecline:       { padding: '8px 18px', background: 'transparent', color: theme.textSubtle, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },

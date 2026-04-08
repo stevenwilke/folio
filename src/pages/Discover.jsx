@@ -8,7 +8,7 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import { getCoverUrl } from '../lib/coverUrl'
 import { enrichBook } from '../lib/enrichBook'
 
-const NYT_API_KEY = import.meta.env.VITE_NYT_API_KEY
+const NYT_API_KEY = import.meta.env.VITE_NYT_API_KEY || '2vGCkSNIV0d51GG4sERlG9pwoYG7b8ktvPLFBNmbsCWtK2oO'
 
 const NYT_LISTS = [
   { key: 'hardcover-fiction',                    label: 'Fiction',         emoji: '📖' },

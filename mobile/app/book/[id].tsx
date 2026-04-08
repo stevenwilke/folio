@@ -876,7 +876,7 @@ export default function BookDetailScreen() {
           </View>
         ) : null}
 
-        {/* Buy on Bookshop.org */}
+        {/* Buy / Find */}
         <View style={styles.section}>
           <TouchableOpacity
             style={styles.bookshopBtn}
@@ -890,6 +890,32 @@ export default function BookDetailScreen() {
             activeOpacity={0.8}
           >
             <Text style={styles.bookshopBtnText}>Buy new on Bookshop.org →</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.bookshopBtn, { marginTop: 8, backgroundColor: '#f5f0e8' }]}
+            onPress={() => {
+              const isbn = book.isbn_13 || book.isbn_10;
+              const url = isbn
+                ? `https://www.thriftbooks.com/browse/?b.search=${encodeURIComponent(isbn)}`
+                : `https://www.thriftbooks.com/browse/?b.search=${encodeURIComponent(book.title)}`;
+              Linking.openURL(url);
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.bookshopBtnText, { color: Colors.ink }]}>Find used on ThriftBooks →</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.bookshopBtn, { marginTop: 8, backgroundColor: 'rgba(184,134,11,0.08)', borderColor: 'rgba(184,134,11,0.2)' }]}
+            onPress={() => {
+              const isbn = book.isbn_13 || book.isbn_10;
+              const url = isbn
+                ? `https://www.abebooks.com/servlet/SearchResults?isbn=${isbn}&cm_sp=snippet-_-srp1-_-isbn1`
+                : `https://www.abebooks.com/servlet/SearchResults?tn=${encodeURIComponent(book.title)}&an=${encodeURIComponent(book.author || '')}`;
+              Linking.openURL(url);
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.bookshopBtnText, { color: '#9a7200' }]}>Rare & collectible on AbeBooks →</Text>
           </TouchableOpacity>
         </View>
 

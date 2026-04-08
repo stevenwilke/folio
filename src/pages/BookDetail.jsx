@@ -780,6 +780,18 @@ export default function BookDetail({ bookId, session, onBack }) {
                   >
                     Find used →
                   </a>
+                  <span style={s.valuationDivider}>·</span>
+                  <a
+                    href={
+                      (book.isbn_13 || book.isbn_10)
+                        ? `https://www.abebooks.com/servlet/SearchResults?isbn=${book.isbn_13 || book.isbn_10}&cm_sp=snippet-_-srp1-_-isbn1`
+                        : `https://www.abebooks.com/servlet/SearchResults?tn=${encodeURIComponent(book.title)}&an=${encodeURIComponent(book.author || '')}`
+                    }
+                    target="_blank" rel="noopener noreferrer"
+                    style={{ ...s.valuationSub, color: theme.rust, textDecoration: 'none', fontStyle: 'italic' }}
+                  >
+                    Rare & collectible →
+                  </a>
                 </>
               )}
             </div>

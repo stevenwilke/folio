@@ -612,7 +612,7 @@ export default function Library({ session }) {
         {isMobile ? (
           <div style={s.statsRow}>
             {[
-              ['Total',   stats.total,   'all'],
+              ['All Books', stats.total,   'all'],
               ['Read',    stats.read,    'read'],
               ['Reading', stats.reading, 'reading'],
               ['Want',    stats.want,    'want'],
@@ -636,7 +636,7 @@ export default function Library({ session }) {
         ) : (
           <div style={s.statsRow}>
             {[
-              ['Total Books', stats.total,   'all',     null,      '📚'],
+              ['All Books',   stats.total,   'all',     null,      '📚'],
               ['Read',        stats.read,    'read',    '#5a7a5a', '✓'],
               ['Reading',     stats.reading, 'reading', '#c0521e', '📖'],
               ['Want to Read',stats.want,    'want',    '#b8860b', '🔖'],
@@ -718,19 +718,6 @@ export default function Library({ session }) {
               style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: theme.textSubtle, lineHeight: 1, padding: 2 }}
             >×</button>
           )}
-        </div>
-
-        {/* Filter pills */}
-        <div style={s.filterRow} className={isMobile ? 'chips-scroll' : ''}>
-          {['all', 'owned', 'read', 'reading', 'want'].map(f => (
-            <button key={f}
-              style={filter === f
-                ? { ...s.filterActive,   ...(isMobile ? { flexShrink: 0 } : {}) }
-                : { ...s.filterInactive, ...(isMobile ? { flexShrink: 0 } : {}) }}
-              onClick={() => setFilter(f)}>
-              {f === 'all' ? 'All Books' : STATUS_LABELS[f]}
-            </button>
-          ))}
         </div>
 
         {/* Tag filter row */}

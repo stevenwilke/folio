@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   RefreshControl,
   TextInput,
   Linking,
+  Modal,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
@@ -22,6 +23,7 @@ import { Colors } from '../../constants/colors';
 import { FakeCover } from '../../components/FakeCover';
 import { ReadStatus } from '../../components/BookCard';
 import { fetchUsedPrices } from '../../lib/fetchUsedPrices';
+import { isFiction, computeReadingSpeeds, estimateReadingTime, formatTimer, checkSessionIdle, ReadingSpeeds } from '../../lib/readingSpeed';
 
 interface Book {
   id: string;
@@ -126,6 +128,14 @@ export default function BookDetailScreen() {
   // Valuation
   const [valuation, setValuation] = useState<any>(null);
   const [valuationLoading, setValuationLoading] = useState(true);
+
+  // Reading timer
+  const [activeSession, setActiveSession] = useState<any>(null);
+  const [timerDisplay, setTimerDisplay]   = useState('0:00');
+  const [readingSpeeds, setReadingSpeeds] = useState<ReadingSpeeds | null>(null);
+  const [showStopModal, setShowStopModal] = useState(false);
+  const [endPageInput, setEndPageInput]   = useState('');
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Feature 1: Reading Journal
   const [journalEntries, setJournalEntries] = useState<{id: string, content: string, created_at: string}[]>([]);
@@ -257,6 +267,10 @@ export default function BookDetailScreen() {
     if (bookData?.series_name) {
       await fetchSeries(bookData, user.id);
     }
+
+    // Fetch reading sessions + active timer
+    fetchReadingSessions(user.id);
+    fetchActiveSession(user.id);
   }
 
   async function loadValuation(bookData: Book) {
@@ -317,6 +331,89 @@ export default function BookDetailScreen() {
       setValuation(null);
     }
     setValuationLoading(false);
+  }
+
+  // ── Reading Timer ──────────────────────────────────────────────────────
+  async function fetchReadingSessions(userId: string) {
+    const { data } = await supabase
+      .from('reading_sessions')
+      .select('started_at, ended_at, pages_read, is_fiction')
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .not('pages_read', 'is', null);
+    if (data?.length) setReadingSpeeds(computeReadingSpeeds(data));
+  }
+
+  async function fetchActiveSession(userId: string) {
+    const { data } = await supabase
+      .from('reading_sessions')
+      .select('id, book_id, started_at, start_page')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .maybeSingle();
+    setActiveSession(data || null);
+    if (data && checkSessionIdle(data.started_at).isIdle) {
+      setShowStopModal(true);
+      setEndPageInput(String(currentPage || data.start_page || ''));
+    }
+  }
+
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (!activeSession || activeSession.book_id !== id) {
+      setTimerDisplay('0:00');
+      return;
+    }
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000);
+      setTimerDisplay(formatTimer(elapsed));
+    };
+    tick();
+    timerRef.current = setInterval(tick, 1000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [activeSession, id]);
+
+  async function startReadingTimer() {
+    if (!book) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data, error } = await supabase.from('reading_sessions').insert({
+      user_id: user.id,
+      book_id: book.id,
+      start_page: currentPage || 0,
+      is_fiction: isFiction(book.genre),
+      status: 'active',
+    }).select().single();
+    if (!error && data) setActiveSession(data);
+  }
+
+  function requestStopTimer() {
+    setEndPageInput(String(currentPage || activeSession?.start_page || ''));
+    setShowStopModal(true);
+  }
+
+  async function confirmStopTimer() {
+    if (!activeSession) return;
+    const endPage = parseInt(endPageInput) || 0;
+    const pagesRead = Math.max(0, endPage - (activeSession.start_page || 0));
+    await supabase.from('reading_sessions')
+      .update({ ended_at: new Date().toISOString(), end_page: endPage, pages_read: pagesRead, status: 'completed' })
+      .eq('id', activeSession.id);
+    if (endPage > 0 && entry) {
+      await supabase.from('collection_entries').update({ current_page: endPage }).eq('id', entry.id);
+      setCurrentPage(endPage);
+    }
+    setActiveSession(null);
+    setShowStopModal(false);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) fetchReadingSessions(user.id);
+  }
+
+  async function discardSession() {
+    if (!activeSession) return;
+    await supabase.from('reading_sessions').update({ status: 'discarded' }).eq('id', activeSession.id);
+    setActiveSession(null);
+    setShowStopModal(false);
   }
 
   useFocusEffect(
@@ -648,6 +745,12 @@ export default function BookDetailScreen() {
             {book.genre ? (
               <Text style={styles.bookMeta}>{book.genre}</Text>
             ) : null}
+            {(() => {
+              if (!(book as any).pages || !readingSpeeds) return null;
+              const est = estimateReadingTime((book as any).pages, entry?.read_status === 'reading' ? currentPage : 0, book.genre, readingSpeeds);
+              if (!est) return null;
+              return <Text style={{ fontSize: 12, color: Colors.sage, fontWeight: '600', marginTop: 2 }}>⏱ ~{est.label}{entry?.read_status === 'reading' ? ' left' : ''}</Text>;
+            })()}
 
             {/* Community rating */}
             {communityRating !== null ? (
@@ -811,6 +914,32 @@ export default function BookDetailScreen() {
         {entry?.read_status === 'reading' && (book as any).pages ? (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Reading Progress</Text>
+
+            {/* Reading Timer */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              {activeSession && activeSession.book_id === id ? (
+                <>
+                  <Text style={{ fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }), fontSize: 22, fontWeight: '700', color: Colors.sage }}>{timerDisplay}</Text>
+                  <TouchableOpacity
+                    onPress={requestStopTimer}
+                    style={{ paddingHorizontal: 14, paddingVertical: 6, backgroundColor: Colors.rust, borderRadius: 7 }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>Stop Reading</Text>
+                  </TouchableOpacity>
+                </>
+              ) : activeSession ? (
+                <Text style={{ fontSize: 12, color: Colors.muted, fontStyle: 'italic' }}>Timer running on another book</Text>
+              ) : (
+                <TouchableOpacity
+                  onPress={startReadingTimer}
+                  style={{ paddingHorizontal: 14, paddingVertical: 6, backgroundColor: Colors.sage, borderRadius: 7 }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>⏱ Start Reading</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <View style={styles.progressRow}>
               <View style={styles.progressBarBg}>
                 <View style={[styles.progressBarFill, {
@@ -1058,6 +1187,50 @@ export default function BookDetailScreen() {
           </View>
         ) : null}
       </ScrollView>
+
+      {/* Stop reading session modal */}
+      <Modal visible={showStopModal && !!activeSession} transparent animationType="fade">
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: 20 }}>
+          <View style={{ backgroundColor: Colors.card, borderRadius: 16, padding: 24, width: '100%', maxWidth: 340 }}>
+            <Text style={{ fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }), fontSize: 18, fontWeight: '700', color: Colors.ink }}>Reading Session</Text>
+            <Text style={{ fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }), fontSize: 28, fontWeight: '700', color: Colors.sage, marginVertical: 12 }}>{timerDisplay}</Text>
+            {activeSession && checkSessionIdle(activeSession.started_at).isIdle && (
+              <Text style={{ fontSize: 13, color: Colors.rust, fontStyle: 'italic', marginBottom: 12 }}>
+                This session has been running for {checkSessionIdle(activeSession.started_at).elapsedMin} minutes. Adjust the page if you stopped earlier.
+              </Text>
+            )}
+            <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.muted, marginBottom: 4 }}>What page are you on now?</Text>
+            <TextInput
+              value={endPageInput}
+              onChangeText={setEndPageInput}
+              keyboardType="numeric"
+              style={{ borderWidth: 1, borderColor: Colors.border, borderRadius: 8, padding: 10, fontSize: 16, marginBottom: 6 }}
+              autoFocus
+            />
+            {activeSession?.start_page != null && parseInt(endPageInput) > activeSession.start_page && (
+              <Text style={{ fontSize: 12, color: Colors.muted, marginBottom: 8 }}>
+                {parseInt(endPageInput) - activeSession.start_page} pages read this session
+              </Text>
+            )}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+              <TouchableOpacity
+                onPress={confirmStopTimer}
+                style={{ flex: 1, padding: 12, backgroundColor: Colors.sage, borderRadius: 8, alignItems: 'center' }}
+                activeOpacity={0.8}
+              >
+                <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Save Session</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={discardSession}
+                style={{ padding: 12, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, alignItems: 'center' }}
+                activeOpacity={0.8}
+              >
+                <Text style={{ color: Colors.muted, fontSize: 14, fontWeight: '600' }}>Discard</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }

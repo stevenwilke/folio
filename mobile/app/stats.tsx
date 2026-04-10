@@ -12,6 +12,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 import BadgesSection from '../components/BadgesSection';
+import { computeReadingSpeeds, formatDuration, ReadingSpeeds } from '../lib/readingSpeed';
 
 // ---- Types ----
 
@@ -25,6 +26,9 @@ interface StatsData {
   mostReadAuthor: { name: string; count: number } | null;
   longestBookRead: { title: string; pages: number } | null;
   currentYearCount: number;
+  readingSpeeds: ReadingSpeeds | null;
+  totalReadingMinutes: number;
+  totalSessions: number;
 }
 
 // ---- Stat card ----
@@ -266,6 +270,25 @@ export default function StatsScreen() {
       (e) => new Date(e.added_at).getFullYear() === currentYear
     ).length;
 
+    // Reading sessions
+    let readingSpeeds: ReadingSpeeds | null = null;
+    let totalReadingMinutes = 0;
+    let totalSessions = 0;
+    const { data: sessions } = await supabase
+      .from('reading_sessions')
+      .select('started_at, ended_at, pages_read, is_fiction')
+      .eq('user_id', user.id)
+      .eq('status', 'completed')
+      .not('pages_read', 'is', null);
+    if (sessions?.length) {
+      readingSpeeds = computeReadingSpeeds(sessions);
+      totalSessions = sessions.length;
+      totalReadingMinutes = Math.round(sessions.reduce((sum: number, s: any) => {
+        if (!s.started_at || !s.ended_at) return sum;
+        return sum + (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000;
+      }, 0));
+    }
+
     setStats({
       totalBooks: all.length,
       booksRead: readEntries.length,
@@ -276,6 +299,9 @@ export default function StatsScreen() {
       mostReadAuthor,
       longestBookRead,
       currentYearCount,
+      readingSpeeds,
+      totalReadingMinutes,
+      totalSessions,
     });
   }
 
@@ -355,6 +381,37 @@ export default function StatsScreen() {
               </View>
             ))}
           </View>
+        </Section>
+      )}
+
+      {/* Reading speed */}
+      {stats.readingSpeeds && (stats.readingSpeeds.fiction || stats.readingSpeeds.nonfiction) && (
+        <Section title="Reading Speed">
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 8 }}>
+            <StatCard
+              label="Fiction"
+              value={stats.readingSpeeds.fiction ? `${stats.readingSpeeds.fiction.toFixed(1)}` : '—'}
+              sub="pages/min"
+            />
+            <StatCard
+              label="Nonfiction"
+              value={stats.readingSpeeds.nonfiction ? `${stats.readingSpeeds.nonfiction.toFixed(1)}` : '—'}
+              sub="pages/min"
+            />
+            <StatCard
+              label="Time Tracked"
+              value={formatDuration(stats.totalReadingMinutes)}
+              sub="total"
+            />
+            <StatCard
+              label="Sessions"
+              value={String(stats.totalSessions)}
+              sub="logged"
+            />
+          </View>
+          <Text style={{ fontSize: 12, color: Colors.muted, fontStyle: 'italic' }}>
+            Speed improves with more reading sessions
+          </Text>
         </Section>
       )}
 

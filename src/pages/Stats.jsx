@@ -4,6 +4,7 @@ import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { computeBadges, BADGE_CATEGORIES, TIER_STYLES } from '../lib/badges'
+import { computeReadingSpeeds, formatDuration } from '../lib/readingSpeed'
 
 const CHART_COLORS = ['#c0521e', '#5a7a5a', '#b8860b', '#4a6b8a', '#7b4f3a', '#8b5e83', '#3d6b6b']
 
@@ -46,6 +47,7 @@ export default function Stats({ session }) {
   const [loading,      setLoading]      = useState(true)
   const [friendCount,  setFriendCount]  = useState(0)
   const [badges,       setBadges]       = useState([])
+  const [readingSessionStats, setReadingSessionStats] = useState(null)
 
   useEffect(() => { fetchData() }, [])
 
@@ -72,6 +74,23 @@ export default function Stats({ session }) {
         .in('book_id', bookIds)
       setValuations(vals || [])
     }
+
+    // Fetch reading sessions for speed stats
+    const { data: sessions } = await supabase
+      .from('reading_sessions')
+      .select('started_at, ended_at, pages_read, is_fiction')
+      .eq('user_id', session.user.id)
+      .eq('status', 'completed')
+      .not('pages_read', 'is', null)
+    if (sessions?.length) {
+      const speeds = computeReadingSpeeds(sessions)
+      const totalMin = sessions.reduce((sum, s) => {
+        if (!s.started_at || !s.ended_at) return sum
+        return sum + (new Date(s.ended_at) - new Date(s.started_at)) / 60000
+      }, 0)
+      setReadingSessionStats({ speeds, totalMinutes: Math.round(totalMin), sessionCount: sessions.length })
+    }
+
     setLoading(false)
   }
 
@@ -404,6 +423,60 @@ export default function Stats({ session }) {
                 )}
               </div>
             </div>
+
+            {/* ── READING SPEED ── */}
+            {readingSessionStats && (
+              <div style={s.chartCard}>
+                <div style={s.chartTitle}>Reading Speed</div>
+                <div style={s.highlightGrid}>
+                  <HighlightTile
+                    icon="📖"
+                    label="Fiction Speed"
+                    value={readingSessionStats.speeds.fiction ? `${readingSessionStats.speeds.fiction.toFixed(1)}` : '—'}
+                    sub="pages/min"
+                    theme={theme} s={s}
+                  />
+                  <HighlightTile
+                    icon="📚"
+                    label="Nonfiction Speed"
+                    value={readingSessionStats.speeds.nonfiction ? `${readingSessionStats.speeds.nonfiction.toFixed(1)}` : '—'}
+                    sub="pages/min"
+                    theme={theme} s={s}
+                  />
+                  <HighlightTile
+                    icon="⏱"
+                    label="Total Reading Time"
+                    value={formatDuration(readingSessionStats.totalMinutes)}
+                    sub="tracked"
+                    theme={theme} s={s}
+                  />
+                  <HighlightTile
+                    icon="📊"
+                    label="Sessions"
+                    value={String(readingSessionStats.sessionCount)}
+                    sub={`session${readingSessionStats.sessionCount !== 1 ? 's' : ''} logged`}
+                    theme={theme} s={s}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+                  <span style={{ fontSize: 12, color: theme.textSubtle, fontStyle: 'italic' }}>
+                    Speed improves with more reading sessions
+                  </span>
+                  <button
+                    onClick={async () => {
+                      if (!confirm('This will delete all your reading sessions and reset your speed data. Are you sure?')) return
+                      await supabase.from('reading_sessions')
+                        .delete()
+                        .eq('user_id', session.user.id)
+                      setReadingSessionStats(null)
+                    }}
+                    style={{ padding: '4px 12px', background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 11, fontWeight: 600, color: theme.textSubtle, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* ── HIGHLIGHTS ── */}
             <div style={s.chartCard}>

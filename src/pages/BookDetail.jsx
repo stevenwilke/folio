@@ -7,6 +7,7 @@ import { getCoverUrl } from '../lib/coverUrl'
 import { uploadCoverToStorage } from '../lib/enrichBook'
 import BookTagsManager from '../components/BookTagsManager'
 import { fetchUsedPrices } from '../lib/fetchUsedPrices'
+import { isFiction, computeReadingSpeeds, estimateReadingTime, formatTimer, checkSessionIdle } from '../lib/readingSpeed'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const STATUS_LABELS = {
@@ -123,6 +124,14 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [currentPage, setCurrentPage]   = useState(0)
   const savePageTimer = useRef(null)
   const [removeConfirm, setRemoveConfirm] = useState(false)
+
+  // Reading timer state
+  const [activeSession, setActiveSession] = useState(null)
+  const [timerDisplay, setTimerDisplay]   = useState('0:00')
+  const [readingSpeeds, setReadingSpeeds] = useState(null)
+  const [showStopModal, setShowStopModal] = useState(false)
+  const [endPageInput, setEndPageInput]   = useState('')
+  const timerRef = useRef(null)
 
   // Journal state
   const [journalEntries, setJournalEntries] = useState([])
@@ -258,6 +267,8 @@ export default function BookDetail({ bookId, session, onBack }) {
 
       loadValuation(data)
       fetchJournal(data)
+      fetchReadingSessions()
+      fetchActiveSession()
       if (data.series_name) fetchSeries(data)
     } else {
       setLoading(false)
@@ -414,6 +425,101 @@ export default function BookDetail({ bookId, session, onBack }) {
       setValuation(false)
     }
     setValuationLoading(false)
+  }
+
+  // ── Reading Timer ────────────────────────────────────────────────────────
+  async function fetchReadingSessions() {
+    const { data } = await supabase
+      .from('reading_sessions')
+      .select('started_at, ended_at, pages_read, is_fiction')
+      .eq('user_id', session.user.id)
+      .eq('status', 'completed')
+      .not('pages_read', 'is', null)
+    if (data?.length) setReadingSpeeds(computeReadingSpeeds(data))
+  }
+
+  async function fetchActiveSession() {
+    const { data } = await supabase
+      .from('reading_sessions')
+      .select('id, book_id, started_at, start_page')
+      .eq('user_id', session.user.id)
+      .eq('status', 'active')
+      .maybeSingle()
+    setActiveSession(data || null)
+
+    // Check for stale session
+    if (data && checkSessionIdle(data.started_at).isIdle) {
+      setShowStopModal(true)
+      setEndPageInput(String(currentPage || data.start_page || ''))
+    }
+  }
+
+  // Timer tick
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    if (!activeSession || activeSession.book_id !== activeBookId) {
+      setTimerDisplay('0:00')
+      return
+    }
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - new Date(activeSession.started_at).getTime()) / 1000)
+      setTimerDisplay(formatTimer(elapsed))
+    }
+    tick()
+    timerRef.current = setInterval(tick, 1000)
+    return () => clearInterval(timerRef.current)
+  }, [activeSession, activeBookId])
+
+  async function startReadingTimer() {
+    if (!book) return
+    const { data, error } = await supabase.from('reading_sessions').insert({
+      user_id:    session.user.id,
+      book_id:    book.id,
+      start_page: currentPage || 0,
+      is_fiction:  isFiction(book.genre),
+      status:     'active',
+    }).select().single()
+    if (!error && data) setActiveSession(data)
+  }
+
+  function requestStopTimer() {
+    setEndPageInput(String(currentPage || activeSession?.start_page || ''))
+    setShowStopModal(true)
+  }
+
+  async function confirmStopTimer() {
+    if (!activeSession) return
+    const endPage = parseInt(endPageInput) || 0
+    const pagesRead = Math.max(0, endPage - (activeSession.start_page || 0))
+    await supabase.from('reading_sessions')
+      .update({
+        ended_at:   new Date().toISOString(),
+        end_page:   endPage,
+        pages_read: pagesRead,
+        status:     'completed',
+      })
+      .eq('id', activeSession.id)
+
+    // Sync current page
+    if (endPage > 0 && entry) {
+      await supabase.from('collection_entries')
+        .update({ current_page: endPage })
+        .eq('id', entry.id)
+      setCurrentPage(endPage)
+    }
+
+    setActiveSession(null)
+    setShowStopModal(false)
+    fetchReadingSessions() // refresh speeds
+  }
+
+  async function discardSession() {
+    if (!activeSession) return
+    await supabase.from('reading_sessions')
+      .update({ status: 'discarded' })
+      .eq('id', activeSession.id)
+    setActiveSession(null)
+    setShowStopModal(false)
   }
 
   async function fetchListing() {
@@ -749,6 +855,14 @@ export default function BookDetail({ bookId, session, onBack }) {
               {book.published_year && <span style={s.metaPill}>{book.published_year}</span>}
               {book.genre && <span style={s.metaPill}>{book.genre}</span>}
               {book.isbn_13 && <span style={s.metaPill}>ISBN {book.isbn_13}</span>}
+              {(() => {
+                if (!book.pages || !readingSpeeds) return null
+                const est = estimateReadingTime(book.pages, entry?.read_status === 'reading' ? currentPage : 0, book.genre, readingSpeeds)
+                if (!est) return null
+                return <span style={{ ...s.metaPill, background: 'rgba(90,122,90,0.1)', color: theme.sage }}>
+                  ⏱ ~{est.label}{entry?.read_status === 'reading' ? ' left' : ''}
+                </span>
+              })()}
             </div>
 
             {/* Valuation */}
@@ -914,10 +1028,34 @@ export default function BookDetail({ bookId, session, onBack }) {
               </div>
             )}
 
-            {/* Reading progress */}
+            {/* Reading progress + timer */}
             {entry?.read_status === 'reading' && (
               <div style={{ marginTop: 16 }}>
                 <div style={s.ratingLabel}>Reading Progress</div>
+
+                {/* Reading Timer */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                  {activeSession && activeSession.book_id === activeBookId ? (
+                    <>
+                      <span style={{ fontFamily: 'monospace', fontSize: 20, fontWeight: 700, color: theme.sage, minWidth: 60 }}>{timerDisplay}</span>
+                      <button
+                        onClick={requestStopTimer}
+                        style={{ padding: '5px 14px', background: theme.rust, color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                      >
+                        Stop Reading
+                      </button>
+                    </>
+                  ) : activeSession ? (
+                    <span style={{ fontSize: 12, color: theme.textSubtle, fontStyle: 'italic' }}>Timer running on another book</span>
+                  ) : (
+                    <button
+                      onClick={startReadingTimer}
+                      style={{ padding: '5px 14px', background: theme.sage, color: '#fff', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                    >
+                      ⏱ Start Reading
+                    </button>
+                  )}
+                </div>
                 {book.pages ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <div style={s.progressBarBg}>
@@ -986,6 +1124,50 @@ export default function BookDetail({ bookId, session, onBack }) {
             theme={theme}
             onClose={() => setShowLendModal(false)}
           />
+        )}
+
+        {/* Stop reading session modal */}
+        {showStopModal && activeSession && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div style={{ background: theme.bgCard, borderRadius: 16, padding: 28, maxWidth: 380, width: '100%', boxShadow: '0 8px 30px rgba(0,0,0,0.2)' }}>
+              <div style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700, color: theme.text, marginBottom: 4 }}>Reading Session</div>
+              <div style={{ fontFamily: 'monospace', fontSize: 28, fontWeight: 700, color: theme.sage, margin: '12px 0' }}>{timerDisplay}</div>
+              {checkSessionIdle(activeSession.started_at).isIdle && (
+                <div style={{ fontSize: 13, color: theme.rust, marginBottom: 12, fontStyle: 'italic' }}>
+                  This session has been running for {checkSessionIdle(activeSession.started_at).elapsedMin} minutes. Adjust the page count if you stopped reading earlier.
+                </div>
+              )}
+              <label style={{ fontSize: 13, fontWeight: 600, color: theme.textSubtle, display: 'block', marginBottom: 4 }}>What page are you on now?</label>
+              <input
+                type="number"
+                min={activeSession.start_page || 0}
+                max={book?.pages || undefined}
+                value={endPageInput}
+                onChange={e => setEndPageInput(e.target.value)}
+                style={{ width: '100%', padding: '8px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 15, fontFamily: "'DM Sans', sans-serif", boxSizing: 'border-box', marginBottom: 6 }}
+                autoFocus
+              />
+              {activeSession.start_page != null && parseInt(endPageInput) > activeSession.start_page && (
+                <div style={{ fontSize: 12, color: theme.textSubtle, marginBottom: 12 }}>
+                  {parseInt(endPageInput) - activeSession.start_page} pages read this session
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                <button
+                  onClick={confirmStopTimer}
+                  style={{ flex: 1, padding: '9px 16px', background: theme.sage, color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                >
+                  Save Session
+                </button>
+                <button
+                  onClick={discardSession}
+                  style={{ padding: '9px 16px', background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontWeight: 600, color: theme.textSubtle, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Series section — shown above tabs when series_name is set */}

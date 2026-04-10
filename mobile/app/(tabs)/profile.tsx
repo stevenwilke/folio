@@ -322,8 +322,45 @@ export default function ProfileScreen() {
     </View>
   );
 
+  const [refreshingValues, setRefreshingValues] = useState(false);
+
+  async function handleRefreshValues() {
+    setRefreshingValues(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: ce } = await supabase
+        .from('collection_entries')
+        .select('book_id')
+        .eq('user_id', user.id);
+      const bookIds = (ce || []).map((e: any) => e.book_id).filter(Boolean);
+      if (bookIds.length) {
+        await supabase.from('valuations')
+          .update({ fetched_at: '2000-01-01T00:00:00Z' })
+          .in('book_id', bookIds);
+      }
+      Alert.alert('Values Reset', 'Your book prices will refresh the next time you open your library.');
+    } catch {
+      Alert.alert('Error', 'Could not reset values. Please try again.');
+    }
+    setRefreshingValues(false);
+  }
+
   const ListFooter = () => (
     <View style={styles.signOutWrapper}>
+      <TouchableOpacity
+        style={[styles.signOutButton, { borderColor: Colors.border, marginBottom: 10 }]}
+        onPress={handleRefreshValues}
+        disabled={refreshingValues}
+        activeOpacity={0.7}
+      >
+        <Text style={{ color: Colors.ink, fontSize: 15, fontWeight: '600', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) }}>
+          {refreshingValues ? 'Resetting…' : 'Refresh Book Values'}
+        </Text>
+        <Text style={{ color: Colors.muted, fontSize: 12, marginTop: 2, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) }}>
+          Re-fetch current retail and used prices
+        </Text>
+      </TouchableOpacity>
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>

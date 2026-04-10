@@ -49,6 +49,7 @@ export default function Profile({ session }) {
   const [savingGoal, setSavingGoal]       = useState(false)
   const [showClearBooks,   setShowClearBooks]   = useState(false)
   const [showDeleteAcct,   setShowDeleteAcct]   = useState(false)
+  const [refreshingValues, setRefreshingValues] = useState(false)
 
   // ── BADGES STATE ──
   const [badges, setBadges]               = useState([])
@@ -565,10 +566,51 @@ export default function Profile({ session }) {
         </div>
       )}
 
+      {/* Settings — own profile only */}
+      {isOwnProfile && (
+        <div style={{ maxWidth: 820, margin: '0 auto', padding: isMobile ? '0 16px 0' : '0 32px 0' }}>
+          <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 32, marginTop: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 12 }}>
+              Settings
+            </div>
+            <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '18px 20px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: theme.text, marginBottom: 3 }}>Refresh book values</div>
+                <div style={{ fontSize: 13, color: theme.textSubtle }}>Re-fetch current retail and used prices for all books in your library. This runs in the background.</div>
+              </div>
+              <button
+                onClick={async () => {
+                  setRefreshingValues(true)
+                  await supabase.from('valuations')
+                    .update({ fetched_at: '2000-01-01T00:00:00Z' })
+                    .eq('fetched_at', 'fetched_at') // dummy filter — update all via RPC below
+                  // Reset all valuations for this user's books
+                  const { data: entries } = await supabase
+                    .from('collection_entries')
+                    .select('book_id')
+                    .eq('user_id', session.user.id)
+                  const bookIds = (entries || []).map(e => e.book_id).filter(Boolean)
+                  if (bookIds.length) {
+                    await supabase.from('valuations')
+                      .update({ fetched_at: '2000-01-01T00:00:00Z' })
+                      .in('book_id', bookIds)
+                  }
+                  setRefreshingValues(false)
+                }}
+                disabled={refreshingValues}
+                style={{ padding: '9px 20px', background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 9, fontSize: 13, fontWeight: 600, color: theme.text, cursor: refreshingValues ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap', alignSelf: 'center', opacity: refreshingValues ? 0.5 : 1 }}
+              >
+                {refreshingValues ? 'Resetting…' : 'Refresh values'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Danger Zone — own profile only */}
       {isOwnProfile && (
         <div style={{ maxWidth: 820, margin: '0 auto', padding: isMobile ? '0 16px 80px' : '0 32px 60px' }}>
-          <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 32, marginTop: 8 }}>
+          <div style={{ paddingTop: 24 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: '#c0521e', textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 12 }}>
               ⚠️ Danger Zone
             </div>

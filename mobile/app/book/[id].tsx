@@ -21,6 +21,7 @@ import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { FakeCover } from '../../components/FakeCover';
 import { ReadStatus } from '../../components/BookCard';
+import { fetchUsedPrices } from '../../lib/fetchUsedPrices';
 
 interface Book {
   id: string;
@@ -122,6 +123,10 @@ export default function BookDetailScreen() {
   // Cover upload
   const [coverUploading, setCoverUploading] = useState(false);
 
+  // Valuation
+  const [valuation, setValuation] = useState<any>(null);
+  const [valuationLoading, setValuationLoading] = useState(true);
+
   // Feature 1: Reading Journal
   const [journalEntries, setJournalEntries] = useState<{id: string, content: string, created_at: string}[]>([]);
   const [newJournalEntry, setNewJournalEntry] = useState('');
@@ -214,7 +219,10 @@ export default function BookDetailScreen() {
           .not('user_rating', 'is', null),
       ]);
 
-    if (bookData) setBook(bookData);
+    if (bookData) {
+      setBook(bookData);
+      loadValuation(bookData);
+    }
     if (entryData) setEntry(entryData);
     if (entryData?.review_text) setReviewText(entryData.review_text);
     if (entryData?.current_page) setCurrentPage(entryData.current_page);
@@ -249,6 +257,66 @@ export default function BookDetailScreen() {
     if (bookData?.series_name) {
       await fetchSeries(bookData, user.id);
     }
+  }
+
+  async function loadValuation(bookData: Book) {
+    setValuationLoading(true);
+    try {
+      const { data: cached } = await supabase
+        .from('valuations')
+        .select('*')
+        .eq('book_id', bookData.id)
+        .maybeSingle();
+
+      const cacheAge = cached
+        ? (Date.now() - new Date(cached.fetched_at).getTime()) / (1000 * 60 * 60)
+        : Infinity;
+
+      if (cached && cacheAge < 24) {
+        setValuation((cached.avg_price || cached.list_price) ? cached : null);
+        setValuationLoading(false);
+        return;
+      }
+
+      const isbn = bookData.isbn_13 || bookData.isbn_10 || null;
+      const [retailResult, usedResult] = await Promise.allSettled([
+        supabase.functions.invoke('get-book-valuation', {
+          body: { isbn, title: bookData.title, author: bookData.author },
+        }),
+        fetchUsedPrices(isbn, bookData.title, bookData.author),
+      ]);
+
+      const data = retailResult.status === 'fulfilled' ? retailResult.value.data : null;
+      const used = usedResult.status === 'fulfilled' ? usedResult.value : null;
+      const found = data?.found || used;
+
+      if (!found) {
+        await supabase.from('valuations').upsert(
+          { book_id: bookData.id, avg_price: null, fetched_at: new Date().toISOString() },
+          { onConflict: 'book_id' }
+        );
+        setValuation(null);
+      } else {
+        const row = {
+          book_id: bookData.id,
+          avg_price: used?.avg_price ?? null,
+          min_price: used?.min_price ?? null,
+          max_price: used?.max_price ?? null,
+          sample_count: used?.sample_count ?? null,
+          paperback_avg: used?.paperback_avg ?? null,
+          hardcover_avg: used?.hardcover_avg ?? null,
+          currency: data?.currency || 'USD',
+          list_price: data?.list_price ?? used?.new_price ?? null,
+          list_price_currency: data?.list_price_currency ?? (used?.new_price ? 'USD' : null),
+          fetched_at: new Date().toISOString(),
+        };
+        await supabase.from('valuations').upsert(row, { onConflict: 'book_id' });
+        setValuation(row);
+      }
+    } catch {
+      setValuation(null);
+    }
+    setValuationLoading(false);
   }
 
   useFocusEffect(
@@ -897,6 +965,43 @@ export default function BookDetailScreen() {
             </Text>
           </View>
         ) : null}
+
+        {/* Values */}
+        {(valuationLoading || valuation) && (
+          <View style={styles.section}>
+            <Text style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: Colors.muted, marginBottom: 8 }}>Values</Text>
+            {valuationLoading ? (
+              <Text style={{ fontSize: 13, color: Colors.muted, fontStyle: 'italic' }}>Fetching prices…</Text>
+            ) : valuation ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                {valuation.list_price != null && (
+                  <View>
+                    <Text style={{ fontSize: 20, fontWeight: '700', color: Colors.sage, fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }) }}>${Number(valuation.list_price).toFixed(2)}</Text>
+                    <Text style={{ fontSize: 11, color: Colors.muted }}>Retail</Text>
+                  </View>
+                )}
+                {valuation.paperback_avg != null && (
+                  <View>
+                    <Text style={{ fontSize: 20, fontWeight: '700', color: Colors.rust, fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }) }}>${Number(valuation.paperback_avg).toFixed(2)}</Text>
+                    <Text style={{ fontSize: 11, color: Colors.muted }}>Used Paperback</Text>
+                  </View>
+                )}
+                {valuation.hardcover_avg != null && (
+                  <View>
+                    <Text style={{ fontSize: 20, fontWeight: '700', color: Colors.rust, fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }) }}>${Number(valuation.hardcover_avg).toFixed(2)}</Text>
+                    <Text style={{ fontSize: 11, color: Colors.muted }}>Used Hardcover</Text>
+                  </View>
+                )}
+                {valuation.avg_price != null && !valuation.paperback_avg && !valuation.hardcover_avg && (
+                  <View>
+                    <Text style={{ fontSize: 20, fontWeight: '700', color: Colors.rust, fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }) }}>${Number(valuation.avg_price).toFixed(2)}</Text>
+                    <Text style={{ fontSize: 11, color: Colors.muted }}>Used avg</Text>
+                  </View>
+                )}
+              </View>
+            ) : null}
+          </View>
+        )}
 
         {/* Buy / Find */}
         <View style={styles.section}>

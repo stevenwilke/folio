@@ -19,6 +19,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
+import { fetchUsedPrices } from '../../lib/fetchUsedPrices';
 import { Colors } from '../../constants/colors';
 import { BookCard, ReadStatus } from '../../components/BookCard';
 import ShelfPlannerModal, { ShelfBook } from '../../components/ShelfPlannerModal';
@@ -161,10 +162,79 @@ export default function LibraryScreen() {
     }
   }
 
+  // Background backfill of book valuations (once per session)
+  const backfillRan = React.useRef(false);
+  async function backfillValuations(libraryEntries: CollectionEntry[]) {
+    const bookIds = libraryEntries.map(e => e.books?.id).filter(Boolean);
+    if (!bookIds.length) return;
+
+    const { data: existing } = await supabase
+      .from('valuations')
+      .select('book_id, fetched_at')
+      .in('book_id', bookIds);
+
+    const sixHoursAgo = Date.now() - 6 * 60 * 60 * 1000;
+    const skipIds = new Set(
+      (existing || [])
+        .filter((v: any) => new Date(v.fetched_at).getTime() > sixHoursAgo)
+        .map((v: any) => v.book_id)
+    );
+
+    const todo = libraryEntries.filter(e => e.books?.id && !skipIds.has(e.books.id));
+    if (!todo.length) return;
+
+    const BATCH = 3;
+    for (let i = 0; i < todo.length; i += BATCH) {
+      await Promise.allSettled(todo.slice(i, i + BATCH).map(async entry => {
+        const b = entry.books;
+        const isbn = b.isbn_13 || b.isbn_10 || null;
+        try {
+          const [retailResult, usedResult] = await Promise.allSettled([
+            supabase.functions.invoke('get-book-valuation', { body: { isbn, title: b.title, author: b.author } }),
+            fetchUsedPrices(isbn, b.title, b.author),
+          ]);
+          const data = retailResult.status === 'fulfilled' ? (retailResult as any).value.data : null;
+          const used = usedResult.status === 'fulfilled' ? (usedResult as any).value : null;
+          const row = {
+            book_id: b.id,
+            list_price: data?.list_price ?? used?.new_price ?? null,
+            list_price_currency: data?.list_price_currency ?? (used?.new_price ? 'USD' : null),
+            avg_price: used?.avg_price ?? null,
+            min_price: used?.min_price ?? null,
+            max_price: used?.max_price ?? null,
+            sample_count: used?.sample_count ?? null,
+            paperback_avg: used?.paperback_avg ?? null,
+            hardcover_avg: used?.hardcover_avg ?? null,
+            currency: data?.currency || 'USD',
+            fetched_at: new Date().toISOString(),
+          };
+          await supabase.from('valuations').upsert(row, { onConflict: 'book_id' });
+        } catch { /* ignore */ }
+      }));
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
-      fetchLibrary().finally(() => setLoading(false));
+      fetchLibrary().then(() => {
+        if (!backfillRan.current) {
+          backfillRan.current = true;
+          // Run backfill after entries are set (use timeout to let state settle)
+          setTimeout(() => {
+            supabase.auth.getUser().then(({ data: { user } }) => {
+              if (!user) return;
+              supabase.from('collection_entries')
+                .select('book_id, books(id, title, author, isbn_13, isbn_10)')
+                .eq('user_id', user.id)
+                .then(({ data }) => {
+                  if (data?.length) backfillValuations(data as any);
+                });
+            });
+          }, 2000);
+        }
+      }).finally(() => setLoading(false));
     }, [])
   );
 

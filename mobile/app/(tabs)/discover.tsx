@@ -364,6 +364,9 @@ export default function DiscoverScreen() {
   const [friends,       setFriends]       = useState<DiscoverBook[]>([]);
   const [friendsLoad,   setFriendsLoad]   = useState(true);
   const [hasFriends,    setHasFriends]    = useState(true);
+  const [trending,      setTrending]      = useState<(DiscoverBook & { friendCount: number; avgRating: number | null })[]>([]);
+  const [trendingLoad,  setTrendingLoad]  = useState(true);
+  const [incomingRecs,  setIncomingRecs]  = useState<any[]>([]);
   const [activeGenre,   setActiveGenre]   = useState<typeof GENRES[0] | null>(null);
   const [genreBooks,    setGenreBooks]    = useState<DiscoverBook[]>([]);
   const [genreLoad,     setGenreLoad]     = useState(false);
@@ -410,8 +413,21 @@ export default function DiscoverScreen() {
 
     buildForYou(entries ?? [], books, keys, user.id);
     buildFriends(user.id, keys);
+    buildTrending(user.id);
     buildNewReleases(keys);
     buildAIRecs(entries ?? [], keys);
+
+    // Fetch incoming recommendations
+    const { data: recs } = await supabase.from('book_recommendations')
+      .select('id, sender_id, book_id, note, created_at, books(id, title, author, cover_image_url)')
+      .eq('recipient_id', user.id).eq('read', false).eq('dismissed', false)
+      .order('created_at', { ascending: false });
+    if (recs?.length) {
+      const sIds = [...new Set(recs.map((r: any) => r.sender_id))];
+      const { data: sp } = await supabase.from('profiles').select('id, username').in('id', sIds);
+      const sm = Object.fromEntries((sp || []).map((p: any) => [p.id, p.username]));
+      setIncomingRecs(recs.map((r: any) => ({ ...r, senderName: sm[r.sender_id] || 'Someone' })));
+    }
   }
 
   async function buildForYou(entries: any[], books: any[], ownedKeys: Set<string>, userId: string) {
@@ -478,6 +494,41 @@ export default function DiscoverScreen() {
       setFriends(unique);
     } catch { setFriends([]); }
     finally { setFriendsLoad(false); }
+  }
+
+  async function buildTrending(userId: string) {
+    setTrendingLoad(true);
+    try {
+      const { data: fs } = await supabase.from('friendships').select('requester_id,addressee_id')
+        .eq('status', 'accepted').or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+      const ids = (fs ?? []).map((f: any) => f.requester_id === userId ? f.addressee_id : f.requester_id);
+      if (!ids.length) { setTrendingLoad(false); return; }
+
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase.from('collection_entries')
+        .select('book_id, user_rating, books(id, title, author, cover_image_url)')
+        .in('user_id', ids).gte('updated_at', thirtyDaysAgo).order('updated_at', { ascending: false }).limit(60);
+
+      const bookMap: Record<string, any> = {};
+      (data ?? []).forEach((e: any) => {
+        const bid = e.book_id;
+        if (!bid || !e.books) return;
+        if (!bookMap[bid]) bookMap[bid] = { ...e.books, friendCount: 0, ratings: [] as number[] };
+        bookMap[bid].friendCount++;
+        if (e.user_rating) bookMap[bid].ratings.push(e.user_rating);
+      });
+
+      const results = Object.values(bookMap)
+        .sort((a: any, b: any) => b.friendCount - a.friendCount)
+        .slice(0, 20)
+        .map((b: any) => ({
+          olKey: b.id, title: b.title, author: b.author, coverUrl: b.cover_image_url,
+          friendCount: b.friendCount,
+          avgRating: b.ratings.length ? Math.round((b.ratings.reduce((s: number, r: number) => s + r, 0) / b.ratings.length) * 10) / 10 : null,
+        }));
+      setTrending(results as any);
+    } catch { setTrending([]); }
+    finally { setTrendingLoad(false); }
   }
 
   async function buildAIRecs(entries: any[], ownedKeys: Set<string>) {
@@ -613,6 +664,81 @@ export default function DiscoverScreen() {
         subtitle="Fresh titles published this year"
         books={newReleases} myKeys={myKeys} onPreview={setPreviewBook} loading={newRelLoad}
       />
+
+      {/* Recommended by Friends */}
+      {incomingRecs.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>💌 Recommended for You</Text>
+          <Text style={styles.sectionSub}>Books your friends think you'll love</Text>
+          {incomingRecs.map((rec: any) => (
+            <View key={rec.id} style={{ flexDirection: 'row', gap: 12, padding: 12, backgroundColor: Colors.card, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: Colors.border }}>
+              {rec.books?.cover_image_url
+                ? <Image source={{ uri: rec.books.cover_image_url }} style={{ width: 45, height: 68, borderRadius: 4 }} />
+                : <View style={{ width: 45, height: 68, borderRadius: 4, backgroundColor: Colors.muted, justifyContent: 'center', alignItems: 'center' }}>
+                    <Text style={{ color: '#fff', fontSize: 8, textAlign: 'center' }}>{rec.books?.title}</Text>
+                  </View>
+              }
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.ink }} numberOfLines={1}>{rec.books?.title}</Text>
+                <Text style={{ fontSize: 12, color: Colors.muted }}>{rec.senderName} recommended this</Text>
+                {rec.note && <Text style={{ fontSize: 12, color: Colors.ink, fontStyle: 'italic', marginTop: 2 }} numberOfLines={2}>"{rec.note}"</Text>}
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                  <TouchableOpacity
+                    style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: Colors.sage, borderRadius: 6 }}
+                    onPress={async () => {
+                      const { data: { user } } = await supabase.auth.getUser();
+                      if (!user) return;
+                      await supabase.from('collection_entries').upsert({ user_id: user.id, book_id: rec.book_id, read_status: 'want' }, { onConflict: 'user_id,book_id' });
+                      await supabase.from('book_recommendations').update({ read: true }).eq('id', rec.id);
+                      setIncomingRecs(prev => prev.filter(r => r.id !== rec.id));
+                    }}>
+                    <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>Add to Library</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: Colors.border, borderRadius: 6 }}
+                    onPress={async () => {
+                      await supabase.from('book_recommendations').update({ dismissed: true }).eq('id', rec.id);
+                      setIncomingRecs(prev => prev.filter(r => r.id !== rec.id));
+                    }}>
+                    <Text style={{ color: Colors.muted, fontSize: 11, fontWeight: '600' }}>Dismiss</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Trending with Friends */}
+      {trending.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🔥 Trending with Friends</Text>
+          <Text style={styles.sectionSub}>Most popular books in your network (last 30 days)</Text>
+          <FlatList
+            horizontal
+            data={trending}
+            keyExtractor={(b, i) => b.olKey ?? String(i)}
+            renderItem={({ item }) => (
+              <TouchableOpacity style={styles.card} onPress={() => setPreviewBook(item as any)} activeOpacity={0.85}>
+                {item.coverUrl
+                  ? <Image source={{ uri: item.coverUrl }} style={styles.cardCover} />
+                  : <View style={[styles.cardCover, { backgroundColor: Colors.muted, justifyContent: 'center', alignItems: 'center' }]}>
+                      <Text style={{ color: '#fff', fontSize: 10, textAlign: 'center', padding: 4 }}>{item.title}</Text>
+                    </View>
+                }
+                <View style={{ position: 'absolute', top: 4, left: 4, backgroundColor: Colors.rust, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
+                  <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>{item.friendCount} {item.friendCount === 1 ? 'friend' : 'friends'}</Text>
+                </View>
+                <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+                {item.author && <Text style={styles.cardAuthor} numberOfLines={1}>{item.author}</Text>}
+                {item.avgRating != null && <Text style={{ fontSize: 10, color: Colors.gold, fontWeight: '600' }}>★ {item.avgRating}</Text>}
+              </TouchableOpacity>
+            )}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.row}
+          />
+        </View>
+      )}
 
       {/* Friends Reading */}
       <View style={styles.section}>

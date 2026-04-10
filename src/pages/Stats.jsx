@@ -128,6 +128,24 @@ export default function Stats({ session }) {
     return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
   }
 
+  // ── COLLECTION WORTH BREAKDOWN ──
+  const genreValueMap = {}
+  const statusValueMap = {}
+  const bookValues = []
+  for (const e of entries) {
+    const v = valMap[e.book_id]
+    if (!v?.list_price) continue
+    const price = Number(v.list_price)
+    const g = e.books?.genre || 'Unknown'
+    genreValueMap[g] = (genreValueMap[g] || 0) + price
+    const st = e.read_status || 'owned'
+    statusValueMap[st] = (statusValueMap[st] || 0) + price
+    bookValues.push({ title: e.books?.title || 'Unknown', author: e.books?.author, price })
+  }
+  const topGenresByValue = Object.entries(genreValueMap).sort((a, b) => b[1] - a[1]).slice(0, 5)
+  const maxGenreValue = topGenresByValue[0]?.[1] || 1
+  const topBooks = bookValues.sort((a, b) => b.price - a.price).slice(0, 5)
+
   // ── BOOKS PER YEAR ──
   const perYear = {}
   for (const e of readEntries) {
@@ -329,6 +347,52 @@ export default function Stats({ session }) {
                 </div>
               </div>
             </div>
+
+            {/* ── COLLECTION WORTH BREAKDOWN ── */}
+            {listValueCount > 0 && (
+              <div style={s.chartCard}>
+                <div style={s.chartTitle}>Collection Worth Breakdown</div>
+                <div style={isMobile ? {} : { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                  {/* Value by Genre */}
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>By Genre</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {topGenresByValue.map(([genre, value]) => (
+                        <div key={genre} style={s.barRow}>
+                          <div style={{ ...s.barLabel, width: 110, textAlign: 'left', fontSize: 12 }}>{genre}</div>
+                          <div style={s.barTrack}>
+                            <div style={{ ...s.barFill, width: `${Math.round((value / maxGenreValue) * 100)}%`, background: theme.sage }} />
+                          </div>
+                          <div style={{ ...s.barCount, width: 50, fontSize: 12, fontWeight: 600 }}>{fmtPrice(value)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Most Valuable Books */}
+                  <div style={isMobile ? { marginTop: 20 } : {}}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Most Valuable</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {topBooks.map((b, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13 }}>
+                          <span style={{ color: theme.textSubtle, fontWeight: 600, width: 18, flexShrink: 0 }}>{i + 1}.</span>
+                          <span style={{ color: theme.text, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.title}</span>
+                          <span style={{ color: theme.sage, fontWeight: 700, flexShrink: 0 }}>${b.price.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {/* Value by Shelf */}
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 20 }}>
+                  {[['owned', 'In Library'], ['read', 'Read'], ['reading', 'Reading'], ['want', 'Want']].map(([key, label]) => (
+                    <div key={key} style={{ flex: '1 1 100px', textAlign: 'center', padding: '10px 8px', background: theme.bgSubtle, borderRadius: 10 }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: theme.text }}>{fmtPrice(statusValueMap[key] || 0)}</div>
+                      <div style={{ fontSize: 11, color: theme.textSubtle, marginTop: 2 }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* ── READING STREAK CARD ── */}
             <div style={{ ...s.chartCard, marginBottom: 20 }}>

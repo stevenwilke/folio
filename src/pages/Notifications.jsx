@@ -87,6 +87,7 @@ export default function Notifications({ session }) {
   const [pendingFriends,  setPendingFriends]  = useState([])
   const [pendingBorrows,  setPendingBorrows]  = useState([])
   const [pendingOrders,   setPendingOrders]   = useState([])
+  const [pendingRecs,     setPendingRecs]     = useState([])
 
   // Recent Activity
   const [recentFriends,   setRecentFriends]   = useState([])
@@ -206,12 +207,29 @@ export default function Notifications({ session }) {
       orderProfileMap = Object.fromEntries((ops || []).map(p => [p.id, p.username]))
     }
 
+    // Fetch book recommendations
+    const { data: recsRaw } = await supabase
+      .from('book_recommendations')
+      .select('id, sender_id, book_id, note, created_at, books(id, title, cover_image_url)')
+      .eq('recipient_id', uid)
+      .eq('read', false)
+      .eq('dismissed', false)
+      .order('created_at', { ascending: false })
+    let recsEnriched = []
+    if (recsRaw?.length) {
+      const senderIds = [...new Set(recsRaw.map(r => r.sender_id))]
+      const { data: senderProfiles } = await supabase.from('profiles').select('id, username').in('id', senderIds)
+      const senderMap = Object.fromEntries((senderProfiles || []).map(p => [p.id, p.username]))
+      recsEnriched = recsRaw.map(r => ({ ...r, senderName: senderMap[r.sender_id] || 'Someone' }))
+    }
+
     setPendingFriends(pendFriends)
     setRecentFriends(recFriends)
     setPendingBorrows(pendBorrowsEnriched)
     setActiveBorrows(actBorrowsEnriched)
     setPendingOrders((pendOrd || []).map(o => ({ ...o, profiles: { username: orderProfileMap[o.buyer_id] } })))
     setRecentOrders( (recOrd  || []).map(o => ({ ...o, profiles: { username: orderProfileMap[o.seller_id] } })))
+    setPendingRecs(recsEnriched)
     setLoading(false)
   }
 
@@ -226,7 +244,7 @@ export default function Notifications({ session }) {
     fetchAll()
   }
 
-  const needsAttention = pendingFriends.length + pendingBorrows.length + pendingOrders.length
+  const needsAttention = pendingFriends.length + pendingBorrows.length + pendingOrders.length + pendingRecs.length
   const recentActivity = recentFriends.length + activeBorrows.length + recentOrders.length
 
   const btnBase = {
@@ -323,6 +341,49 @@ export default function Notifications({ session }) {
                         onClick={() => navigate('/marketplace')}
                       >
                         View Marketplace
+                      </button>,
+                    ]}
+                  />
+                ))}
+
+                {pendingRecs.map(rec => (
+                  <NotifRow
+                    key={`rec-${rec.id}`}
+                    icon="💌"
+                    title={`${rec.senderName} recommended "${rec.books?.title}"`}
+                    sub={rec.note || null}
+                    time={timeAgo(rec.created_at)}
+                    theme={theme}
+                    actions={[
+                      <button
+                        key="view"
+                        style={{ ...btnBase, background: '#5a7a5a', color: 'white' }}
+                        onClick={() => { navigate(`/?book=${rec.books?.id || rec.book_id}`); }}
+                      >
+                        View Book
+                      </button>,
+                      <button
+                        key="add"
+                        style={{ ...btnBase, background: '#c0521e', color: 'white' }}
+                        onClick={async () => {
+                          await supabase.from('collection_entries').upsert({
+                            user_id: uid, book_id: rec.book_id, read_status: 'want',
+                          }, { onConflict: 'user_id,book_id' })
+                          await supabase.from('book_recommendations').update({ read: true }).eq('id', rec.id)
+                          fetchAll()
+                        }}
+                      >
+                        Add to Library
+                      </button>,
+                      <button
+                        key="dismiss"
+                        style={{ ...btnBase, background: 'transparent', color: theme.textSubtle, border: `1px solid ${theme.border}` }}
+                        onClick={async () => {
+                          await supabase.from('book_recommendations').update({ dismissed: true }).eq('id', rec.id)
+                          fetchAll()
+                        }}
+                      >
+                        Dismiss
                       </button>,
                     ]}
                   />

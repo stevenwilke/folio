@@ -134,6 +134,12 @@ export default function BookDetailScreen() {
   const [timerDisplay, setTimerDisplay]   = useState('0:00');
   const [readingSpeeds, setReadingSpeeds] = useState<ReadingSpeeds | null>(null);
   const [showStopModal, setShowStopModal] = useState(false);
+  const [showRecommendModal, setShowRecommendModal] = useState(false);
+  const [recFriends, setRecFriends] = useState<{id: string; username: string}[]>([]);
+  const [recFriendId, setRecFriendId] = useState<string | null>(null);
+  const [recNote, setRecNote] = useState('');
+  const [recSubmitting, setRecSubmitting] = useState(false);
+  const [recDone, setRecDone] = useState(false);
   const [endPageInput, setEndPageInput]   = useState('');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -1175,6 +1181,19 @@ export default function BookDetailScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Recommend to friend */}
+        {entry && (
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={{ borderWidth: 1.5, borderColor: Colors.sage, borderRadius: 8, paddingVertical: 12, alignItems: 'center' }}
+              onPress={() => setShowRecommendModal(true)}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: Colors.sage, fontSize: 14, fontWeight: '600' }}>💌 Recommend to Friend</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Remove from collection */}
         {entry ? (
           <View style={styles.section}>
@@ -1228,6 +1247,85 @@ export default function BookDetailScreen() {
                 <Text style={{ color: Colors.muted, fontSize: 14, fontWeight: '600' }}>Discard</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Recommend to friend modal */}
+      <Modal visible={showRecommendModal} transparent animationType="fade" onShow={async () => {
+        setRecDone(false); setRecNote(''); setRecFriendId(null); setRecSubmitting(false);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: fs } = await supabase.from('friendships').select('requester_id,addressee_id')
+          .eq('status', 'accepted').or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+        const ids = (fs || []).map((f: any) => f.requester_id === user.id ? f.addressee_id : f.requester_id);
+        if (!ids.length) { setRecFriends([]); return; }
+        const { data: profiles } = await supabase.from('profiles').select('id, username').in('id', ids);
+        setRecFriends((profiles || []) as any);
+        if (profiles?.length) setRecFriendId(profiles[0].id);
+      }}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: 20 }}>
+          <View style={{ backgroundColor: Colors.card, borderRadius: 16, padding: 24, width: '100%', maxWidth: 340 }}>
+            <Text style={{ fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }), fontSize: 18, fontWeight: '700', color: Colors.ink }}>💌 Recommend</Text>
+            <Text style={{ fontSize: 13, color: Colors.muted, marginTop: 2, marginBottom: 16 }}>{book?.title}</Text>
+            {recDone ? (
+              <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                <Text style={{ fontSize: 40, marginBottom: 12 }}>💌</Text>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: Colors.ink, marginBottom: 8 }}>Sent!</Text>
+                <TouchableOpacity onPress={() => setShowRecommendModal(false)}>
+                  <Text style={{ color: Colors.sage, fontWeight: '600' }}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.muted, textTransform: 'uppercase', marginBottom: 6 }}>Send to</Text>
+                {recFriends.length === 0 ? (
+                  <Text style={{ fontSize: 13, color: Colors.muted, fontStyle: 'italic', marginBottom: 16 }}>Add friends first!</Text>
+                ) : (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                    {recFriends.map(f => (
+                      <TouchableOpacity key={f.id} onPress={() => setRecFriendId(f.id)}
+                        style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginRight: 6,
+                          backgroundColor: recFriendId === f.id ? Colors.sage : 'transparent',
+                          borderWidth: 1, borderColor: recFriendId === f.id ? Colors.sage : Colors.border }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: recFriendId === f.id ? '#fff' : Colors.ink }}>{f.username}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.muted, textTransform: 'uppercase', marginBottom: 6 }}>Note (optional)</Text>
+                <TextInput
+                  value={recNote} onChangeText={setRecNote}
+                  placeholder="Why should they read this?"
+                  placeholderTextColor={Colors.muted}
+                  multiline style={{ borderWidth: 1, borderColor: Colors.border, borderRadius: 8, padding: 10, fontSize: 14, minHeight: 60, marginBottom: 16, textAlignVertical: 'top' }}
+                />
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    style={{ flex: 1, padding: 12, backgroundColor: Colors.sage, borderRadius: 8, alignItems: 'center', opacity: recSubmitting || !recFriendId ? 0.5 : 1 }}
+                    disabled={recSubmitting || !recFriendId}
+                    onPress={async () => {
+                      if (!recFriendId || !book) return;
+                      setRecSubmitting(true);
+                      const { data: { user } } = await supabase.auth.getUser();
+                      if (!user) return;
+                      await supabase.from('book_recommendations').upsert({
+                        sender_id: user.id, recipient_id: recFriendId, book_id: book.id,
+                        note: recNote.trim() || null, read: false, dismissed: false, created_at: new Date().toISOString(),
+                      }, { onConflict: 'sender_id,recipient_id,book_id' });
+                      setRecSubmitting(false);
+                      setRecDone(true);
+                    }}>
+                    <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>{recSubmitting ? 'Sending…' : 'Send'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ padding: 12, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, alignItems: 'center' }}
+                    onPress={() => setShowRecommendModal(false)}>
+                    <Text style={{ color: Colors.muted, fontSize: 14, fontWeight: '600' }}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>

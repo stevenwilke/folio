@@ -118,6 +118,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [listing, setListing]           = useState(null)
   const [showListingModal, setShowListingModal] = useState(false)
   const [showLendModal,    setShowLendModal]    = useState(false)
+  const [showRecommendModal, setShowRecommendModal] = useState(false)
   const [valuation, setValuation]       = useState(null)
   const [valuationLoading, setValuationLoading] = useState(true)
   const [friendStats, setFriendStats]   = useState(null)   // null = loading, [] = none
@@ -1025,6 +1026,9 @@ export default function BookDetail({ bookId, session, onBack }) {
                 <button style={s.lendOutBtn} onClick={() => setShowLendModal(true)}>
                   🤝 Lend Out
                 </button>
+                <button style={s.lendOutBtn} onClick={() => setShowRecommendModal(true)}>
+                  💌 Recommend
+                </button>
               </div>
             )}
 
@@ -1124,6 +1128,16 @@ export default function BookDetail({ bookId, session, onBack }) {
             book={book}
             theme={theme}
             onClose={() => setShowLendModal(false)}
+          />
+        )}
+
+        {/* Recommend to friend modal */}
+        {showRecommendModal && book && (
+          <RecommendModal
+            session={session}
+            book={book}
+            theme={theme}
+            onClose={() => setShowRecommendModal(false)}
           />
         )}
 
@@ -1854,6 +1868,111 @@ function FakeCover({ title }) {
     }}>
       <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 9, background: 'rgba(0,0,0,0.2)' }} />
       <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.9)', textShadow: '0 1px 2px rgba(0,0,0,0.5)', lineHeight: 1.3, position: 'relative', zIndex: 1 }}>{title}</span>
+    </div>
+  )
+}
+
+function RecommendModal({ session, book, theme, onClose }) {
+  const [friends,    setFriends]    = useState([])
+  const [friendId,   setFriendId]   = useState('')
+  const [note,       setNote]       = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [done,       setDone]       = useState(false)
+  const [error,      setError]      = useState('')
+
+  useEffect(() => {
+    async function loadFriends() {
+      const { data: fs } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .eq('status', 'accepted')
+        .or(`requester_id.eq.${session.user.id},addressee_id.eq.${session.user.id}`)
+      const ids = (fs || []).map(f =>
+        f.requester_id === session.user.id ? f.addressee_id : f.requester_id
+      )
+      if (!ids.length) { setFriends([]); return }
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username')
+        .in('id', ids)
+      setFriends(profiles || [])
+      if (profiles?.length) setFriendId(profiles[0].id)
+    }
+    loadFriends()
+  }, [])
+
+  async function submit() {
+    if (!friendId) { setError('Please select a friend.'); return }
+    setSubmitting(true)
+    setError('')
+    const { error: err } = await supabase
+      .from('book_recommendations')
+      .upsert({
+        sender_id:    session.user.id,
+        recipient_id: friendId,
+        book_id:      book.id,
+        note:         note.trim() || null,
+        read:         false,
+        dismissed:    false,
+        created_at:   new Date().toISOString(),
+      }, { onConflict: 'sender_id,recipient_id,book_id' })
+    if (err) {
+      setError('Could not send recommendation.')
+      setSubmitting(false)
+    } else {
+      setDone(true)
+    }
+  }
+
+  const overlay = { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+  const box     = { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 400, maxWidth: '92vw', overflow: 'hidden' }
+  const head    = { padding: '18px 20px 14px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }
+  const bd      = { padding: '20px 20px 24px' }
+  const lbl     = { display: 'block', fontSize: 11, fontWeight: 600, color: theme.textSubtle, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }
+  const sel     = { width: '100%', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", background: theme.bgCard, color: theme.text, outline: 'none' }
+  const ta      = { width: '100%', padding: '9px 12px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", background: theme.bgCard, color: theme.text, outline: 'none', resize: 'vertical', minHeight: 72, lineHeight: 1.5, boxSizing: 'border-box' }
+
+  return (
+    <div style={overlay} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={box}>
+        <div style={head}>
+          <div>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: theme.text }}>💌 Recommend</div>
+            <div style={{ fontSize: 13, color: theme.textSubtle, marginTop: 2 }}>{book.title}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: theme.textSubtle, lineHeight: 1 }}>×</button>
+        </div>
+        <div style={bd}>
+          {done ? (
+            <div style={{ textAlign: 'center', padding: '20px 0' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>💌</div>
+              <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: theme.text, marginBottom: 8 }}>Recommendation sent!</div>
+              <div style={{ fontSize: 13, color: theme.textSubtle }}>Your friend will see it in their notifications.</div>
+            </div>
+          ) : (
+            <>
+              <div style={{ marginBottom: 18 }}>
+                <label style={lbl}>Send to</label>
+                {friends.length === 0 ? (
+                  <div style={{ fontSize: 13, color: theme.textSubtle, fontStyle: 'italic' }}>No friends yet. Add friends to recommend books!</div>
+                ) : (
+                  <select style={sel} value={friendId} onChange={e => setFriendId(e.target.value)}>
+                    {friends.map(f => <option key={f.id} value={f.id}>{f.username || 'User'}</option>)}
+                  </select>
+                )}
+              </div>
+              <div style={{ marginBottom: 18 }}>
+                <label style={lbl}>Why should they read this? (optional)</label>
+                <textarea style={ta} value={note} onChange={e => setNote(e.target.value)} placeholder="One of my all-time favorites..." />
+              </div>
+              {error && <div style={{ color: theme.rust, fontSize: 13, marginBottom: 12 }}>{error}</div>}
+              <button style={{ padding: '9px 22px', background: theme.sage, color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }} onClick={submit} disabled={submitting || !friends.length}>
+                {submitting ? 'Sending…' : 'Send Recommendation'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

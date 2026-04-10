@@ -385,6 +385,9 @@ function TrendingCard({ book, onPreview, myBookIds }) {
       <div style={s.cardBody}>
         <div style={s.cardTitle}>{book.title}</div>
         {book.author && <div style={s.cardAuthor}>{book.author}</div>}
+        {book.avgRating != null && (
+          <div style={{ fontSize: 11, color: '#b8860b', fontWeight: 600, marginTop: 2 }}>★ {book.avgRating}</div>
+        )}
       </div>
     </div>
   )
@@ -757,35 +760,37 @@ export default function Discover({ session }) {
         return
       }
 
-      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
       const { data } = await supabase
         .from('collection_entries')
-        .select('book_id, books(id, title, author, cover_image_url, isbn_13, isbn_10, genre)')
+        .select('book_id, user_rating, books(id, title, author, cover_image_url, isbn_13, isbn_10, genre)')
         .in('user_id', friendIds)
-        .gte('updated_at', oneWeekAgo)
+        .gte('updated_at', thirtyDaysAgo)
         .order('updated_at', { ascending: false })
-        .limit(20)
+        .limit(60)
 
-      // Deduplicate by book_id and count friends
+      // Deduplicate by book_id, count friends, and compute avg rating
       const bookMap = {}
       ;(data ?? []).forEach(entry => {
         const bid = entry.book_id
         if (!bid || !entry.books) return
         if (!bookMap[bid]) {
-          bookMap[bid] = { ...entry.books, friendCount: 0 }
+          bookMap[bid] = { ...entry.books, friendCount: 0, ratings: [] }
         }
         bookMap[bid].friendCount++
+        if (entry.user_rating) bookMap[bid].ratings.push(entry.user_rating)
       })
 
       const results = Object.values(bookMap)
-        .sort((a, b) => b.friendCount - a.friendCount)
-        .slice(0, 10)
+        .sort((a, b) => b.friendCount - a.friendCount || (b.ratings.length ? b.ratings.reduce((s,r) => s+r, 0)/b.ratings.length : 0) - (a.ratings.length ? a.ratings.reduce((s,r) => s+r, 0)/a.ratings.length : 0))
+        .slice(0, 20)
         .map(b => ({
           olKey:       b.id,
           title:       b.title,
           author:      b.author,
           coverUrl:    b.cover_image_url,
           friendCount: b.friendCount,
+          avgRating:   b.ratings.length ? Math.round((b.ratings.reduce((s,r) => s+r, 0) / b.ratings.length) * 10) / 10 : null,
           _isTrending: true,
         }))
 

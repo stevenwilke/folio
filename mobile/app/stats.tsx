@@ -29,6 +29,12 @@ interface StatsData {
   readingSpeeds: ReadingSpeeds | null;
   totalReadingMinutes: number;
   totalSessions: number;
+  totalListValue: number;
+  totalMarketValue: number;
+  listValueCount: number;
+  topGenresByValue: { genre: string; value: number }[];
+  topBooksByValue: { title: string; price: number }[];
+  valueByStatus: Record<string, number>;
 }
 
 // ---- Stat card ----
@@ -289,6 +295,32 @@ export default function StatsScreen() {
       }, 0));
     }
 
+    // Valuations
+    const bookIds = all.map((e: any) => e.book_id).filter(Boolean);
+    let totalListValue = 0, totalMarketValue = 0, listValueCount = 0;
+    const gvMap: Record<string, number> = {};
+    const svMap: Record<string, number> = {};
+    const bvArr: { title: string; price: number }[] = [];
+    if (bookIds.length) {
+      const { data: vals } = await supabase.from('valuations').select('book_id, list_price, avg_price').in('book_id', bookIds);
+      const vm: Record<string, any> = {};
+      (vals || []).forEach((v: any) => { vm[v.book_id] = v; });
+      for (const e of all) {
+        const v = vm[(e as any).book_id];
+        if (!v?.list_price) continue;
+        const p = Number(v.list_price);
+        totalListValue += p; listValueCount++;
+        if (v.avg_price) totalMarketValue += Number(v.avg_price);
+        const g = (e as any).books?.genre || 'Unknown';
+        gvMap[g] = (gvMap[g] || 0) + p;
+        const st = (e as any).read_status || 'owned';
+        svMap[st] = (svMap[st] || 0) + p;
+        bvArr.push({ title: (e as any).books?.title || 'Unknown', price: p });
+      }
+    }
+    const topGenresByValue = Object.entries(gvMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([genre, value]) => ({ genre, value }));
+    const topBooksByValue = bvArr.sort((a, b) => b.price - a.price).slice(0, 5);
+
     setStats({
       totalBooks: all.length,
       booksRead: readEntries.length,
@@ -302,6 +334,12 @@ export default function StatsScreen() {
       readingSpeeds,
       totalReadingMinutes,
       totalSessions,
+      totalListValue,
+      totalMarketValue,
+      listValueCount,
+      topGenresByValue,
+      topBooksByValue,
+      valueByStatus: svMap,
     });
   }
 
@@ -358,6 +396,44 @@ export default function StatsScreen() {
           value={stats.avgRating != null ? `${stats.avgRating}/5` : '—'}
         />
       </View>
+
+      {/* Collection value */}
+      {stats.listValueCount > 0 && (
+        <>
+          <View style={styles.statsRow}>
+            <StatCard label="Retail Value" value={`$${Math.round(stats.totalListValue).toLocaleString()}`} sub={`${stats.listValueCount} books`} />
+            <StatCard label="Used Value" value={stats.totalMarketValue > 0 ? `$${Math.round(stats.totalMarketValue).toLocaleString()}` : '—'} sub="market avg" />
+          </View>
+          <Section title="Worth Breakdown">
+            {stats.topGenresByValue.length > 0 && (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>By Genre</Text>
+                {stats.topGenresByValue.map((g) => (
+                  <View key={g.genre} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <Text style={{ fontSize: 12, color: Colors.ink, width: 100 }} numberOfLines={1}>{g.genre}</Text>
+                    <View style={{ flex: 1, height: 10, backgroundColor: Colors.border, borderRadius: 5, overflow: 'hidden' }}>
+                      <View style={{ height: '100%', backgroundColor: Colors.sage, borderRadius: 5, width: `${Math.round((g.value / stats.topGenresByValue[0].value) * 100)}%` }} />
+                    </View>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.sage, width: 55, textAlign: 'right' }}>${Math.round(g.value)}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {stats.topBooksByValue.length > 0 && (
+              <View>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Most Valuable</Text>
+                {stats.topBooksByValue.map((b, i) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <Text style={{ fontSize: 12, color: Colors.muted, fontWeight: '600', width: 18 }}>{i + 1}.</Text>
+                    <Text style={{ fontSize: 12, color: Colors.ink, flex: 1 }} numberOfLines={1}>{b.title}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.sage }}>${b.price.toFixed(2)}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </Section>
+        </>
+      )}
 
       {/* Books per year */}
       {stats.booksByYear.length > 0 && (

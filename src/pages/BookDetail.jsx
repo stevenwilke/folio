@@ -6,6 +6,7 @@ import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
 import { uploadCoverToStorage } from '../lib/enrichBook'
 import BookTagsManager from '../components/BookTagsManager'
+import { fetchUsedPrices } from '../lib/fetchUsedPrices'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const STATUS_LABELS = {
@@ -370,36 +371,40 @@ export default function BookDetail({ bookId, session, onBack }) {
       return
     }
 
-    // Fetch fresh from Edge Function
-    try {
-      const { data, error } = await supabase.functions.invoke('get-book-valuation', {
-        body: {
-          isbn:   bookData.isbn_13 || bookData.isbn_10 || null,
-          title:  bookData.title,
-          author: bookData.author,
-        },
-      })
+    const isbn = bookData.isbn_13 || bookData.isbn_10 || null
 
-      if (error || !data?.found) {
-        // Cache the miss so we don't keep retrying
+    // Fetch retail price from Edge Function + used prices from ThriftBooks in parallel
+    try {
+      const [retailResult, usedResult] = await Promise.allSettled([
+        supabase.functions.invoke('get-book-valuation', {
+          body: { isbn, title: bookData.title, author: bookData.author },
+        }),
+        fetchUsedPrices(isbn, bookData.title, bookData.author),
+      ])
+
+      const data = retailResult.status === 'fulfilled' ? retailResult.value.data : null
+      const used = usedResult.status === 'fulfilled' ? usedResult.value : null
+
+      const found = data?.found || used
+
+      if (!found) {
         await supabase.from('valuations').upsert(
           { book_id: bookData.id, avg_price: null, fetched_at: new Date().toISOString() },
           { onConflict: 'book_id' }
         )
         setValuation(false)
       } else {
-        // NOTE: Run in Supabase if list_price column doesn't exist:
-        // alter table valuations add column if not exists list_price numeric;
-        // alter table valuations add column if not exists list_price_currency text;
         const row = {
           book_id:             bookData.id,
-          avg_price:           data.avg_price    ?? null,
-          min_price:           data.min_price    ?? null,
-          max_price:           data.max_price    ?? null,
-          sample_count:        data.sample_count ?? null,
-          currency:            data.currency     || 'USD',
-          list_price:          data.list_price          ?? null,
-          list_price_currency: data.list_price_currency ?? null,
+          avg_price:           used?.avg_price       ?? null,
+          min_price:           used?.min_price       ?? null,
+          max_price:           used?.max_price       ?? null,
+          sample_count:        used?.sample_count    ?? null,
+          paperback_avg:       used?.paperback_avg   ?? null,
+          hardcover_avg:       used?.hardcover_avg   ?? null,
+          currency:            data?.currency        || 'USD',
+          list_price:          data?.list_price ?? used?.new_price ?? null,
+          list_price_currency: data?.list_price_currency ?? (used?.new_price ? 'USD' : null),
           fetched_at:          new Date().toISOString(),
         }
         await supabase.from('valuations').upsert(row, { onConflict: 'book_id' })
@@ -747,6 +752,7 @@ export default function BookDetail({ bookId, session, onBack }) {
             </div>
 
             {/* Valuation */}
+            {(valuationLoading || valuation) && <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: theme.textSubtle, marginTop: 14, marginBottom: 4 }}>Values</div>}
             <div style={s.valuationRow}>
               {valuationLoading ? (
                 <span style={s.valuationMuted}>Fetching prices…</span>
@@ -756,11 +762,38 @@ export default function BookDetail({ bookId, session, onBack }) {
                     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
                       <span style={s.valuationPrice}>${Number(valuation.list_price).toFixed(2)}</span>
                       <span style={s.valuationSub}>
-                        Retail price{valuation.list_price_currency && valuation.list_price_currency !== 'USD' ? ` (${valuation.list_price_currency})` : ''}
+                        Retail{valuation.list_price_currency && valuation.list_price_currency !== 'USD' ? ` (${valuation.list_price_currency})` : ''}
                       </span>
                     </span>
                   )}
-                  {valuation?.list_price != null && <span style={s.valuationDivider}>·</span>}
+                  {valuation?.paperback_avg != null && (
+                    <>
+                      {valuation?.list_price != null && <span style={s.valuationDivider}>·</span>}
+                      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+                        <span style={s.valuationMarket}>${Number(valuation.paperback_avg).toFixed(2)}</span>
+                        <span style={s.valuationSub}>Used Paperback</span>
+                      </span>
+                    </>
+                  )}
+                  {valuation?.hardcover_avg != null && (
+                    <>
+                      <span style={s.valuationDivider}>·</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+                        <span style={s.valuationMarket}>${Number(valuation.hardcover_avg).toFixed(2)}</span>
+                        <span style={s.valuationSub}>Used Hardcover</span>
+                      </span>
+                    </>
+                  )}
+                  {valuation?.avg_price != null && !valuation?.paperback_avg && !valuation?.hardcover_avg && (
+                    <>
+                      {valuation?.list_price != null && <span style={s.valuationDivider}>·</span>}
+                      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+                        <span style={s.valuationMarket}>${Number(valuation.avg_price).toFixed(2)}</span>
+                        <span style={s.valuationSub}>Used avg</span>
+                      </span>
+                    </>
+                  )}
+                  {(valuation?.list_price != null || valuation?.avg_price != null || valuation?.paperback_avg != null) && <span style={s.valuationDivider}>·</span>}
                   <a
                     href={
                       (book.isbn_13 || book.isbn_10)

@@ -9,6 +9,7 @@ import GoodreadsImportModal from '../components/GoodreadsImportModal'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
 import { uploadCoverToStorage } from '../lib/enrichBook'
+import { fetchUsedPrices } from '../lib/fetchUsedPrices'
 import { useIsMobile } from '../hooks/useIsMobile'
 import ShelfPlannerModal from '../components/ShelfPlannerModal'
 
@@ -287,35 +288,40 @@ export default function Library({ session }) {
     const todo = entries.filter(e => e.books?.id && !skipIds.has(e.books.id))
     if (!todo.length) return
 
-    const BATCH = 5
+    const BATCH = 3
     for (let i = 0; i < todo.length; i += BATCH) {
       await Promise.allSettled(todo.slice(i, i + BATCH).map(async entry => {
         const { id, isbn_13, isbn_10, title, author } = entry.books
+        const isbn = isbn_13 || isbn_10 || null
         try {
-          const { data } = await supabase.functions.invoke('get-book-valuation', {
-            body: { isbn: isbn_13 || isbn_10 || null, title, author }
-          })
+          const [retailResult, usedResult] = await Promise.allSettled([
+            supabase.functions.invoke('get-book-valuation', { body: { isbn, title, author } }),
+            fetchUsedPrices(isbn, title, author),
+          ])
+          const data = retailResult.status === 'fulfilled' ? retailResult.value.data : null
+          const used = usedResult.status === 'fulfilled' ? usedResult.value : null
           const row = {
             book_id:             id,
-            list_price:          data?.list_price          ?? null,
-            list_price_currency: data?.list_price_currency ?? null,
-            avg_price:           data?.avg_price           ?? null,
-            min_price:           data?.min_price           ?? null,
-            max_price:           data?.max_price           ?? null,
-            sample_count:        data?.sample_count        ?? null,
+            list_price:          data?.list_price ?? used?.new_price ?? null,
+            list_price_currency: data?.list_price_currency ?? (used?.new_price ? 'USD' : null),
+            avg_price:           used?.avg_price           ?? null,
+            min_price:           used?.min_price           ?? null,
+            max_price:           used?.max_price           ?? null,
+            sample_count:        used?.sample_count        ?? null,
+            paperback_avg:       used?.paperback_avg       ?? null,
+            hardcover_avg:       used?.hardcover_avg       ?? null,
             currency:            data?.currency            || 'USD',
             fetched_at:          new Date().toISOString(),
           }
           await supabase.from('valuations').upsert(row, { onConflict: 'book_id' })
-          // Refresh the value totals after each batch completes
-          if (data?.list_price) {
+          if (data?.list_price || used?.avg_price) {
             const allIds = entries.map(e => e.books?.id).filter(Boolean)
             fetchCollectionValue(allIds)
           }
         } catch { /* ignore individual failures */ }
       }))
-      // Small delay between batches to avoid rate-limiting
-      await new Promise(r => setTimeout(r, 800))
+      // Delay between batches to be respectful to ThriftBooks
+      await new Promise(r => setTimeout(r, 1500))
     }
   }
 

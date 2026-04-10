@@ -105,7 +105,7 @@ export default function Admin({ session }) {
   async function loadUsers() {
     const { data } = await supabase
       .from('profiles')
-      .select('id, username, avatar_url, is_admin, is_banned, created_at')
+      .select('id, username, avatar_url, is_admin, is_banned, created_at, last_sign_in_at')
       .order('created_at', { ascending: false })
     setUsers(data || [])
   }
@@ -833,6 +833,11 @@ export default function Admin({ session }) {
                             </div>
                             <div style={{ fontSize: 12, color: theme.textSubtle }}>
                               Joined {new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              {user.last_sign_in_at && (
+                                <span style={{ marginLeft: 10 }}>
+                                  · Last login {new Date(user.last_sign_in_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>

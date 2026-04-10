@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { fetchUsedPrices } from './fetchUsedPrices'
 
 function isLikelyEnglish(text) {
   if (!text || text.length < 10) return false
@@ -118,10 +119,11 @@ export async function enrichBook(bookId, { isbn_13, isbn_10, title, author, cove
   const needsCover = isLowQualityCover(cover_image_url)
   const needsDesc  = !description
 
-  const [cover, desc, valResult] = await Promise.all([
+  const [cover, desc, valResult, usedResult] = await Promise.all([
     needsCover ? fetchBestCover(isbn, title, author) : Promise.resolve(null),
     needsDesc  ? fetchOLDescription(isbn, title, author) : Promise.resolve(null),
     supabase.functions.invoke('get-book-valuation', { body: { isbn, title, author } }),
+    fetchUsedPrices(isbn, title, author),
   ])
 
   // Upload cover to our Storage bucket so it's cached on our CDN
@@ -135,18 +137,21 @@ export async function enrichBook(bookId, { isbn_13, isbn_10, title, author, cove
     await supabase.from('books').update(updates).eq('id', bookId)
   }
 
-  // Store valuation
+  // Store valuation (retail from Edge Function + used from ThriftBooks)
   const valData = valResult?.data
-  if (valData?.found) {
+  const used = usedResult
+  if (valData?.found || used) {
     await supabase.from('valuations').upsert({
       book_id:             bookId,
-      list_price:          valData.list_price          ?? null,
-      list_price_currency: valData.list_price_currency ?? null,
-      avg_price:           valData.avg_price           ?? null,
-      min_price:           valData.min_price           ?? null,
-      max_price:           valData.max_price           ?? null,
-      sample_count:        valData.sample_count        ?? null,
-      currency:            valData.currency            || 'USD',
+      list_price:          valData?.list_price ?? used?.new_price ?? null,
+      list_price_currency: valData?.list_price_currency ?? (used?.new_price ? 'USD' : null),
+      avg_price:           used?.avg_price              ?? null,
+      min_price:           used?.min_price              ?? null,
+      max_price:           used?.max_price              ?? null,
+      sample_count:        used?.sample_count           ?? null,
+      paperback_avg:       used?.paperback_avg          ?? null,
+      hardcover_avg:       used?.hardcover_avg          ?? null,
+      currency:            valData?.currency            || 'USD',
       fetched_at:          new Date().toISOString(),
     }, { onConflict: 'book_id' })
   } else {

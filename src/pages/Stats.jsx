@@ -8,9 +8,11 @@ import { computeReadingSpeeds, formatDuration } from '../lib/readingSpeed'
 
 const CHART_COLORS = ['#c0521e', '#5a7a5a', '#b8860b', '#4a6b8a', '#7b4f3a', '#8b5e83', '#3d6b6b']
 
-function computeStreaks(entries) {
-  if (!entries.length) return { current: 0, longest: 0 }
-  const days = new Set(entries.map(e => e.added_at?.slice(0, 10)).filter(Boolean))
+function computeStreaks(input) {
+  // Accept either { dates: string[] } or legacy entry array
+  const dateList = Array.isArray(input) ? input.map(e => e.added_at?.slice(0, 10)).filter(Boolean) : (input.dates || [])
+  if (!dateList.length) return { current: 0, longest: 0 }
+  const days = new Set(dateList)
   const sorted = [...days].sort()
   let longest = 1, run = 1
   for (let i = 1; i < sorted.length; i++) {
@@ -48,6 +50,7 @@ export default function Stats({ session }) {
   const [friendCount,  setFriendCount]  = useState(0)
   const [badges,       setBadges]       = useState([])
   const [readingSessionStats, setReadingSessionStats] = useState(null)
+  const [sessionDates, setSessionDates] = useState([])
 
   useEffect(() => { fetchData() }, [])
 
@@ -89,6 +92,8 @@ export default function Stats({ session }) {
         return sum + (new Date(s.ended_at) - new Date(s.started_at)) / 60000
       }, 0)
       setReadingSessionStats({ speeds, totalMinutes: Math.round(totalMin), sessionCount: sessions.length })
+      // Extract dates for heatmap/streak
+      setSessionDates(sessions.map(s => s.ended_at?.slice(0, 10)).filter(Boolean))
     }
 
     setLoading(false)
@@ -190,10 +195,15 @@ export default function Stats({ session }) {
 
   // ── DAILY READING STREAK ──
   const streakEntries = entries.filter(e => e.read_status === 'read' || e.read_status === 'reading')
-  const streaks = computeStreaks(streakEntries)
+  // Merge collection entry dates + reading session dates for streak + heatmap
+  const allActivityDates = [
+    ...streakEntries.map(e => e.added_at?.slice(0, 10)),
+    ...sessionDates,
+  ].filter(Boolean)
+  const streaks = computeStreaks({ dates: allActivityDates })
 
   // Last 30 days activity set
-  const activityDays = new Set(streakEntries.map(e => e.added_at?.slice(0, 10)).filter(Boolean))
+  const activityDays = new Set(allActivityDates)
   const last30 = []
   for (let i = 29; i >= 0; i--) {
     const d = new Date(); d.setDate(d.getDate() - i)
@@ -306,23 +316,16 @@ export default function Stats({ session }) {
                 </div>
               </div>
 
-              {/* Market / resale value */}
+              {/* Market / used value */}
               <div style={{ ...s.statCard, borderColor: theme.rust, flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                  <div style={{ ...s.statVal, color: theme.rust, fontSize: 22 }}>
-                    {marketValueCount > 0 ? fmtPrice(totalMarketValue) : '—'}
-                  </div>
-                  {marketValueCount === 0 && (
-                    <span style={{ fontSize: 10, background: 'rgba(192,82,30,0.1)', color: theme.rust, borderRadius: 10, padding: '2px 8px', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                      Coming Soon
-                    </span>
-                  )}
+                <div style={{ ...s.statVal, color: theme.rust, fontSize: 22 }}>
+                  {marketValueCount > 0 ? fmtPrice(totalMarketValue) : '—'}
                 </div>
-                <div style={s.statLabel}>Resale Value (eBay market)</div>
+                <div style={s.statLabel}>Used Value (market avg)</div>
                 <div style={{ fontSize: 11, color: theme.textSubtle, marginTop: 4 }}>
                   {marketValueCount > 0
                     ? `Based on ${marketValueCount} of ${entries.length} books · avg ${fmtPrice(totalMarketValue / marketValueCount)}/book`
-                    : 'Requires eBay API key to populate'}
+                    : 'Open book pages to load pricing'}
                 </div>
               </div>
             </div>

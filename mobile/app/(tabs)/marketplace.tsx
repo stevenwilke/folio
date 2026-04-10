@@ -701,6 +701,7 @@ function SellTab({ userId }: { userId: string }) {
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showBookPicker, setShowBookPicker] = useState(false);
+  const [suggestedPrice, setSuggestedPrice] = useState<number | null>(null);
 
   React.useEffect(() => {
     async function load() {
@@ -788,9 +789,16 @@ function SellTab({ userId }: { userId: string }) {
                 <TouchableOpacity
                   key={b.book_id}
                   style={[sell.dropdownItem, b.book_id === selectedBookId && sell.dropdownItemActive]}
-                  onPress={() => {
+                  onPress={async () => {
                     setSelectedBookId(b.book_id);
                     setShowBookPicker(false);
+                    setSuggestedPrice(null);
+                    const { data: val } = await supabase
+                      .from('valuations')
+                      .select('avg_price')
+                      .eq('book_id', b.book_id)
+                      .maybeSingle();
+                    if (val?.avg_price) setSuggestedPrice(Number(val.avg_price));
                   }}
                 >
                   <Text style={[sell.dropdownItemText, b.book_id === selectedBookId && sell.dropdownItemTextActive]}
@@ -815,6 +823,14 @@ function SellTab({ userId }: { userId: string }) {
           placeholderTextColor={Colors.muted}
           keyboardType="decimal-pad"
         />
+        {suggestedPrice != null && (
+          <TouchableOpacity onPress={() => setPrice(suggestedPrice.toFixed(2))} activeOpacity={0.7}>
+            <Text style={{ fontSize: 12, color: Colors.sage, marginTop: 4, marginBottom: 4 }}>
+              💡 Suggested: <Text style={{ fontWeight: '700' }}>${suggestedPrice.toFixed(2)}</Text>
+              <Text style={{ color: Colors.muted }}> (used market avg)</Text>
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* Condition */}
         <Text style={sell.label}>Condition *</Text>

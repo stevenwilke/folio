@@ -1111,6 +1111,7 @@ export default function BookDetail({ bookId, session, onBack }) {
           <ListingModal
             session={session}
             book={book}
+            valuation={valuation || null}
             onClose={() => setShowListingModal(false)}
             onSuccess={(newListing) => { setListing(newListing); setShowListingModal(false) }}
           />
@@ -1514,7 +1515,7 @@ const CONDITION_OPTIONS = [
   { value: 'poor',       label: 'Poor' },
 ]
 
-function ListingModal({ session, book, onClose, onSuccess }) {
+function ListingModal({ session, book, valuation: valProp, onClose, onSuccess }) {
   const { theme } = useTheme()
   const [price, setPrice]           = useState('')
   const [condition, setCondition]   = useState('good')
@@ -1582,6 +1583,15 @@ function ListingModal({ session, book, onClose, onSuccess }) {
                 autoFocus
               />
             </div>
+            {valProp?.avg_price != null && (
+              <div
+                onClick={() => setPrice(Number(valProp.avg_price).toFixed(2))}
+                style={{ marginTop: 6, fontSize: 12, color: theme.sage, cursor: 'pointer' }}
+              >
+                💡 Suggested: <strong>${Number(valProp.avg_price).toFixed(2)}</strong>
+                <span style={{ color: theme.textSubtle }}> (used market avg)</span>
+              </div>
+            )}
           </div>
           <div style={s.fieldGroup}>
             <label style={s.fieldLabel}>Condition</label>

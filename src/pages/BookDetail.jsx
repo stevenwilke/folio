@@ -119,6 +119,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [showListingModal, setShowListingModal] = useState(false)
   const [showLendModal,    setShowLendModal]    = useState(false)
   const [showRecommendModal, setShowRecommendModal] = useState(false)
+  const [alsoEnjoyed, setAlsoEnjoyed] = useState([])
   const [valuation, setValuation]       = useState(null)
   const [valuationLoading, setValuationLoading] = useState(true)
   const [friendStats, setFriendStats]   = useState(null)   // null = loading, [] = none
@@ -270,6 +271,7 @@ export default function BookDetail({ bookId, session, onBack }) {
       fetchJournal(data)
       fetchReadingSessions()
       fetchActiveSession()
+      fetchAlsoEnjoyed(data.id)
       if (data.series_name) fetchSeries(data)
     } else {
       setLoading(false)
@@ -437,6 +439,49 @@ export default function BookDetail({ bookId, session, onBack }) {
       .eq('status', 'completed')
       .not('pages_read', 'is', null)
     if (data?.length) setReadingSpeeds(computeReadingSpeeds(data))
+  }
+
+  async function fetchAlsoEnjoyed(bookId) {
+    try {
+      // Find users who own this book
+      const { data: owners } = await supabase
+        .from('collection_entries')
+        .select('user_id')
+        .eq('book_id', bookId)
+        .limit(50)
+      const ownerIds = (owners || []).map(o => o.user_id).filter(id => id !== session.user.id)
+      if (!ownerIds.length) return
+
+      // Find their other highly-rated books
+      const { data: entries } = await supabase
+        .from('collection_entries')
+        .select('book_id, user_rating, books(id, title, author, cover_image_url)')
+        .in('user_id', ownerIds)
+        .neq('book_id', bookId)
+        .gte('user_rating', 4)
+        .limit(100)
+
+      // Exclude books the current user already owns
+      const { data: myBooks } = await supabase
+        .from('collection_entries')
+        .select('book_id')
+        .eq('user_id', session.user.id)
+      const myBookIds = new Set((myBooks || []).map(b => b.book_id))
+
+      // Group by book, count owners, sort
+      const bookMap = {}
+      for (const e of (entries || [])) {
+        if (!e.books || myBookIds.has(e.book_id)) continue
+        if (!bookMap[e.book_id]) bookMap[e.book_id] = { ...e.books, count: 0, totalRating: 0 }
+        bookMap[e.book_id].count++
+        if (e.user_rating) bookMap[e.book_id].totalRating += e.user_rating
+      }
+
+      const results = Object.values(bookMap)
+        .sort((a, b) => b.count - a.count || (b.totalRating / b.count) - (a.totalRating / a.count))
+        .slice(0, 8)
+      setAlsoEnjoyed(results)
+    } catch { /* ignore */ }
   }
 
   async function fetchActiveSession() {
@@ -1333,6 +1378,29 @@ export default function BookDetail({ bookId, session, onBack }) {
                     <><span style={{ color: theme.textSubtle, fontWeight: 600 }}>Based On</span>
                     <span style={{ color: theme.text }}>{valuation.sample_count} listing{valuation.sample_count !== 1 ? 's' : ''}</span></>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Readers Also Enjoyed */}
+            {alsoEnjoyed.length > 0 && (
+              <div style={{ marginTop: 28 }}>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 700, color: theme.text, marginBottom: 14 }}>Readers Also Enjoyed</div>
+                <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 4 }}>
+                  {alsoEnjoyed.map(b => (
+                    <div
+                      key={b.id}
+                      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, flexShrink: 0, cursor: 'pointer', width: 80 }}
+                      onClick={() => onBack ? onBack() : navigate(`/?book=${b.id}`)}
+                    >
+                      {b.cover_image_url
+                        ? <img src={b.cover_image_url} style={{ width: 60, height: 80, objectFit: 'cover', borderRadius: 5, boxShadow: '2px 3px 10px rgba(26,18,8,0.18)' }} alt="" />
+                        : <div style={{ width: 60, height: 80, borderRadius: 5, background: theme.rust, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff', padding: 4, textAlign: 'center' }}>{b.title}</div>
+                      }
+                      <span style={{ fontSize: 10, color: theme.text, textAlign: 'center', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', width: '100%' }}>{b.title}</span>
+                      {b.count > 1 && <span style={{ fontSize: 9, color: theme.textSubtle }}>{b.count} readers</span>}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

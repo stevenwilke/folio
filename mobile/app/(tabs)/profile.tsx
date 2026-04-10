@@ -12,6 +12,7 @@ import {
   RefreshControl,
   Image,
   Linking,
+  Share,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -319,6 +320,17 @@ export default function ProfileScreen() {
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>My Collection</Text>
       </View>
+
+      {/* Share wishlist */}
+      {entries.some(e => (e as any).read_status === 'want') && (
+        <TouchableOpacity
+          style={{ marginHorizontal: 16, marginBottom: 12, paddingVertical: 8, paddingHorizontal: 14, borderWidth: 1, borderColor: Colors.gold, borderRadius: 8, alignSelf: 'flex-start' }}
+          onPress={() => Share.share({ message: `Check out my reading wishlist on Ex Libris! https://exlibrisomnium.com/profile/${profile?.username}#wishlist` })}
+          activeOpacity={0.7}
+        >
+          <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.gold }}>🔗 Share Wishlist</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -359,6 +371,27 @@ export default function ProfileScreen() {
         </Text>
         <Text style={{ color: Colors.muted, fontSize: 12, marginTop: 2, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) }}>
           Re-fetch current retail and used prices
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.signOutButton, { borderColor: Colors.border, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+        onPress={async () => {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+          const newVal = !profile?.weekly_report_enabled;
+          await supabase.from('profiles').update({ weekly_report_enabled: newVal }).eq('id', user.id);
+          setProfile((prev: any) => prev ? { ...prev, weekly_report_enabled: newVal } : prev);
+          Alert.alert(newVal ? 'Weekly Report Enabled' : 'Weekly Report Disabled',
+            newVal ? 'You\'ll receive a weekly reading summary by email.' : 'Weekly reports have been turned off.');
+        }}
+        activeOpacity={0.7}
+      >
+        <View>
+          <Text style={{ color: Colors.ink, fontSize: 15, fontWeight: '600' }}>Weekly Reading Report</Text>
+          <Text style={{ color: Colors.muted, fontSize: 12, marginTop: 2 }}>Email summary of your reading activity</Text>
+        </View>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: profile?.weekly_report_enabled ? Colors.sage : Colors.muted }}>
+          {profile?.weekly_report_enabled ? 'ON' : 'OFF'}
         </Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>

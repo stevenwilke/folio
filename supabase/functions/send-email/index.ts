@@ -101,6 +101,50 @@ const EMAIL_TEMPLATES: Record<string, (data: Record<string, string>) => { subjec
       </div>
     `,
   }),
+
+  weekly_reading_report: (data) => ({
+    subject: `📊 Your Weekly Reading Report — Ex Libris`,
+    html: `
+      <div style="font-family: Georgia, serif; max-width: 500px; margin: 0 auto; padding: 32px; background: #f5f0e8;">
+        <h1 style="color: #1a1208; font-size: 24px;">📊 Weekly Reading Report</h1>
+        <p style="color: #5a4a3a; font-size: 16px; line-height: 1.6;">
+          Here's your reading summary for the past week, <strong>${data.username}</strong>.
+        </p>
+        <div style="background: white; border-radius: 12px; padding: 20px; margin: 20px 0;">
+          <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+            <div style="text-align: center; flex: 1; min-width: 80px;">
+              <div style="font-size: 28px; font-weight: 700; color: #c0521e;">${data.sessions || 0}</div>
+              <div style="font-size: 12px; color: #8a7f72;">Sessions</div>
+            </div>
+            <div style="text-align: center; flex: 1; min-width: 80px;">
+              <div style="font-size: 28px; font-weight: 700; color: #5a7a5a;">${data.pagesRead || 0}</div>
+              <div style="font-size: 12px; color: #8a7f72;">Pages</div>
+            </div>
+            <div style="text-align: center; flex: 1; min-width: 80px;">
+              <div style="font-size: 28px; font-weight: 700; color: #b8860b;">${data.readingTime || '0 min'}</div>
+              <div style="font-size: 12px; color: #8a7f72;">Reading Time</div>
+            </div>
+          </div>
+          ${data.booksFinished > 0 ? `
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e8e0d0;">
+              <div style="font-size: 14px; color: #5a4a3a;">📚 Books finished this week: <strong>${data.booksFinished}</strong></div>
+            </div>
+          ` : ''}
+          ${data.streak > 0 ? `
+            <div style="margin-top: 8px;">
+              <div style="font-size: 14px; color: #5a4a3a;">🔥 Current streak: <strong>${data.streak} day${data.streak !== 1 ? 's' : ''}</strong></div>
+            </div>
+          ` : ''}
+        </div>
+        <a href="${data.appUrl}/stats" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #c0521e; color: white; text-decoration: none; border-radius: 8px; font-family: sans-serif; font-weight: 600;">
+          View Full Stats
+        </a>
+        <p style="margin-top: 32px; color: #9a8a7a; font-size: 12px; font-family: sans-serif;">
+          You're receiving this because you enabled weekly reports on Ex Libris.
+        </p>
+      </div>
+    `,
+  }),
 }
 
 serve(async (req) => {

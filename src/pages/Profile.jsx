@@ -61,6 +61,13 @@ export default function Profile({ session }) {
 
   useEffect(() => { fetchProfile() }, [username])
 
+  // Scroll to wishlist if URL has #wishlist hash
+  useEffect(() => {
+    if (window.location.hash === '#wishlist') {
+      setTimeout(() => document.getElementById('wishlist')?.scrollIntoView({ behavior: 'smooth' }), 500)
+    }
+  }, [entries])
+
   async function handleAvatarUpload(e) {
     const file = e.target.files?.[0]
     if (!file || !session) return
@@ -522,10 +529,25 @@ export default function Profile({ session }) {
             </section>
           )}
 
-          {/* Want to Read */}
+          {/* Want to Read / Wishlist */}
           {want.length > 0 && (
-            <section style={s.section}>
+            <section style={s.section} id="wishlist">
               <ShelfHeader label="Want to Read" count={want.length} accent="#b8860b" theme={theme} />
+              {isFriend && !isOwnProfile && (
+                <div style={{ fontSize: 13, color: '#b8860b', fontStyle: 'italic', marginBottom: 10 }}>🎁 Gift ideas for {profile.username}</div>
+              )}
+              {isOwnProfile && (
+                <button
+                  onClick={() => {
+                    const url = `${window.location.origin}/profile/${profile.username}#wishlist`
+                    navigator.clipboard.writeText(url)
+                    alert('Wishlist link copied!')
+                  }}
+                  style={{ marginBottom: 10, padding: '5px 14px', background: 'transparent', border: `1px solid #b8860b`, borderRadius: 7, fontSize: 12, fontWeight: 600, color: '#b8860b', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                >
+                  🔗 Share Wishlist
+                </button>
+              )}
               <div style={s.shelf}>
                 {want.map(entry => (
                   <ShelfCard key={entry.id} entry={entry} theme={theme}
@@ -602,6 +624,27 @@ export default function Profile({ session }) {
               >
                 {refreshingValues ? 'Resetting…' : 'Refresh values'}
               </button>
+            </div>
+
+            {/* Weekly report toggle */}
+            <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '18px 20px', marginTop: 10, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12, alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: theme.text, marginBottom: 3 }}>Weekly reading report</div>
+                <div style={{ fontSize: 13, color: theme.textSubtle }}>Get a weekly email summary of your reading sessions, pages read, and streak.</div>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', alignSelf: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={profile?.weekly_report_enabled || false}
+                  onChange={async (e) => {
+                    const val = e.target.checked
+                    await supabase.from('profiles').update({ weekly_report_enabled: val }).eq('id', session.user.id)
+                    setProfile(prev => ({ ...prev, weekly_report_enabled: val }))
+                  }}
+                  style={{ width: 18, height: 18, accentColor: theme.sage }}
+                />
+                <span style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{profile?.weekly_report_enabled ? 'On' : 'Off'}</span>
+              </label>
             </div>
           </div>
         </div>

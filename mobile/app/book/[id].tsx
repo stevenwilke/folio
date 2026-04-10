@@ -135,6 +135,7 @@ export default function BookDetailScreen() {
   const [readingSpeeds, setReadingSpeeds] = useState<ReadingSpeeds | null>(null);
   const [showStopModal, setShowStopModal] = useState(false);
   const [showRecommendModal, setShowRecommendModal] = useState(false);
+  const [alsoEnjoyed, setAlsoEnjoyed] = useState<any[]>([]);
   const [recFriends, setRecFriends] = useState<{id: string; username: string}[]>([]);
   const [recFriendId, setRecFriendId] = useState<string | null>(null);
   const [recNote, setRecNote] = useState('');
@@ -277,6 +278,7 @@ export default function BookDetailScreen() {
     // Fetch reading sessions + active timer
     fetchReadingSessions(user.id);
     fetchActiveSession(user.id);
+    fetchAlsoEnjoyed(id, user.id);
   }
 
   async function loadValuation(bookData: Book) {
@@ -340,6 +342,26 @@ export default function BookDetailScreen() {
   }
 
   // ── Reading Timer ──────────────────────────────────────────────────────
+  async function fetchAlsoEnjoyed(bookId: string, userId: string) {
+    try {
+      const { data: owners } = await supabase.from('collection_entries').select('user_id').eq('book_id', bookId).limit(50);
+      const ownerIds = (owners || []).map((o: any) => o.user_id).filter((id: string) => id !== userId);
+      if (!ownerIds.length) return;
+      const { data: entries } = await supabase.from('collection_entries')
+        .select('book_id, user_rating, books(id, title, author, cover_image_url)')
+        .in('user_id', ownerIds).neq('book_id', bookId).gte('user_rating', 4).limit(100);
+      const { data: myBooks } = await supabase.from('collection_entries').select('book_id').eq('user_id', userId);
+      const myIds = new Set((myBooks || []).map((b: any) => b.book_id));
+      const bookMap: Record<string, any> = {};
+      for (const e of (entries || []) as any[]) {
+        if (!e.books || myIds.has(e.book_id)) continue;
+        if (!bookMap[e.book_id]) bookMap[e.book_id] = { ...e.books, count: 0 };
+        bookMap[e.book_id].count++;
+      }
+      setAlsoEnjoyed(Object.values(bookMap).sort((a: any, b: any) => b.count - a.count).slice(0, 8));
+    } catch { /* ignore */ }
+  }
+
   async function fetchReadingSessions(userId: string) {
     const { data } = await supabase
       .from('reading_sessions')
@@ -1180,6 +1202,35 @@ export default function BookDetailScreen() {
             <Text style={[styles.bookshopBtnText, { color: '#9a7200' }]}>Rare & collectible on AbeBooks →</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Readers Also Enjoyed */}
+        {alsoEnjoyed.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Readers Also Enjoyed</Text>
+            <FlatList
+              horizontal
+              data={alsoEnjoyed}
+              keyExtractor={(b: any) => b.id}
+              showsHorizontalScrollIndicator={false}
+              renderItem={({ item }: { item: any }) => (
+                <TouchableOpacity
+                  style={{ width: 80, marginRight: 12, alignItems: 'center' }}
+                  onPress={() => router.push(`/book/${item.id}`)}
+                  activeOpacity={0.85}
+                >
+                  {item.cover_image_url
+                    ? <Image source={{ uri: item.cover_image_url }} style={{ width: 60, height: 80, borderRadius: 5 }} />
+                    : <View style={{ width: 60, height: 80, borderRadius: 5, backgroundColor: Colors.rust, justifyContent: 'center', alignItems: 'center' }}>
+                        <Text style={{ color: '#fff', fontSize: 8, textAlign: 'center', padding: 2 }}>{item.title}</Text>
+                      </View>
+                  }
+                  <Text style={{ fontSize: 10, color: Colors.ink, textAlign: 'center', marginTop: 4 }} numberOfLines={2}>{item.title}</Text>
+                  {item.count > 1 && <Text style={{ fontSize: 9, color: Colors.muted }}>{item.count} readers</Text>}
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        )}
 
         {/* Recommend to friend */}
         {entry && (

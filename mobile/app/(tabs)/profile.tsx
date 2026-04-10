@@ -394,6 +394,25 @@ export default function ProfileScreen() {
           {profile?.weekly_report_enabled ? 'ON' : 'OFF'}
         </Text>
       </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.signOutButton, { borderColor: Colors.border, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+        onPress={async () => {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+          const newVal = profile?.price_alerts_enabled === false;
+          await supabase.from('profiles').update({ price_alerts_enabled: newVal }).eq('id', user.id);
+          setProfile((prev: any) => prev ? { ...prev, price_alerts_enabled: newVal } : prev);
+        }}
+        activeOpacity={0.7}
+      >
+        <View>
+          <Text style={{ color: Colors.ink, fontSize: 15, fontWeight: '600' }}>Price Alerts</Text>
+          <Text style={{ color: Colors.muted, fontSize: 12, marginTop: 2 }}>Notify when book values increase 20%+</Text>
+        </View>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: profile?.price_alerts_enabled !== false ? Colors.sage : Colors.muted }}>
+          {profile?.price_alerts_enabled !== false ? 'ON' : 'OFF'}
+        </Text>
+      </TouchableOpacity>
       <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
         <Text style={styles.signOutText}>Sign Out</Text>
       </TouchableOpacity>

@@ -646,6 +646,27 @@ export default function Profile({ session }) {
                 <span style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{profile?.weekly_report_enabled ? 'On' : 'Off'}</span>
               </label>
             </div>
+
+            {/* Price alerts toggle */}
+            <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '18px 20px', marginTop: 10, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12, alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: theme.text, marginBottom: 3 }}>Price alerts</div>
+                <div style={{ fontSize: 13, color: theme.textSubtle }}>Get notified when a book in your collection increases in value by 20% or more.</div>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', alignSelf: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={profile?.price_alerts_enabled !== false}
+                  onChange={async (e) => {
+                    const val = e.target.checked
+                    await supabase.from('profiles').update({ price_alerts_enabled: val }).eq('id', session.user.id)
+                    setProfile(prev => ({ ...prev, price_alerts_enabled: val }))
+                  }}
+                  style={{ width: 18, height: 18, accentColor: theme.sage }}
+                />
+                <span style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{profile?.price_alerts_enabled !== false ? 'On' : 'Off'}</span>
+              </label>
+            </div>
           </div>
         </div>
       )}

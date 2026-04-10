@@ -78,6 +78,7 @@ export default function Feed({ session }) {
       postsResult,
       activitiesResult,
       listingsResult,
+      sessionsResult,
       profileResult,
       booksResult,
     ] = await Promise.all([
@@ -116,6 +117,18 @@ export default function Feed({ session }) {
             .limit(12)
         : Promise.resolve({ data: [] }),
 
+      // Friend reading sessions (timer completions)
+      friendIds.length
+        ? supabase
+            .from('reading_sessions')
+            .select('id, user_id, book_id, ended_at, pages_read, started_at, books(id, title, author, cover_image_url)')
+            .in('user_id', friendIds)
+            .eq('status', 'completed')
+            .not('pages_read', 'is', null)
+            .order('ended_at', { ascending: false })
+            .limit(30)
+        : Promise.resolve({ data: [] }),
+
       // Current user's profile (for avatar in compose)
       supabase.from('profiles').select('username').eq('id', userId).maybeSingle(),
 
@@ -134,7 +147,30 @@ export default function Feed({ session }) {
         .select('id, username')
         .in('id', friendIds)
       const profileMap = Object.fromEntries((profiles || []).map(p => [p.id, p]))
-      setActivity(((activitiesResult.data) || []).map(e => ({ ...e, profile: profileMap[e.user_id] })))
+
+      // Merge collection entries + reading sessions into one activity list
+      const collectionActivity = ((activitiesResult.data) || []).map(e => ({
+        ...e,
+        profile: profileMap[e.user_id],
+        _type: 'collection',
+        _sortDate: e.added_at,
+      }))
+      const sessionActivity = ((sessionsResult.data) || []).map(s => {
+        const durationMin = s.started_at && s.ended_at
+          ? Math.round((new Date(s.ended_at) - new Date(s.started_at)) / 60000)
+          : null
+        return {
+          ...s,
+          profile: profileMap[s.user_id],
+          _type: 'session',
+          _sortDate: s.ended_at,
+          _durationMin: durationMin,
+        }
+      })
+      const merged = [...collectionActivity, ...sessionActivity]
+        .sort((a, b) => new Date(b._sortDate) - new Date(a._sortDate))
+        .slice(0, 50)
+      setActivity(merged)
     }
 
     setPosts(postsResult.data || [])
@@ -513,9 +549,16 @@ function ActivityCard({ item, onBookClick, onProfileClick, theme }) {
   const s        = makeStyles(theme, isMobile)
   const book     = item.books
   const profile  = item.profile
-  const action   = ACTION_TEXT[item.read_status] || 'added'
-  const color    = ACTION_COLOR[item.read_status] || theme.textSubtle
+  const isSession = item._type === 'session'
+  const action   = isSession ? `read ${item.pages_read || '?'} pages of` : (ACTION_TEXT[item.read_status] || 'added')
+  const color    = isSession ? '#5a7a5a' : (ACTION_COLOR[item.read_status] || theme.textSubtle)
   const [hover, setHover] = useState(false)
+
+  const durationLabel = isSession && item._durationMin
+    ? item._durationMin >= 60
+      ? `${Math.floor(item._durationMin / 60)}h ${item._durationMin % 60}m`
+      : `${item._durationMin} min`
+    : null
 
   return (
     <div
@@ -533,16 +576,19 @@ function ActivityCard({ item, onBookClick, onProfileClick, theme }) {
         <div style={s.cardTop}>
           <span style={s.username} onClick={e => { e.stopPropagation(); onProfileClick() }} role="button" tabIndex={0}>{profile?.username}</span>
           {' '}<span style={{ ...s.action, color }}>{action}</span>{' '}
-          <span style={s.bookLink}>{book.title}</span>
-          <span style={s.byAuthor}> by {book.author}</span>
+          <span style={s.bookLink}>{book?.title}</span>
+          {book?.author && <span style={s.byAuthor}> by {book.author}</span>}
         </div>
-        {item.user_rating && (
+        {isSession && durationLabel && (
+          <div style={{ fontSize: 12, color: '#5a7a5a', marginTop: 2 }}>⏱ {durationLabel}</div>
+        )}
+        {!isSession && item.user_rating && (
           <div style={s.stars}>{'★'.repeat(item.user_rating)}{'☆'.repeat(5 - item.user_rating)}
             <span style={s.ratingNum}> {item.user_rating}/5</span>
           </div>
         )}
-        {item.review_text && <div style={s.review}>"{item.review_text}"</div>}
-        <div style={s.meta}>{timeAgo(item.added_at)}<span style={s.tapHint}> · Tap to view &amp; borrow</span></div>
+        {!isSession && item.review_text && <div style={s.review}>"{item.review_text}"</div>}
+        <div style={s.meta}>{timeAgo(item._sortDate || item.added_at)}<span style={s.tapHint}> · Tap to view</span></div>
       </div>
       <div style={s.coverWrap}>
         {(() => {

@@ -431,6 +431,21 @@ export default function BookDetailScreen() {
       await supabase.from('collection_entries').update({ current_page: endPage }).eq('id', entry.id);
       setCurrentPage(endPage);
     }
+    // Auto-post reading session to feed (if significant)
+    if (pagesRead >= 10 && book) {
+      const durationMin = Math.round((Date.now() - new Date(activeSession.started_at).getTime()) / 60000);
+      const durLabel = durationMin >= 60
+        ? `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`
+        : `${durationMin} min`;
+      const { data: { user: u } } = await supabase.auth.getUser();
+      if (u) {
+        await supabase.from('reading_posts').insert({
+          user_id: u.id, book_id: book.id,
+          content: `📖 Read ${pagesRead} pages of ${book.title} in ${durLabel}`,
+        }).catch(() => {});
+      }
+    }
+
     setActiveSession(null);
     setShowStopModal(false);
     const { data: { user } } = await supabase.auth.getUser();

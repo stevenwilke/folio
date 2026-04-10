@@ -155,7 +155,7 @@ export default function FeedScreen() {
     const allIds = [user.id, ...friendIds];
 
     // Fetch posts + activity in parallel
-    const [postsRes, activitiesRes] = await Promise.all([
+    const [postsRes, activitiesRes, sessionsRes] = await Promise.all([
       supabase
         .from('reading_posts')
         .select(`
@@ -176,6 +176,18 @@ export default function FeedScreen() {
             .in('user_id', friendIds)
             .order('added_at', { ascending: false })
             .limit(40)
+        : Promise.resolve({ data: [] }),
+
+      // Friend reading sessions
+      friendIds.length
+        ? supabase
+            .from('reading_sessions')
+            .select('id, user_id, book_id, ended_at, pages_read, started_at, books(id, title, author, cover_image_url), profiles(username)')
+            .in('user_id', friendIds)
+            .eq('status', 'completed')
+            .not('pages_read', 'is', null)
+            .order('ended_at', { ascending: false })
+            .limit(30)
         : Promise.resolve({ data: [] }),
     ]);
 
@@ -207,7 +219,35 @@ export default function FeedScreen() {
       type:        'activity',
     }));
 
-    setItems([...posts, ...activities] as FeedItem[]);
+    // Add reading sessions as activity items
+    const sessionActivities: ActivityItem[] = ((sessionsRes.data as any[]) || []).map(s => {
+      const durationMin = s.started_at && s.ended_at
+        ? Math.round((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000)
+        : null;
+      const durLabel = durationMin
+        ? durationMin >= 60 ? `${Math.floor(durationMin / 60)}h ${durationMin % 60}m` : `${durationMin} min`
+        : null;
+      return {
+        id:          s.id,
+        userId:      s.user_id,
+        username:    (s as any).profiles?.username ?? 'Unknown',
+        status:      'reading' as ReadStatus,
+        bookId:      s.books?.id ?? null,
+        bookTitle:   s.books?.title ?? 'Unknown book',
+        bookCover:   s.books?.cover_image_url ?? null,
+        bookAuthor:  s.books?.author ?? null,
+        rating:      null,
+        review:      `⏱ Read ${s.pages_read} pages${durLabel ? ` in ${durLabel}` : ''}`,
+        addedAt:     s.ended_at,
+        type:        'activity' as const,
+      };
+    });
+
+    const allActivities = [...activities, ...sessionActivities]
+      .sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime())
+      .slice(0, 50);
+
+    setItems([...posts, ...allActivities] as FeedItem[]);
   }
 
   async function toggleLike(postId: string) {

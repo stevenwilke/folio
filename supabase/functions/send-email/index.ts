@@ -145,6 +145,31 @@ const EMAIL_TEMPLATES: Record<string, (data: Record<string, string>) => { subjec
       </div>
     `,
   }),
+
+  price_alert: (data) => ({
+    subject: `📈 "${data.bookTitle}" is up in value — Ex Libris`,
+    html: `
+      <div style="font-family: Georgia, serif; max-width: 500px; margin: 0 auto; padding: 32px; background: #f5f0e8;">
+        <h1 style="color: #1a1208; font-size: 24px;">📈 Price Alert</h1>
+        <p style="color: #5a4a3a; font-size: 16px; line-height: 1.6;">
+          <em>${data.bookTitle}</em> by ${data.bookAuthor} has increased in value.
+        </p>
+        <div style="background: white; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;">
+          <div style="font-size: 14px; color: #8a7f72; margin-bottom: 8px;">Was</div>
+          <div style="font-size: 24px; font-weight: 700; color: #8a7f72; text-decoration: line-through;">$${data.oldPrice}</div>
+          <div style="font-size: 14px; color: #5a7a5a; margin: 8px 0 4px;">Now</div>
+          <div style="font-size: 32px; font-weight: 700; color: #5a7a5a;">$${data.newPrice}</div>
+          <div style="font-size: 13px; color: #c0521e; font-weight: 600; margin-top: 8px;">↑ ${data.percentChange}% increase</div>
+        </div>
+        <a href="${data.appUrl}/?book=${data.bookId}" style="display: inline-block; margin-top: 16px; padding: 12px 24px; background: #c0521e; color: white; text-decoration: none; border-radius: 8px; font-family: sans-serif; font-weight: 600;">
+          View Book
+        </a>
+        <p style="margin-top: 32px; color: #9a8a7a; font-size: 12px; font-family: sans-serif;">
+          You're receiving this because you have price alerts enabled on Ex Libris.
+        </p>
+      </div>
+    `,
+  }),
 }
 
 serve(async (req) => {

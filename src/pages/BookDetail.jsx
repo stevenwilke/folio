@@ -120,6 +120,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [showLendModal,    setShowLendModal]    = useState(false)
   const [showRecommendModal, setShowRecommendModal] = useState(false)
   const [alsoEnjoyed, setAlsoEnjoyed] = useState([])
+  const [priceAlert, setPriceAlert] = useState(null) // { oldPrice, newPrice, pctChange }
   const [valuation, setValuation]       = useState(null)
   const [valuationLoading, setValuationLoading] = useState(true)
   const [friendStats, setFriendStats]   = useState(null)   // null = loading, [] = none
@@ -423,6 +424,16 @@ export default function BookDetail({ bookId, session, onBack }) {
         }
         await supabase.from('valuations').upsert(row, { onConflict: 'book_id' })
         setValuation(row)
+
+        // Price alert detection
+        if (cached?.list_price && row.list_price) {
+          const oldP = Number(cached.list_price)
+          const newP = Number(row.list_price)
+          const pct = Math.round(((newP - oldP) / oldP) * 100)
+          if (pct >= 20 && (newP - oldP) >= 5) {
+            setPriceAlert({ oldPrice: oldP.toFixed(2), newPrice: newP.toFixed(2), pctChange: pct })
+          }
+        }
       }
     } catch {
       setValuation(false)
@@ -552,6 +563,19 @@ export default function BookDetail({ bookId, session, onBack }) {
         .update({ current_page: endPage })
         .eq('id', entry.id)
       setCurrentPage(endPage)
+    }
+
+    // Auto-post reading session to feed (if significant)
+    if (pagesRead >= 10 && book) {
+      const durationMin = Math.round((Date.now() - new Date(activeSession.started_at).getTime()) / 60000)
+      const durLabel = durationMin >= 60
+        ? `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`
+        : `${durationMin} min`
+      await supabase.from('reading_posts').insert({
+        user_id: session.user.id,
+        book_id: book.id,
+        content: `📖 Read ${pagesRead} pages of ${book.title} in ${durLabel}`,
+      }).catch(() => {}) // silent fail
     }
 
     setActiveSession(null)
@@ -913,6 +937,16 @@ export default function BookDetail({ bookId, session, onBack }) {
 
             {/* Valuation */}
             {(valuationLoading || valuation) && <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: theme.textSubtle, marginTop: 14, marginBottom: 4 }}>Values</div>}
+            {priceAlert && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'rgba(90,122,90,0.1)', borderRadius: 8, marginBottom: 6, fontSize: 13 }}>
+                <span>📈</span>
+                <span style={{ color: theme.sage, fontWeight: 600 }}>Price up!</span>
+                <span style={{ color: theme.textSubtle, textDecoration: 'line-through' }}>${priceAlert.oldPrice}</span>
+                <span style={{ color: theme.sage, fontWeight: 700 }}>→ ${priceAlert.newPrice}</span>
+                <span style={{ fontSize: 11, color: theme.sage }}>+{priceAlert.pctChange}%</span>
+                <button onClick={() => setPriceAlert(null)} style={{ background: 'none', border: 'none', fontSize: 14, cursor: 'pointer', color: theme.textSubtle, padding: 0 }}>×</button>
+              </div>
+            )}
             <div style={s.valuationRow}>
               {valuationLoading ? (
                 <span style={s.valuationMuted}>Fetching prices…</span>

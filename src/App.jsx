@@ -20,6 +20,7 @@ import Landing from './pages/Landing'
 import Notifications from './pages/Notifications'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
+import Contact from './pages/Contact'
 import BottomTabBar from './components/BottomTabBar'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useTheme } from './contexts/ThemeContext'
@@ -94,6 +95,7 @@ function AppRoutes({ session }) {
           />
           <Route path="/privacy" element={<PrivacyPolicy session={session} />} />
           <Route path="/terms"   element={<TermsOfService session={session} />} />
+          <Route path="/contact" element={<Contact session={session} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
@@ -114,7 +116,7 @@ function SiteFooter() {
         {[
           ['Privacy', '/privacy'],
           ['Terms',   '/terms'],
-          ['Contact', 'mailto:hello@exlibrisomnium.com'],
+          ['Contact', '/contact'],
         ].map(([label, href]) => (
           href.startsWith('mailto:')
             ? <a key={label} href={href} style={{ color: theme.textSubtle, textDecoration: 'none', fontSize: 13 }}

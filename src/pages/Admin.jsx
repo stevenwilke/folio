@@ -12,6 +12,7 @@ const TABS = [
   { key: 'authors',   label: 'Authors',      emoji: '✍️' },
   { key: 'books',     label: 'Books',        emoji: '📚' },
   { key: 'users',     label: 'Users',        emoji: '👥' },
+  { key: 'settings',  label: 'Settings',     emoji: '⚙️' },
 ]
 
 export default function Admin({ session }) {
@@ -32,6 +33,10 @@ export default function Admin({ session }) {
   const [stats,    setStats]    = useState(null)
   const [loading,  setLoading]  = useState(true)
   const [acting,   setActing]   = useState(null)
+
+  // Site settings
+  const [siteSettings, setSiteSettings] = useState({ contact_email: '' })
+  const [savingSettings, setSavingSettings] = useState(false)
 
   // Storage files
   const [coverFiles,   setCoverFiles]   = useState([])
@@ -61,7 +66,7 @@ export default function Admin({ session }) {
 
   async function loadAll() {
     setLoading(true)
-    await Promise.all([loadClaims(), loadAuthors(), loadUsers(), loadCovers(), loadBooks(), loadStats(), loadCoverFiles()])
+    await Promise.all([loadClaims(), loadAuthors(), loadUsers(), loadCovers(), loadBooks(), loadStats(), loadCoverFiles(), loadSiteSettings()])
     setLoading(false)
   }
 
@@ -124,6 +129,20 @@ export default function Admin({ session }) {
       .select('id, title, author, isbn_13, isbn_10, genre, pages, published_year, cover_image_url, description')
       .order('title', { ascending: true })
     setBooks(data || [])
+  }
+
+  async function loadSiteSettings() {
+    const { data } = await supabase.from('site_settings').select('*').eq('id', 1).single()
+    if (data) setSiteSettings(data)
+  }
+
+  async function saveSiteSettings() {
+    setSavingSettings(true)
+    await supabase.from('site_settings').update({
+      contact_email: siteSettings.contact_email,
+      updated_at: new Date().toISOString(),
+    }).eq('id', 1)
+    setSavingSettings(false)
   }
 
   async function loadStats() {
@@ -941,6 +960,36 @@ export default function Admin({ session }) {
                     )}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ════════════ SETTINGS ════════════ */}
+            {tab === 'settings' && (
+              <div>
+                <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text, marginBottom: 20 }}>Site Settings</h2>
+
+                <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '20px 24px', marginBottom: 16 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Contact Form Email</label>
+                  <div style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 8 }}>
+                    Contact form submissions will be sent to this email address.
+                  </div>
+                  <input
+                    type="email"
+                    value={siteSettings.contact_email}
+                    onChange={e => setSiteSettings(prev => ({ ...prev, contact_email: e.target.value }))}
+                    style={{ width: '100%', maxWidth: 360, padding: '10px 14px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 15, fontFamily: "'DM Sans', sans-serif", color: theme.text, background: theme.bg, outline: 'none', boxSizing: 'border-box' }}
+                    placeholder="email@example.com"
+                  />
+                  <div style={{ marginTop: 12 }}>
+                    <button
+                      onClick={saveSiteSettings}
+                      disabled={savingSettings}
+                      style={{ padding: '8px 20px', background: theme.sage, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: savingSettings ? 0.6 : 1 }}
+                    >
+                      {savingSettings ? 'Saving…' : 'Save Settings'}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </>

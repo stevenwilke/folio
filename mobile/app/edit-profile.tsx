@@ -17,6 +17,7 @@ export default function EditProfileScreen() {
   const [saving,       setSaving]       = useState(false);
   const [loading,      setLoading]      = useState(true);
   const [userId,       setUserId]       = useState<string | null>(null);
+  const [bannerUrl,    setBannerUrl]    = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -25,7 +26,7 @@ export default function EditProfileScreen() {
       setUserId(user.id);
       const { data } = await supabase
         .from('profiles')
-        .select('username, bio, paypal_handle, venmo_handle')
+        .select('username, bio, paypal_handle, venmo_handle, banner_url')
         .eq('id', user.id)
         .single();
       if (data) {
@@ -33,6 +34,7 @@ export default function EditProfileScreen() {
         setBio(data.bio || '');
         setPaypalHandle(data.paypal_handle || '');
         setVenmoHandle(data.venmo_handle || '');
+        setBannerUrl(data.banner_url || null);
       }
       setLoading(false);
     }
@@ -117,6 +119,58 @@ export default function EditProfileScreen() {
         <TouchableOpacity style={styles.avatarBtn} onPress={changeAvatar} disabled={saving}>
           <Text style={styles.avatarBtnText}>📷  Change Profile Photo</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={[styles.avatarBtn, { marginTop: 8, borderColor: Colors.error }]} onPress={async () => {
+          if (!userId) return;
+          setSaving(true);
+          await supabase.from('profiles').update({ avatar_url: null }).eq('id', userId);
+          setSaving(false);
+          Alert.alert('Removed', 'Profile photo removed.');
+        }} disabled={saving}>
+          <Text style={[styles.avatarBtnText, { color: Colors.error }]}>Remove Profile Photo</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Banner */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Banner Image</Text>
+        <TouchableOpacity style={styles.avatarBtn} onPress={async () => {
+          const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (!perm.granted) { Alert.alert('Permission needed'); return; }
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true, aspect: [3, 1], quality: 0.8,
+          });
+          if (result.canceled || !userId) return;
+          setSaving(true);
+          try {
+            const uri = result.assets[0].uri;
+            const ext = uri.split('.').pop() ?? 'jpg';
+            const path = `${userId}/banner.${ext}`;
+            const response = await fetch(uri);
+            const blob = await response.blob();
+            await supabase.storage.from('banners').upload(path, blob, { upsert: true, contentType: `image/${ext}` });
+            const { data: { publicUrl } } = supabase.storage.from('banners').getPublicUrl(path);
+            await supabase.from('profiles').update({ banner_url: publicUrl }).eq('id', userId);
+            setBannerUrl(publicUrl);
+            Alert.alert('Updated', 'Banner image updated!');
+          } catch (e: any) {
+            Alert.alert('Error', e.message ?? 'Could not upload banner.');
+          } finally { setSaving(false); }
+        }} disabled={saving}>
+          <Text style={styles.avatarBtnText}>{bannerUrl ? '🖼  Change Banner' : '🖼  Add Banner'}</Text>
+        </TouchableOpacity>
+        {bannerUrl && (
+          <TouchableOpacity style={[styles.avatarBtn, { marginTop: 8, borderColor: Colors.error }]} onPress={async () => {
+            if (!userId) return;
+            setSaving(true);
+            await supabase.from('profiles').update({ banner_url: null }).eq('id', userId);
+            setBannerUrl(null);
+            setSaving(false);
+            Alert.alert('Removed', 'Banner image removed.');
+          }} disabled={saving}>
+            <Text style={[styles.avatarBtnText, { color: Colors.error }]}>Remove Banner</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Basic Info */}

@@ -19,6 +19,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
+import LoansScreen from './loans';
 
 // ---- Condition metadata ----
 
@@ -967,9 +968,11 @@ const sell = StyleSheet.create({
 
 // ---- Main screen ----
 
+type TopTab = 'market' | 'loans';
 type TabKey = 'browse' | 'my-listings' | 'sell' | 'purchases';
 
 export default function MarketplaceScreen() {
+  const [topTab, setTopTab] = useState<TopTab>('market');
   const [tab, setTab] = useState<TabKey>('browse');
   const [listings, setListings] = useState<Listing[]>([]);
   const [myListings, setMyListings] = useState<Listing[]>([]);
@@ -1170,6 +1173,7 @@ export default function MarketplaceScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterRow}
+          style={{ flexGrow: 0 }}
         >
           {[['all', 'All'], ...Object.entries(CONDITION_META).map(([k, v]) => [k, v.label])].map(
             ([key, label]) => (
@@ -1370,30 +1374,52 @@ export default function MarketplaceScreen() {
 
   return (
     <View style={styles.root}>
-      {/* Pill tab switcher */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tabBarContent}
-        style={styles.tabBar}
-      >
-        {TABS.map((t) => (
+      {/* Top-level Market / Loans toggle */}
+      <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, gap: 0 }}>
+        {(['market', 'loans'] as TopTab[]).map(t => (
           <TouchableOpacity
-            key={t.key}
-            style={[styles.tabPill, tab === t.key && styles.tabPillActive]}
-            onPress={() => setTab(t.key)}
+            key={t}
+            onPress={() => setTopTab(t)}
+            style={{ flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: topTab === t ? Colors.rust : 'transparent' }}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.tabPillText, tab === t.key && styles.tabPillTextActive]}>
-              {t.label}
+            <Text style={{ fontSize: 15, fontWeight: '700', color: topTab === t ? Colors.rust : Colors.muted, fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }) }}>
+              {t === 'market' ? '🏪 Market' : '📚 Loans'}
             </Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
 
-      {tab === 'browse' && renderBrowse()}
-      {tab === 'purchases' && renderPurchases()}
-      {tab === 'my-listings' && renderMyListings()}
-      {tab === 'sell' && userId && <SellTab userId={userId} />}
+      {topTab === 'market' && (
+        <>
+          {/* Market pill tab switcher */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabBarContent}
+            style={styles.tabBar}
+          >
+            {TABS.map((t) => (
+              <TouchableOpacity
+                key={t.key}
+                style={[styles.tabPill, tab === t.key && styles.tabPillActive]}
+                onPress={() => setTab(t.key)}
+              >
+                <Text style={[styles.tabPillText, tab === t.key && styles.tabPillTextActive]}>
+                  {t.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {tab === 'browse' && renderBrowse()}
+          {tab === 'purchases' && renderPurchases()}
+          {tab === 'my-listings' && renderMyListings()}
+          {tab === 'sell' && userId && <SellTab userId={userId} />}
+        </>
+      )}
+
+      {topTab === 'loans' && <LoansScreen />}
 
       {/* Buy Now Modal */}
       {userId && (
@@ -1518,8 +1544,8 @@ const styles = StyleSheet.create({
   tabPillTextActive: { color: '#fff' },
   searchBox: {
     paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 8,
+    paddingTop: 10,
+    paddingBottom: 4,
   },
   searchInput: {
     backgroundColor: Colors.card,
@@ -1534,8 +1560,10 @@ const styles = StyleSheet.create({
   },
   filterRow: {
     paddingHorizontal: 16,
+    paddingTop: 4,
     paddingBottom: 10,
     gap: 8,
+    alignItems: 'center' as const,
   },
   filterChip: {
     paddingHorizontal: 12,
@@ -1544,6 +1572,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     borderWidth: 1,
     borderColor: Colors.border,
+    alignSelf: 'center' as const,
   },
   filterChipActive: { backgroundColor: Colors.rust, borderColor: Colors.rust },
   filterChipText: {

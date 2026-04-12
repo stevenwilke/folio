@@ -60,6 +60,7 @@ export default function ProfileScreen() {
   const [refreshing,    setRefreshing]     = useState(false);
   const [showImport,    setShowImport]     = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [refreshingValues, setRefreshingValues] = useState(false);
 
   const COLUMNS = 2;
   const HORIZONTAL_PADDING = 16;
@@ -93,14 +94,26 @@ export default function ProfileScreen() {
         .order('added_at', { ascending: false }),
     ]);
 
-    if (profileData) setProfile(profileData);
-    if (entriesData) setEntries(entriesData as unknown as CollectionEntry[]);
+    if (profileData) setProfile(prev => {
+      if (prev && JSON.stringify(prev) === JSON.stringify(profileData)) return prev;
+      return profileData;
+    });
+    if (entriesData) setEntries(prev => {
+      // Only update if entries changed — prevents image flash
+      if (prev.length === entriesData.length && prev.length > 0) {
+        const prevIds = prev.map(e => e.id).join(',');
+        const newIds = (entriesData as any[]).map(e => e.id).join(',');
+        if (prevIds === newIds) return prev;
+      }
+      return entriesData as unknown as CollectionEntry[];
+    });
   }
 
+  const initialLoadDone = React.useRef(false);
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
-      fetchProfile().finally(() => setLoading(false));
+      if (!initialLoadDone.current) setLoading(true);
+      fetchProfile().finally(() => { setLoading(false); initialLoadDone.current = true; });
     }, [])
   );
 
@@ -217,9 +230,13 @@ export default function ProfileScreen() {
 
         {/* Avatar + name sit on top of banner */}
         <View style={styles.heroContent}>
-          <View style={[styles.avatar, { backgroundColor: bgColor }]}>
-            <Text style={styles.avatarText}>{initial}</Text>
-          </View>
+          {profile?.avatar_url ? (
+            <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatar, { backgroundColor: bgColor }]}>
+              <Text style={styles.avatarText}>{initial}</Text>
+            </View>
+          )}
           <View style={styles.profileInfo}>
             <Text style={styles.username}>{username}</Text>
             {profile?.bio ? (
@@ -228,26 +245,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Banner action buttons */}
-        <View style={styles.bannerActions}>
-          <TouchableOpacity
-            style={styles.bannerBtn}
-            onPress={handleBannerUpload}
-            disabled={uploadingBanner}
-          >
-            {uploadingBanner
-              ? <ActivityIndicator size="small" color="#fff" />
-              : <Text style={styles.bannerBtnText}>
-                  {profile?.banner_url ? '🖼  Change Banner' : '🖼  Add Banner'}
-                </Text>
-            }
-          </TouchableOpacity>
-          {profile?.banner_url && (
-            <TouchableOpacity style={styles.bannerRemoveBtn} onPress={handleRemoveBanner}>
-              <Text style={styles.bannerRemoveBtnText}>✕</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {/* Banner editing moved to edit-profile screen */}
       </View>
 
       {/* Stats row */}
@@ -318,7 +316,14 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>My Collection</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={styles.sectionTitle}>Recent Books</Text>
+          {entries.length > 6 && (
+            <TouchableOpacity onPress={() => router.push('/')} activeOpacity={0.7}>
+              <Text style={{ fontSize: 13, color: Colors.rust, fontWeight: '600' }}>View Library →</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Share wishlist */}
@@ -333,8 +338,6 @@ export default function ProfileScreen() {
       )}
     </View>
   );
-
-  const [refreshingValues, setRefreshingValues] = useState(false);
 
   async function handleRefreshValues() {
     setRefreshingValues(true);
@@ -422,7 +425,7 @@ export default function ProfileScreen() {
   return (
     <>
       <FlatList
-        data={entries}
+        data={entries.slice(0, 6)}
         numColumns={COLUMNS}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}

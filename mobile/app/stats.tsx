@@ -11,7 +11,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
-import BadgesSection from '../components/BadgesSection';
+// BadgesSection moved to dedicated /badges screen
 import { computeReadingSpeeds, formatDuration, ReadingSpeeds } from '../lib/readingSpeed';
 
 // ---- Types ----
@@ -521,9 +521,6 @@ export default function StatsScreen() {
           </Text>
         </View>
       )}
-
-      {/* Badges */}
-      <BadgesSection entries={rawEntries} friendCount={friendCount} />
 
     </ScrollView>
   );

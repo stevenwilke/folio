@@ -61,7 +61,7 @@ interface Stats {
 }
 
 type SizeKey = 'S' | 'M' | 'L';
-const SIZE_COLUMNS: Record<SizeKey, number> = { S: 3, M: 2, L: 1 };
+const SIZE_COLUMNS: Record<SizeKey, number> = { S: 4, M: 3, L: 2 };
 const SIZE_STORAGE_KEY = 'exlibris-cover-size';
 
 export default function LibraryScreen() {
@@ -112,7 +112,7 @@ export default function LibraryScreen() {
           genre,
           published_year,
           series_name,
-          series_position,
+          series_number,
           pages
         )
       `)
@@ -215,13 +215,13 @@ export default function LibraryScreen() {
     }
   }
 
+  const initialLoadDone = React.useRef(false);
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
+      if (!initialLoadDone.current) setLoading(true);
       fetchLibrary().then(() => {
         if (!backfillRan.current) {
           backfillRan.current = true;
-          // Run backfill after entries are set (use timeout to let state settle)
           setTimeout(() => {
             supabase.auth.getUser().then(({ data: { user } }) => {
               if (!user) return;
@@ -234,7 +234,7 @@ export default function LibraryScreen() {
             });
           }, 2000);
         }
-      }).finally(() => setLoading(false));
+      }).finally(() => { setLoading(false); initialLoadDone.current = true; });
     }, [])
   );
 
@@ -267,6 +267,7 @@ export default function LibraryScreen() {
           coverImageUrl={item.books.cover_image_url}
           status={item.read_status}
           cardWidth={cardWidth}
+          hideText={coverSize === 'S'}
           onPress={() => router.push(`/book/${item.book_id}`)}
           hasPendingCover={pendingCoverIds.has(item.books.id)}
           onAddCover={

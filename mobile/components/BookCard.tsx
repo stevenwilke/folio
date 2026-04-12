@@ -32,6 +32,8 @@ interface BookCardProps {
   onAddCover?: () => void;
   /** True while a user's cover submission is awaiting review */
   hasPendingCover?: boolean;
+  /** Hide title/author/status text — covers only mode */
+  hideText?: boolean;
 }
 
 export function BookCard({
@@ -43,6 +45,7 @@ export function BookCard({
   cardWidth = 160,
   onAddCover,
   hasPendingCover,
+  hideText,
 }: BookCardProps) {
   const [imgError, setImgError] = React.useState(false);
   const coverWidth = cardWidth - 16;
@@ -93,23 +96,25 @@ export function BookCard({
         )}
       </View>
 
-      <View style={styles.info}>
-        <Text style={styles.title} numberOfLines={2}>
-          {title}
-        </Text>
-        {author ? (
-          <Text style={styles.author} numberOfLines={1}>
-            {author}
+      {!hideText && (
+        <View style={styles.info}>
+          <Text style={styles.title} numberOfLines={2}>
+            {title}
           </Text>
-        ) : null}
-        {status ? (
-          <View style={[styles.badge, { backgroundColor: Colors.statusBg[status] }]}>
-            <Text style={[styles.badgeText, { color: Colors.status[status] }]}>
-              {STATUS_LABELS[status]}
+          {author ? (
+            <Text style={styles.author} numberOfLines={1}>
+              {author}
             </Text>
-          </View>
-        ) : null}
-      </View>
+          ) : null}
+          {status ? (
+            <View style={[styles.badge, { backgroundColor: Colors.statusBg[status] }]}>
+              <Text style={[styles.badgeText, { color: Colors.status[status] }]}>
+                {STATUS_LABELS[status]}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      )}
     </TouchableOpacity>
   );
 }

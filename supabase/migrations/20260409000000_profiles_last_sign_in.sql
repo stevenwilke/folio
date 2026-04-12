@@ -18,6 +18,8 @@ begin
     set last_sign_in_at = new.last_sign_in_at
     where id = new.id;
   return new;
+exception when others then
+  return new;  -- never block auth
 end;
 $$;
 

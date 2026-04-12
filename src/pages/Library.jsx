@@ -43,7 +43,8 @@ export default function Library({ session }) {
 
   // Sync selected book with ?book=<id> so browser back button works
   const selectedBook = searchParams.get('book') || null
-  function openBook(bookId)  { setSearchParams({ book: bookId }) }
+  const scrollYRef = useRef(0)
+  function openBook(bookId)  { scrollYRef.current = window.scrollY; setSearchParams({ book: bookId }) }
   function closeBook()       { setSearchParams({}); fetchCollection() }
   const [listingTarget, setListingTarget] = useState(null)
   const [activeListings, setActiveListings] = useState({})
@@ -94,6 +95,14 @@ export default function Library({ session }) {
       window.removeEventListener('exlibris:coverUpdated', handleCoverUpdated)
     }
   }, [])
+
+  // Restore scroll position when returning from book detail
+  useEffect(() => {
+    if (!selectedBook && !loading && scrollYRef.current) {
+      window.scrollTo(0, scrollYRef.current)
+      scrollYRef.current = 0
+    }
+  }, [selectedBook, loading])
 
   async function fetchActiveListings() {
     const { data } = await supabase

@@ -108,6 +108,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [fetchingDesc, setFetchingDesc] = useState(false)
   const [coverImgError, setCoverImgError]   = useState(false)
   const [coverUploading, setCoverUploading] = useState(false)
+  const [showCoverLightbox, setShowCoverLightbox] = useState(false)
   const coverFileInputRef = useRef(null)
   const [tab, setTab]                   = useState('about')
   const [rating, setRating]             = useState(0)
@@ -871,7 +872,7 @@ export default function BookDetail({ bookId, session, onBack }) {
             {(() => {
               const url = getCoverUrl(book)
               return (url && !coverImgError)
-                ? <img src={url} alt={book.title} style={s.coverImg} onError={() => setCoverImgError(true)} />
+                ? <img src={url} alt={book.title} style={{ ...s.coverImg, cursor: 'zoom-in' }} onClick={() => setShowCoverLightbox(true)} onError={() => setCoverImgError(true)} />
                 : <FakeCover title={book.title} />
             })()}
             {/* Upload button overlay */}
@@ -1617,6 +1618,18 @@ export default function BookDetail({ bookId, session, onBack }) {
             />
           </div>
         )}
+
+        {/* Cover lightbox */}
+        {showCoverLightbox && (() => {
+          const url = getCoverUrl(book)
+          return url ? (
+            <div
+              onClick={() => setShowCoverLightbox(false)}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out', backdropFilter: 'blur(6px)' }}>
+              <img src={url} alt={book.title} style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 10, boxShadow: '0 12px 60px rgba(0,0,0,0.5)' }} />
+            </div>
+          ) : null
+        })()}
       </div>
     </div>
   )

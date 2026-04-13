@@ -431,9 +431,8 @@ export default function BookDetail({ bookId, session, onBack }) {
       ? (Date.now() - new Date(cached.fetched_at).getTime()) / (1000 * 60 * 60)
       : Infinity
 
-    if (cached && cacheAge < 24) {
-      // Use cache if at least one price field is present
-      setValuation((cached.avg_price || cached.list_price) ? cached : false)
+    if (cached && cacheAge < 24 && cached.avg_price != null) {
+      setValuation(cached)
       setValuationLoading(false)
       return
     }

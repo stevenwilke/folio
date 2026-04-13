@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { label: 'Friends',     path: '/friends' },
   { label: 'Loans',       path: '/loans' },
   { label: 'Marketplace', path: '/marketplace' },
+  { label: 'Nearby',      path: '/nearby' },
   { label: 'Clubs',       path: '/clubs' },
 ]
 

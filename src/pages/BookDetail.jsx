@@ -12,6 +12,8 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import CoverCropModal from '../components/CoverCropModal'
 import RatingDistribution from '../components/RatingDistribution'
 import QuoteCard from '../components/QuoteCard'
+import FreeBookModal from '../components/FreeBookModal'
+import BookJourney from '../components/BookJourney'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -124,6 +126,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [showListingModal, setShowListingModal] = useState(false)
   const [showLendModal,    setShowLendModal]    = useState(false)
   const [showRecommendModal, setShowRecommendModal] = useState(false)
+  const [showFreeModal, setShowFreeModal] = useState(false)
   const [alsoEnjoyed, setAlsoEnjoyed] = useState([])
   const [quotes, setQuotes]           = useState([])
   const [newQuoteText, setNewQuoteText]     = useState('')
@@ -1234,6 +1237,9 @@ export default function BookDetail({ bookId, session, onBack }) {
                 <button style={s.lendOutBtn} onClick={() => setShowRecommendModal(true)}>
                   💌 Recommend
                 </button>
+                <button style={{ ...s.lendOutBtn, borderColor: theme.rust, color: theme.rust }} onClick={() => setShowFreeModal(true)}>
+                  📍 Free This Book
+                </button>
               </div>
             )}
 
@@ -1343,6 +1349,16 @@ export default function BookDetail({ bookId, session, onBack }) {
             book={book}
             theme={theme}
             onClose={() => setShowRecommendModal(false)}
+          />
+        )}
+
+        {/* Free this book modal */}
+        {showFreeModal && book && (
+          <FreeBookModal
+            session={session}
+            book={book}
+            onClose={() => setShowFreeModal(false)}
+            onSuccess={() => {}}
           />
         )}
 
@@ -1495,6 +1511,7 @@ export default function BookDetail({ bookId, session, onBack }) {
             {book.description && (
               <p style={s.description}>{book.description}</p>
             )}
+            <BookJourney bookId={activeBookId} />
           </div>
         )}
 

@@ -18,6 +18,7 @@ import Admin from './pages/Admin'
 import Onboarding from './pages/Onboarding'
 import Landing from './pages/Landing'
 import Notifications from './pages/Notifications'
+import Nearby from './pages/Nearby'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import Contact from './pages/Contact'
@@ -80,6 +81,10 @@ function AppRoutes({ session }) {
           <Route
             path="/admin"
             element={<Admin session={session} />}
+          />
+          <Route
+            path="/nearby"
+            element={session ? <Nearby session={session} /> : <Navigate to="/" replace />}
           />
           <Route
             path="/notifications"

@@ -12,6 +12,7 @@ const TABS = [
 ]
 
 const MORE_ITEMS = [
+  { path: '/nearby',      icon: '📍', label: 'Nearby'      },
   { path: '/friends',     icon: '👥', label: 'Friends'     },
   { path: '/marketplace', icon: '🏪', label: 'Marketplace' },
   { path: '/shelves',     icon: '📂', label: 'Shelves'     },

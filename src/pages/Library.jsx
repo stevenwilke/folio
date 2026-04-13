@@ -283,17 +283,17 @@ export default function Library({ session }) {
     const bookIds = entries.map(e => e.books?.id).filter(Boolean)
     if (!bookIds.length) return
 
-    // Find which books already have a valuation (any entry — even a null-price miss)
-    // Skip ones fetched in the last 6 hours to avoid hammering the API on every reload
+    // Find which books already have a valuation with used price data
+    // Skip ones that have avg_price AND were fetched in the last 6 hours
     const { data: existing } = await supabase
       .from('valuations')
-      .select('book_id, fetched_at, list_price')
+      .select('book_id, fetched_at, list_price, avg_price')
       .in('book_id', bookIds)
 
     const sixHoursAgo = Date.now() - 6 * 60 * 60 * 1000
     const skipIds = new Set(
       (existing || [])
-        .filter(v => new Date(v.fetched_at).getTime() > sixHoursAgo)
+        .filter(v => v.avg_price != null && new Date(v.fetched_at).getTime() > sixHoursAgo)
         .map(v => v.book_id)
     )
 

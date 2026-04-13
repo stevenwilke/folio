@@ -312,8 +312,8 @@ export default function Library({ session }) {
           ])
           const data = retailResult.status === 'fulfilled' ? retailResult.value.data : null
           const used = usedResult.status === 'fulfilled' ? usedResult.value : null
-          // Only include used price fields if we actually got data — avoids
-          // overwriting previously good ThriftBooks prices with nulls on re-fetch
+          // Prefer client-side ThriftBooks data; fall back to edge function data
+          const usedData = used?.avg_price != null ? used : (data?.avg_price != null ? data : null)
           const row = {
             book_id:             id,
             list_price:          data?.list_price ?? used?.new_price ?? null,
@@ -321,13 +321,13 @@ export default function Library({ session }) {
             currency:            data?.currency            || 'USD',
             fetched_at:          new Date().toISOString(),
           }
-          if (used?.avg_price != null) {
-            row.avg_price     = used.avg_price
-            row.min_price     = used.min_price     ?? null
-            row.max_price     = used.max_price     ?? null
-            row.sample_count  = used.sample_count  ?? null
-            row.paperback_avg = used.paperback_avg ?? null
-            row.hardcover_avg = used.hardcover_avg ?? null
+          if (usedData?.avg_price != null) {
+            row.avg_price     = usedData.avg_price
+            row.min_price     = usedData.min_price     ?? null
+            row.max_price     = usedData.max_price     ?? null
+            row.sample_count  = usedData.sample_count  ?? null
+            row.paperback_avg = usedData.paperback_avg ?? null
+            row.hardcover_avg = usedData.hardcover_avg ?? null
           }
           await supabase.from('valuations').upsert(row, { onConflict: 'book_id' })
           if (data?.list_price || used?.avg_price) {

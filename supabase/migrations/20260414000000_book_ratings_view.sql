@@ -1,6 +1,7 @@
--- Aggregate rating view with star distribution
--- BookDetail already queries book_ratings; this adds distribution columns
-CREATE OR REPLACE VIEW book_ratings AS
+-- Drop and recreate to add star distribution columns
+-- (CREATE OR REPLACE cannot change column types of an existing view)
+DROP VIEW IF EXISTS book_ratings;
+CREATE VIEW book_ratings AS
 SELECT
   book_id,
   ROUND(AVG(user_rating)::numeric, 1) AS avg_rating,

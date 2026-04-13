@@ -11,6 +11,7 @@ interface BookInput {
   genre: string | null
   user_rating: number | null
   read_status: string
+  has_read?: boolean
 }
 
 serve(async (req) => {
@@ -38,7 +39,7 @@ serve(async (req) => {
 
     // Build reading profile — prioritise read + rated books, cap at 40
     const readBooks = books
-      .filter(b => b.read_status === 'read' || (b.user_rating ?? 0) > 0)
+      .filter(b => b.has_read === true || b.read_status === 'read' || (b.user_rating ?? 0) > 0)
       .sort((a, b) => (b.user_rating ?? 0) - (a.user_rating ?? 0))
       .slice(0, 40)
 

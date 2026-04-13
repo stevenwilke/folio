@@ -282,7 +282,7 @@ function PopularBookCard({ book, theme, session, onAdded }) {
     if (bookId) {
       await supabase
         .from('collection_entries')
-        .upsert({ user_id: session.user.id, book_id: bookId, read_status: status }, { onConflict: 'user_id,book_id' })
+        .upsert({ user_id: session.user.id, book_id: bookId, read_status: status, has_read: status === 'read' }, { onConflict: 'user_id,book_id' })
       window.dispatchEvent(new CustomEvent('exlibris:bookAdded'))
     }
 

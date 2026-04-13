@@ -38,6 +38,8 @@ export default function Library({ session }) {
   const [sortDir, setSortDir]         = useState('desc') // 'desc' | 'asc' — used for price sort
   const [showImport, setShowImport]         = useState(false)
   const [showShelfPlanner, setShowShelfPlanner] = useState(false)
+  const [showExportMenu, setShowExportMenu]     = useState(false)
+  const [copiedExportUrl, setCopiedExportUrl]   = useState(false)
   const [coverUploadTarget, setCoverUploadTarget] = useState(null) // { id, title }
   const [pendingCoverIds, setPendingCoverIds]     = useState(new Set())
 
@@ -122,14 +124,20 @@ export default function Library({ session }) {
       .from('valuations')
       .select('book_id, list_price, avg_price')
       .in('book_id', bookIds)
+    const USED_ESTIMATE_FACTOR = 0.35
     const rows = data || []
     const retailRows = rows.filter(v => v.list_price != null)
     const usedRows   = rows.filter(v => v.avg_price   != null)
+    // Books with retail price but no used price → estimate used at 35% of retail
+    const estimatedRows = rows.filter(v => v.list_price != null && v.avg_price == null)
+    const estimatedUsedTotal = estimatedRows.reduce((sum, v) => sum + Number(v.list_price) * USED_ESTIMATE_FACTOR, 0)
     setCollectionStats({
       retailTotal: retailRows.reduce((sum, v) => sum + Number(v.list_price), 0),
       retailCount: retailRows.length,
       usedTotal:   usedRows.reduce((sum, v) => sum + Number(v.avg_price), 0),
       usedCount:   usedRows.length,
+      estimatedUsedTotal,
+      estimatedUsedCount: estimatedRows.length,
       total,
     })
     // Embed valuations directly into books state so filtering is always in sync
@@ -148,8 +156,7 @@ export default function Library({ session }) {
     const { data, error } = await supabase
       .from('collection_entries')
       .select(`
-        id, read_status, user_rating, added_at, current_page,
-        books ( id, title, author, cover_image_url, isbn_13, isbn_10, genre, published_year, pages )
+        *, books ( id, title, author, cover_image_url, isbn_13, isbn_10, genre, published_year, pages )
       `)
       .eq('user_id', session.user.id)
       .order('added_at', { ascending: false })
@@ -173,7 +180,7 @@ export default function Library({ session }) {
       if (data && data.length > 0) {
         localStorage.setItem('exlibris-onboarded', '1')
       }
-      const allBookIds = (data || []).map(e => e.books?.id).filter(Boolean)
+      const allBookIds = (data || []).filter(e => e.read_status !== 'want').map(e => e.books?.id).filter(Boolean)
       fetchCollectionValue(allBookIds)
       // Track which books already have a pending cover submission
       if (allBookIds.length) {
@@ -223,12 +230,6 @@ export default function Library({ session }) {
 
   // Fetch covers from Open Library for books that don't have one
   async function backfillCovers(entries) {
-    // Include books with no cover OR only a low-quality placeholder
-    function isLowQuality(url) {
-      if (!url) return true
-      return url.includes('-S.jpg') || url.includes('-M.jpg') || url.includes('zoom=1')
-    }
-
     async function fetchOLCover(isbn, title, author) {
       if (isbn) {
         const r = await fetch(`https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn)}&fields=cover_i&limit=1`)
@@ -252,7 +253,7 @@ export default function Library({ session }) {
       return null
     }
 
-    const todo = entries.filter(e => isLowQuality(e.books.cover_image_url))
+    const todo = entries.filter(e => !e.books.cover_image_url)  // only backfill truly missing covers
     if (todo.length === 0) return
 
     const BATCH = 4
@@ -264,10 +265,12 @@ export default function Library({ session }) {
           const raw = await fetchOLCover(isbn, title, author)
           if (raw) {
             const url = await uploadCoverToStorage(raw, id)
-            await supabase.from('books').update({ cover_image_url: url }).eq('id', id)
-            setBooks(prev => prev.map(e =>
-              e.books.id === id ? { ...e, books: { ...e.books, cover_image_url: url } } : e
-            ))
+            if (url) {
+              await supabase.from('books').update({ cover_image_url: url }).eq('id', id)
+              setBooks(prev => prev.map(e =>
+                e.books.id === id ? { ...e, books: { ...e.books, cover_image_url: url } } : e
+              ))
+            }
           }
         } catch { /* ignore */ }
       }))
@@ -324,7 +327,7 @@ export default function Library({ session }) {
           }
           await supabase.from('valuations').upsert(row, { onConflict: 'book_id' })
           if (data?.list_price || used?.avg_price) {
-            const allIds = entries.map(e => e.books?.id).filter(Boolean)
+            const allIds = entries.filter(e => e.read_status !== 'want').map(e => e.books?.id).filter(Boolean)
             fetchCollectionValue(allIds)
           }
         } catch { /* ignore individual failures */ }
@@ -388,9 +391,10 @@ export default function Library({ session }) {
   const searchLower = search.trim().toLowerCase()
   const filtered = books
     .filter(e => {
-      if (filter === 'all')           return true
+      if (filter === 'all')           return e.read_status !== 'want'
       if (filter === 'valued-retail') return e.valuation?.list_price != null
       if (filter === 'valued-used')   return e.valuation?.avg_price  != null
+      if (filter === 'has_read')      return e.has_read === true
       return e.read_status === filter
     })
     .filter(e => !searchLower || e.books.title.toLowerCase().includes(searchLower) || (e.books.author || '').toLowerCase().includes(searchLower))
@@ -474,8 +478,8 @@ export default function Library({ session }) {
   const grouped = groupEntries(sorted)
 
   const stats = {
-    total:   books.length,
-    read:    books.filter(b => b.read_status === 'read').length,
+    total:   books.filter(b => b.read_status !== 'want').length,
+    read:    books.filter(b => b.has_read === true).length,
     reading: books.filter(b => b.read_status === 'reading').length,
     want:    books.filter(b => b.read_status === 'want').length,
   }
@@ -498,11 +502,14 @@ export default function Library({ session }) {
   async function applyBulkStatus() {
     if (!bulkStatus || selectedIds.size === 0) return
     setBulkWorking(true)
-    await supabase
-      .from('collection_entries')
-      .update({ read_status: bulkStatus })
-      .in('id', [...selectedIds])
-      .eq('user_id', session.user.id)
+    if (bulkStatus === '__mark_read') {
+      await supabase.from('collection_entries').update({ has_read: true }).in('id', [...selectedIds]).eq('user_id', session.user.id)
+    } else if (bulkStatus === '__unmark_read') {
+      await supabase.from('collection_entries').update({ has_read: false }).in('id', [...selectedIds]).eq('user_id', session.user.id)
+    } else {
+      const hasRead = bulkStatus === 'read'
+      await supabase.from('collection_entries').update({ read_status: bulkStatus, has_read: hasRead }).in('id', [...selectedIds]).eq('user_id', session.user.id)
+    }
     setBulkWorking(false)
     setSelectMode(false)
     setSelectedIds(new Set())
@@ -628,7 +635,7 @@ export default function Library({ session }) {
           <div style={s.statsRow}>
             {[
               ['All Books', stats.total,   'all'],
-              ['Read',    stats.read,    'read'],
+              ['Read',    stats.read,    'has_read'],
               ['Reading', stats.reading, 'reading'],
               ['Want',    stats.want,    'want'],
             ].map(([label, val, f]) => {
@@ -652,7 +659,7 @@ export default function Library({ session }) {
           <div style={s.statsRow}>
             {[
               ['All Books',   stats.total,   'all',     null,      '📚'],
-              ['Read',        stats.read,    'read',    '#5a7a5a', '✓'],
+              ['Read',        stats.read,    'has_read', '#5a7a5a', '✓'],
               ['Reading',     stats.reading, 'reading', '#c0521e', '📖'],
               ['Want to Read',stats.want,    'want',    '#b8860b', '🔖'],
             ].map(([label, val, f, color, icon]) => {
@@ -678,10 +685,16 @@ export default function Library({ session }) {
             })}
             {collectionStats && (
               <>
-                {[
-                  { f: 'valued-retail', color: '#5a7a5a', icon: '💰', label: 'Retail Value', val: collectionStats.retailCount > 0 ? `$${collectionStats.retailTotal.toFixed(2)}` : '—', count: collectionStats.retailCount },
-                  { f: 'valued-used',   color: '#b8860b', icon: '📊', label: 'Used Value',   val: collectionStats.usedCount   > 0 ? `$${collectionStats.usedTotal.toFixed(2)}`   : '—', count: collectionStats.usedCount },
-                ].map(({ f, color, icon, label, val, count }) => {
+                {(() => {
+                  const usedActual = collectionStats.usedTotal
+                  const usedEst = collectionStats.estimatedUsedTotal || 0
+                  const usedCombined = usedActual + usedEst
+                  const usedCountCombined = collectionStats.usedCount + (collectionStats.estimatedUsedCount || 0)
+                  return [
+                    { f: 'valued-retail', color: '#5a7a5a', icon: '💰', label: 'Retail Value', val: collectionStats.retailCount > 0 ? `$${collectionStats.retailTotal.toFixed(2)}` : '—', count: collectionStats.retailCount, subtitle: null },
+                    { f: 'valued-used',   color: '#b8860b', icon: '📊', label: 'Used Value',   val: usedCombined > 0 ? `$${usedCombined.toFixed(2)}` : '—', count: usedCountCombined, subtitle: usedEst > 0 ? `$${usedEst.toFixed(2)} est.` : null },
+                  ]
+                })().map(({ f, color, icon, label, val, count, subtitle }) => {
                   const active = filter === f
                   return (
                     <div key={f}
@@ -699,6 +712,7 @@ export default function Library({ session }) {
                         {label}
                         <span style={{ display: 'block', fontSize: 10, opacity: 0.7, marginTop: 1 }}>
                           {active ? '▾ filtered · ' : ''}{count}/{collectionStats.total} books priced
+                          {subtitle && <span style={{ fontStyle: 'italic' }}> · {subtitle}</span>}
                         </span>
                       </div>
                     </div>
@@ -876,31 +890,96 @@ export default function Library({ session }) {
           <button style={{ ...s.filterInactive, color: theme.accent, borderColor: theme.accent }} onClick={() => setShowShelfPlanner(true)}>
             📚 Shelf Planner
           </button>
-          <button style={{ ...s.filterInactive, color: theme.sage, borderColor: theme.sage }} onClick={() => {
-            const STATUS_LABELS = { owned: 'In Library', read: 'Read', reading: 'Reading', want: 'Want to Read' }
-            const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`
-            const header = ['Title', 'Author', 'Status', 'Rating', 'Genre', 'Year', 'ISBN', 'Date Added']
-            const rows = books.map(b => [
-              escape(b.books?.title),
-              escape(b.books?.author),
-              escape(STATUS_LABELS[b.read_status] ?? b.read_status),
-              escape(b.user_rating ?? ''),
-              escape(b.books?.genre),
-              escape(b.books?.published_year),
-              escape(b.books?.isbn_13),
-              escape(b.added_at ? new Date(b.added_at).toLocaleDateString() : ''),
-            ])
-            const csv = [header.join(','), ...rows.map(r => r.join(','))].join('\n')
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-            const url = URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url
-            a.download = 'my-library.csv'
-            a.click()
-            URL.revokeObjectURL(url)
-          }}>
-            📤 Export as CSV
-          </button>
+          <div style={{ position: 'relative', display: 'inline-block' }}>
+            <button style={{ ...s.filterInactive, color: theme.sage, borderColor: theme.sage }} onClick={() => setShowExportMenu(v => !v)}>
+              📤 Export ▾
+            </button>
+            {showExportMenu && (
+              <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 10, boxShadow: '0 6px 20px rgba(0,0,0,0.12)', zIndex: 20, minWidth: 220, overflow: 'hidden' }}>
+                <div
+                  style={{ padding: '10px 14px', fontSize: 13, cursor: 'pointer', color: theme.text, borderBottom: `1px solid ${theme.borderLight}` }}
+                  onMouseEnter={e => e.currentTarget.style.background = theme.bgSubtle}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  onClick={() => {
+                    setShowExportMenu(false)
+                    const CSV_STATUS = { owned: 'In Library', read: 'Read', reading: 'Reading', want: 'Want to Read' }
+                    const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`
+                    const header = ['Title', 'Author', 'Status', 'Rating', 'Genre', 'Year', 'ISBN', 'Date Added']
+                    const rows = books.map(b => [
+                      escape(b.books?.title),
+                      escape(b.books?.author),
+                      escape(b.read_status === 'owned' && b.has_read ? 'In Library (Read)' : (CSV_STATUS[b.read_status] ?? b.read_status)),
+                      escape(b.user_rating ?? ''),
+                      escape(b.books?.genre),
+                      escape(b.books?.published_year),
+                      escape(b.books?.isbn_13),
+                      escape(b.added_at ? new Date(b.added_at).toLocaleDateString() : ''),
+                    ])
+                    const csv = [header.join(','), ...rows.map(r => r.join(','))].join('\n')
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url; a.download = 'my-library.csv'; a.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                >
+                  📄 Export as Ex Libris CSV
+                </div>
+                <div
+                  style={{ padding: '10px 14px', fontSize: 13, cursor: 'pointer', color: theme.text, borderBottom: `1px solid ${theme.borderLight}` }}
+                  onMouseEnter={e => e.currentTarget.style.background = theme.bgSubtle}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  onClick={() => {
+                    setShowExportMenu(false)
+                    const shelfMap = { owned: 'owned', read: 'read', reading: 'currently-reading', want: 'to-read' }
+                    const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`
+                    const header = ['Title','Author','ISBN','ISBN13','My Rating','Number of Pages','Original Publication Year','Exclusive Shelf','My Review','Binding']
+                    const rows = books.map(b => {
+                      let shelf = shelfMap[b.read_status] || 'owned'
+                      if (b.read_status === 'owned' && b.has_read) shelf = 'read'
+                      return [
+                        escape(b.books?.title),
+                        escape(b.books?.author),
+                        escape(b.books?.isbn_10 ?? ''),
+                        escape(b.books?.isbn_13 ?? ''),
+                        escape(b.user_rating ?? ''),
+                        escape(b.books?.pages ?? ''),
+                        escape(b.books?.published_year ?? ''),
+                        escape(shelf),
+                        escape(''),
+                        escape(''),
+                      ]
+                    })
+                    const csv = [header.join(','), ...rows.map(r => r.join(','))].join('\n')
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url; a.download = 'goodreads-export.csv'; a.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                >
+                  📚 Export for Goodreads
+                </div>
+                <div
+                  style={{ padding: '10px 14px', fontSize: 13, cursor: 'pointer', color: theme.text }}
+                  onMouseEnter={e => e.currentTarget.style.background = theme.bgSubtle}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  onClick={async () => {
+                    setShowExportMenu(false)
+                    const { data: prof } = await supabase.from('profiles').select('username, is_public').eq('id', session.user.id).maybeSingle()
+                    if (!prof?.username) { alert('Set a username in your profile first.'); return }
+                    if (!prof.is_public) { alert('Your profile must be public to share an export URL. Update this in your profile settings.'); return }
+                    const exportUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-library?username=${prof.username}`
+                    navigator.clipboard.writeText(exportUrl)
+                    setCopiedExportUrl(true)
+                    setTimeout(() => setCopiedExportUrl(false), 2000)
+                  }}
+                >
+                  {copiedExportUrl ? '✓ Copied!' : '🔗 Copy shareable export URL'}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Book grid */}
@@ -1075,6 +1154,8 @@ export default function Library({ session }) {
               {Object.entries(STATUS_LABELS).map(([val, label]) => (
                 <option key={val} value={val}>{label}</option>
               ))}
+              <option value="__mark_read">Mark as read</option>
+              <option value="__unmark_read">Unmark as read</option>
             </select>
             <button
               style={{ ...s.bulkBtn, opacity: (!bulkStatus || selectedIds.size === 0 || bulkWorking) ? 0.5 : 1 }}
@@ -1105,7 +1186,7 @@ function ListRow({ entry, isLast, selectMode, isSelected, onSelect, theme, isMob
   const book    = entry.books
   const status  = entry.read_status
   const sc      = STATUS_COLORS[status] || {}
-  const sl      = STATUS_LABELS[status] || status
+  const sl      = (status === 'owned' && entry.has_read) ? 'In Library ✓' : (STATUS_LABELS[status] || status)
   const touchStartY = useRef(0)
   const [hover, setHover]       = useState(false)
   const [imgError, setImgError] = useState(false)
@@ -1215,10 +1296,10 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
     setCurrentPage(p)
     setEditingPage(false)
 
-    // If the page equals or exceeds total pages, mark as read
+    // If the page equals or exceeds total pages, mark as finished (keep in library)
     if (book.pages && p >= book.pages) {
       await supabase.from('collection_entries')
-        .update({ current_page: book.pages, read_status: 'read' })
+        .update({ current_page: book.pages, read_status: 'owned', has_read: true })
         .eq('id', entry.id)
       onUpdate()
       return
@@ -1226,10 +1307,24 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
     await supabase.from('collection_entries').update({ current_page: p || null }).eq('id', entry.id)
   }
 
-  async function changeStatus(newStatus) {
+  async function changeStatus(newStatus, forceHasRead) {
+    let newHasRead = false
+    if (forceHasRead != null) newHasRead = forceHasRead
+    else if (newStatus === 'read') newHasRead = true
+    else if (newStatus === 'owned') newHasRead = entry.has_read || false
+
     await supabase
       .from('collection_entries')
-      .update({ read_status: newStatus })
+      .update({ read_status: newStatus, has_read: newHasRead })
+      .eq('id', entry.id)
+    setMenuOpen(false)
+    onUpdate()
+  }
+
+  async function toggleHasRead() {
+    await supabase
+      .from('collection_entries')
+      .update({ has_read: !entry.has_read })
       .eq('id', entry.id)
     setMenuOpen(false)
     onUpdate()
@@ -1366,7 +1461,7 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
         {!selectMode && (
           <div style={{ position: 'absolute', bottom: 6, left: 6, zIndex: 2 }} onClick={e => { e.stopPropagation(); setMenuOpen(!menuOpen) }}>
             <span style={{ ...s.badge, ...STATUS_COLORS[status], cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
-              {STATUS_LABELS[status]} ▾
+              {STATUS_LABELS[status]}{status === 'owned' && entry.has_read ? ' ✓' : ''} ▾
             </span>
             {menuOpen && (
               <div style={s.menu}>
@@ -1381,7 +1476,15 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
                 ))}
                 {entry.read_status === 'owned' && (
                   <div
-                    style={{ ...s.menuItem, color: theme.sage, borderTop: `1px solid ${theme.borderLight}`, marginTop: 4 }}
+                    style={{ ...s.menuItem, color: '#5a7a5a', borderTop: `1px solid ${theme.borderLight}`, marginTop: 4 }}
+                    onClick={e => { e.stopPropagation(); toggleHasRead() }}
+                  >
+                    {entry.has_read ? '✓ Read (tap to unmark)' : 'Mark as read'}
+                  </div>
+                )}
+                {entry.read_status === 'owned' && (
+                  <div
+                    style={{ ...s.menuItem, color: theme.sage }}
                     onClick={e => { e.stopPropagation(); setMenuOpen(false); onListForSale() }}
                   >
                     List for sale
@@ -1425,7 +1528,7 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
                     fontSize: 10, color: '#fff', cursor: 'pointer', fontWeight: 600,
                     background: theme.sage, padding: '2px 7px', borderRadius: 4,
                   }}
-                  onClick={(e) => { e.stopPropagation(); changeStatus('read') }}
+                  onClick={(e) => { e.stopPropagation(); changeStatus('owned', true) }}
                 >
                   ✓ Finished
                 </span>

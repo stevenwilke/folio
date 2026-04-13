@@ -9,6 +9,7 @@ import BookTagsManager from '../components/BookTagsManager'
 import { fetchUsedPrices } from '../lib/fetchUsedPrices'
 import { isFiction, computeReadingSpeeds, estimateReadingTime, formatTimer, checkSessionIdle } from '../lib/readingSpeed'
 import { useIsMobile } from '../hooks/useIsMobile'
+import CoverCropModal from '../components/CoverCropModal'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -109,6 +110,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [coverImgError, setCoverImgError]   = useState(false)
   const [coverUploading, setCoverUploading] = useState(false)
   const [showCoverLightbox, setShowCoverLightbox] = useState(false)
+  const [cropImageSrc, setCropImageSrc] = useState(null)
   const coverFileInputRef = useRef(null)
   const [tab, setTab]                   = useState('about')
   const [rating, setRating]             = useState(0)
@@ -426,13 +428,15 @@ export default function BookDetail({ bookId, session, onBack }) {
         await supabase.from('valuations').upsert(row, { onConflict: 'book_id' })
         setValuation(row)
 
-        // Price alert detection
+        // Price alert detection — only if the new price is materially different
         if (cached?.list_price && row.list_price) {
           const oldP = Number(cached.list_price)
           const newP = Number(row.list_price)
-          const pct = Math.round(((newP - oldP) / oldP) * 100)
-          if (pct >= 20 && (newP - oldP) >= 5) {
-            setPriceAlert({ oldPrice: oldP.toFixed(2), newPrice: newP.toFixed(2), pctChange: pct })
+          if (oldP !== newP) {
+            const pct = Math.round(((newP - oldP) / oldP) * 100)
+            if (Math.abs(pct) >= 20 && Math.abs(newP - oldP) >= 5) {
+              setPriceAlert({ oldPrice: oldP.toFixed(2), newPrice: newP.toFixed(2), pctChange: pct })
+            }
           }
         }
       }
@@ -611,19 +615,24 @@ export default function BookDetail({ bookId, session, onBack }) {
   }
 
   async function changeStatus(newStatus) {
+    // Determine has_read: 'read' always true, 'owned' preserves existing, others false
+    let newHasRead = false
+    if (newStatus === 'read') newHasRead = true
+    else if (newStatus === 'owned') newHasRead = entry?.has_read || false
+
     if (entry) {
       const { data } = await supabase
         .from('collection_entries')
-        .update({ read_status: newStatus })
+        .update({ read_status: newStatus, has_read: newHasRead })
         .eq('id', entry.id)
         .select()
         .single()
       if (data) setEntry(data)
-      else setEntry({ ...entry, read_status: newStatus })
+      else setEntry({ ...entry, read_status: newStatus, has_read: newHasRead })
     } else {
       const { data } = await supabase
         .from('collection_entries')
-        .insert({ user_id: session.user.id, book_id: activeBookId, read_status: newStatus })
+        .insert({ user_id: session.user.id, book_id: activeBookId, read_status: newStatus, has_read: newHasRead })
         .select()
         .single()
       if (data) {
@@ -632,6 +641,19 @@ export default function BookDetail({ bookId, session, onBack }) {
         setReviewText('')
       }
     }
+  }
+
+  async function toggleHasRead() {
+    if (!entry) return
+    const newVal = !entry.has_read
+    const { data } = await supabase
+      .from('collection_entries')
+      .update({ has_read: newVal })
+      .eq('id', entry.id)
+      .select()
+      .single()
+    if (data) setEntry(data)
+    else setEntry({ ...entry, has_read: newVal })
   }
 
   async function removeFromLibrary() {
@@ -650,26 +672,34 @@ export default function BookDetail({ bookId, session, onBack }) {
     window.location.href = '/'
   }
 
-  async function handleCoverUpload(e) {
+  function handleCoverUpload(e) {
     const file = e.target.files?.[0]
     if (!file || !book) return
+    // Read as data URL and open crop modal instead of uploading immediately
+    const reader = new FileReader()
+    reader.onload = ev => setCropImageSrc(ev.target.result)
+    reader.readAsDataURL(file)
+    if (coverFileInputRef.current) coverFileInputRef.current.value = ''
+  }
+
+  async function uploadCroppedCover(blob) {
+    if (!book) return
+    setCropImageSrc(null)
     setCoverUploading(true)
     try {
-      const ext  = file.name.split('.').pop()?.toLowerCase() || 'jpg'
-      const path = `${book.id}.${ext}`
+      const path = `${book.id}.jpg`
       const { error: uploadErr } = await supabase.storage
         .from('book-covers')
-        .upload(path, file, { contentType: file.type, upsert: true })
+        .upload(path, blob, { contentType: 'image/jpeg', upsert: true })
       if (!uploadErr) {
         const { data } = supabase.storage.from('book-covers').getPublicUrl(path)
-        const url = data.publicUrl
+        const url = data.publicUrl + '?t=' + Date.now()  // cache-bust
         await supabase.from('books').update({ cover_image_url: url }).eq('id', book.id)
         setBook(prev => ({ ...prev, cover_image_url: url }))
         setCoverImgError(false)
       }
     } catch { /* silent fail */ }
     setCoverUploading(false)
-    if (coverFileInputRef.current) coverFileInputRef.current.value = ''
   }
 
   async function saveHeroRating(n) {
@@ -691,14 +721,14 @@ export default function BookDetail({ bookId, session, onBack }) {
     setCurrentPage(p)
     clearTimeout(savePageTimer.current)
     savePageTimer.current = setTimeout(async () => {
-      // If page reaches or exceeds total pages, auto-mark as read
+      // If page reaches or exceeds total pages, auto-mark as read (keep in library)
       if (book.pages && p >= book.pages) {
         await supabase
           .from('collection_entries')
-          .update({ current_page: book.pages, read_status: 'read' })
+          .update({ current_page: book.pages, read_status: 'owned', has_read: true })
           .eq('id', entry.id)
           .eq('user_id', session.user.id)
-        setEntry(prev => ({ ...prev, read_status: 'read' }))
+        setEntry(prev => ({ ...prev, read_status: 'owned', has_read: true }))
         return
       }
       await supabase
@@ -842,6 +872,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   }
 
   const status = entry?.read_status || null
+  const hasRead = entry?.has_read || false
 
   // Build a row of filled/half/empty stars for community rating display
   function CommunityStars({ avg }) {
@@ -988,6 +1019,16 @@ export default function BookDetail({ bookId, session, onBack }) {
                       </span>
                     </>
                   )}
+                  {/* Estimated used value when no actual used price exists */}
+                  {valuation?.avg_price == null && !valuation?.paperback_avg && !valuation?.hardcover_avg && valuation?.list_price != null && (
+                    <>
+                      <span style={s.valuationDivider}>·</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+                        <span style={{ ...s.valuationMarket, fontStyle: 'italic', opacity: 0.75 }}>~${(Number(valuation.list_price) * 0.35).toFixed(2)}</span>
+                        <span style={{ ...s.valuationSub, fontStyle: 'italic' }}>Est. used</span>
+                      </span>
+                    </>
+                  )}
                   {(valuation?.list_price != null || valuation?.avg_price != null || valuation?.paperback_avg != null) && <span style={s.valuationDivider}>·</span>}
                   <a
                     href={
@@ -1070,6 +1111,23 @@ export default function BookDetail({ bookId, session, onBack }) {
                 </button>
               ))}
             </div>
+            {/* "Mark as read" toggle for owned books */}
+            {status === 'owned' && (
+              <div style={{ marginTop: 8 }}>
+                <button
+                  onClick={toggleHasRead}
+                  style={{
+                    padding: '5px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                    fontFamily: "'DM Sans', sans-serif", cursor: 'pointer', transition: 'all 0.15s',
+                    border: `1px solid ${hasRead ? '#5a7a5a' : theme.border}`,
+                    background: hasRead ? 'rgba(90,122,90,0.15)' : 'transparent',
+                    color: hasRead ? '#5a7a5a' : theme.textMuted,
+                  }}
+                >
+                  {hasRead ? '✓ Read' : 'Mark as read'}
+                </button>
+              </div>
+            )}
 
             {/* Remove from collection */}
             {entry && (
@@ -1178,9 +1236,9 @@ export default function BookDetail({ bookId, session, onBack }) {
                   }}
                   onClick={async () => {
                     await supabase.from('collection_entries')
-                      .update({ read_status: 'read', current_page: book.pages || currentPage || null })
+                      .update({ read_status: 'owned', has_read: true, current_page: book.pages || currentPage || null })
                       .eq('id', entry.id).eq('user_id', session.user.id)
-                    setEntry(prev => ({ ...prev, read_status: 'read' }))
+                    setEntry(prev => ({ ...prev, read_status: 'owned', has_read: true }))
                   }}
                 >
                   ✓ Mark as Finished
@@ -1617,6 +1675,15 @@ export default function BookDetail({ bookId, session, onBack }) {
               theme={theme}
             />
           </div>
+        )}
+
+        {/* Cover crop modal */}
+        {cropImageSrc && (
+          <CoverCropModal
+            imageSrc={cropImageSrc}
+            onCrop={uploadCroppedCover}
+            onCancel={() => setCropImageSrc(null)}
+          />
         )}
 
         {/* Cover lightbox */}

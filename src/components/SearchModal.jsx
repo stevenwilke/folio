@@ -292,7 +292,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
     const { error: collectionError } = await supabase
       .from('collection_entries')
       .upsert(
-        { user_id: session.user.id, book_id: bookId, read_status: status },
+        { user_id: session.user.id, book_id: bookId, read_status: status, has_read: status === 'read' },
         { onConflict: 'user_id,book_id' }
       )
 

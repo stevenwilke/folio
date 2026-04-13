@@ -868,6 +868,7 @@ export default function Discover({ session }) {
         genre:       null,
         user_rating: e.user_rating   ?? null,
         read_status: e.read_status   ?? 'owned',
+        has_read:    e.has_read      ?? false,
       })).filter(b => b.title)
 
       if (books.length < 3) { setAiRecsLoad(false); return }

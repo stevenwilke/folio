@@ -37,7 +37,8 @@ serve(async (req) => {
     for (const query of queries) {
       if (list_price !== null) break
       try {
-        const url = `https://www.googleapis.com/books/v1/volumes?${query}&maxResults=1${apiKey ? `&key=${apiKey}` : ''}`
+        // Request more results so we can skip ebooks and find print edition pricing
+        const url = `https://www.googleapis.com/books/v1/volumes?${query}&maxResults=5${apiKey ? `&key=${apiKey}` : ''}`
         const res = await fetch(url)
         const data = await res.json()
 
@@ -46,21 +47,46 @@ serve(async (req) => {
           continue
         }
 
-        const item = data?.items?.[0]
-        const saleInfo = item?.saleInfo
-        saleability = saleInfo?.saleability ?? null
-        console.log(`Google Books query "${query}": totalItems=${data.totalItems}, saleability=${saleability}`)
+        console.log(`Google Books query "${query}": totalItems=${data.totalItems}`)
 
-        if (saleInfo?.saleability === 'FOR_SALE' || saleInfo?.saleability === 'FOR_PREORDER') {
-          const priceObj = saleInfo.listPrice ?? saleInfo.retailPrice ?? null
-          const amount: number | null = priceObj?.amount ?? null
-          const currency: string | null = priceObj?.currencyCode ?? null
+        // Prefer non-ebook (print) prices over ebook prices
+        let ebookPrice: number | null = null
+        let ebookCurrency: string | null = null
 
-          if (amount && amount > 0) {
-            list_price = Math.round(amount * 100) / 100
-            list_price_currency = currency
-            console.log(`Found price: ${currency} ${amount}`)
+        for (const item of data?.items || []) {
+          const saleInfo = item?.saleInfo
+          if (!saleInfo) continue
+          saleability = saleInfo.saleability ?? saleability
+
+          if (saleInfo.saleability === 'FOR_SALE' || saleInfo.saleability === 'FOR_PREORDER') {
+            const priceObj = saleInfo.listPrice ?? saleInfo.retailPrice ?? null
+            const amount: number | null = priceObj?.amount ?? null
+            const currency: string | null = priceObj?.currencyCode ?? null
+
+            if (amount && amount > 0) {
+              if (saleInfo.isEbook) {
+                // Save ebook price as fallback, but keep looking for print
+                if (ebookPrice === null) {
+                  ebookPrice = Math.round(amount * 100) / 100
+                  ebookCurrency = currency
+                  console.log(`Found ebook price: ${currency} ${amount} (saving as fallback)`)
+                }
+              } else {
+                // Print edition — use this immediately
+                list_price = Math.round(amount * 100) / 100
+                list_price_currency = currency
+                console.log(`Found print price: ${currency} ${amount}`)
+                break
+              }
+            }
           }
+        }
+
+        // If no print price found, fall back to ebook price
+        if (list_price === null && ebookPrice !== null) {
+          list_price = ebookPrice
+          list_price_currency = ebookCurrency
+          console.log(`Using ebook price as fallback: ${ebookCurrency} ${ebookPrice}`)
         }
       } catch (err) {
         console.error('Google Books fetch error:', err)

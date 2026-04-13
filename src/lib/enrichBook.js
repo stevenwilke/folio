@@ -43,7 +43,9 @@ export async function uploadCoverToStorage(coverUrl, bookId) {
     const res = await fetch(coverUrl)
     if (!res.ok) return coverUrl
     const blob = await res.blob()
-    if (!blob.size) return coverUrl
+    // Reject empty, tiny (likely placeholder), or non-image responses
+    if (!blob.size || blob.size < 1000) return coverUrl
+    if (!blob.type.startsWith('image/')) return coverUrl
     const ext = blob.type === 'image/png' ? 'png' : 'jpg'
     const path = `${bookId}.${ext}`
     const { error } = await supabase.storage

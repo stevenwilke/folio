@@ -63,7 +63,7 @@ serve(async (req) => {
           .from('collection_entries')
           .select('id', { count: 'exact', head: true })
           .eq('user_id', uid)
-          .eq('read_status', 'read')
+          .eq('has_read', true)
           .gte('updated_at', oneWeekAgo)
 
         // Format reading time

@@ -6,10 +6,11 @@ import { enrichBook } from '../lib/enrichBook'
 const FORMATS  = ['Hardcover', 'Paperback', 'Mass Market Paperback', 'eBook', 'Audiobook', 'Other']
 const GENRES   = ['Fiction', 'Non-Fiction', 'Mystery', 'Thriller', 'Science Fiction', 'Fantasy', 'Romance', 'Historical Fiction', 'Horror', 'Biography', 'Memoir', 'Self-Help', 'Business', 'Science', 'History', 'Travel', 'Cooking', 'Art', 'Poetry', 'Graphic Novel', 'Children\'s', 'Young Adult', 'Other']
 const STATUSES = [
-  { value: 'owned',   label: 'In My Library' },
-  { value: 'read',    label: 'Read' },
-  { value: 'reading', label: 'Currently Reading' },
-  { value: 'want',    label: 'Want to Read' },
+  { value: 'owned',      label: 'In My Library' },
+  { value: 'owned_read', label: 'In My Library (Read)' },
+  { value: 'read',       label: 'Read (Not Owned)' },
+  { value: 'reading',    label: 'Currently Reading' },
+  { value: 'want',       label: 'Want to Read' },
 ]
 
 export default function ManualAddModal({ session, onClose, onAdded = () => {} }) {
@@ -113,8 +114,10 @@ export default function ManualAddModal({ session, onClose, onAdded = () => {} })
     }
 
     // 3. Add to collection
+    const actualStatus = status === 'owned_read' ? 'owned' : status
+    const hasRead = status === 'owned_read' || status === 'read'
     await supabase.from('collection_entries').upsert(
-      { user_id: session.user.id, book_id: bookId, read_status: status },
+      { user_id: session.user.id, book_id: bookId, read_status: actualStatus, has_read: hasRead },
       { onConflict: 'user_id,book_id' }
     )
 

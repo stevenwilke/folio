@@ -114,14 +114,19 @@ export default function Stats({ session }) {
   const valMap = {}
   for (const v of valuations) valMap[v.book_id] = v
 
+  const USED_ESTIMATE_FACTOR = 0.35
   let totalListValue   = 0
   let listValueCount   = 0
   let totalMarketValue = 0
   let marketValueCount = 0
+  let estimatedMarketValue = 0
+  let estimatedMarketCount = 0
   for (const e of entries) {
+    if (e.read_status === 'want') continue  // exclude want-to-read from value
     const v = valMap[e.book_id]
     if (v?.list_price)  { totalListValue   += Number(v.list_price);  listValueCount++ }
     if (v?.avg_price)   { totalMarketValue += Number(v.avg_price);   marketValueCount++ }
+    else if (v?.list_price) { estimatedMarketValue += Number(v.list_price) * USED_ESTIMATE_FACTOR; estimatedMarketCount++ }
   }
 
   function fmtPrice(n) {
@@ -337,13 +342,16 @@ export default function Stats({ session }) {
               {/* Market / used value */}
               <div style={{ ...s.statCard, borderColor: theme.rust, flex: 1 }}>
                 <div style={{ ...s.statVal, color: theme.rust, fontSize: 22 }}>
-                  {marketValueCount > 0 ? fmtPrice(totalMarketValue) : '—'}
+                  {(marketValueCount > 0 || estimatedMarketCount > 0) ? fmtPrice(totalMarketValue + estimatedMarketValue) : '—'}
                 </div>
                 <div style={s.statLabel}>Used Value (market avg)</div>
                 <div style={{ fontSize: 11, color: theme.textSubtle, marginTop: 4 }}>
                   {marketValueCount > 0
-                    ? `Based on ${marketValueCount} of ${entries.length} books · avg ${fmtPrice(totalMarketValue / marketValueCount)}/book`
+                    ? `Based on ${marketValueCount + estimatedMarketCount} of ${entries.length} books`
                     : 'Open book pages to load pricing'}
+                  {estimatedMarketCount > 0 && (
+                    <span style={{ fontStyle: 'italic' }}> · {fmtPrice(estimatedMarketValue)} est. from {estimatedMarketCount} books</span>
+                  )}
                 </div>
               </div>
             </div>

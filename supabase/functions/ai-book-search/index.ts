@@ -35,6 +35,7 @@ serve(async (req) => {
           if (b.genre)       parts.push(`(${b.genre})`)
           if (b.user_rating) parts.push(`— rated ${b.user_rating}/5`)
           if (b.read_status) parts.push(`[${b.read_status}]`)
+          if (b.has_read && b.read_status !== 'read') parts.push(`[has read]`)
           return parts.join(' ')
         })
         .join('\n')

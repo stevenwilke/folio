@@ -2,12 +2,12 @@ import { useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
 
-// Map Goodreads exclusive_shelf to our status
+// Map Goodreads exclusive_shelf to our status + has_read
 function mapShelf(shelf) {
-  if (shelf === 'read')              return 'read'
-  if (shelf === 'currently-reading') return 'reading'
-  if (shelf === 'to-read')           return 'want'
-  return 'owned'
+  if (shelf === 'read')              return { status: 'read', has_read: true }
+  if (shelf === 'currently-reading') return { status: 'reading', has_read: false }
+  if (shelf === 'to-read')           return { status: 'want', has_read: false }
+  return { status: 'owned', has_read: false }
 }
 
 // Parse Goodreads CSV export
@@ -42,7 +42,7 @@ function parseGoodreadsCSV(text) {
       rating:  parseInt(cols[idx.rating]) || null,
       pages:   parseInt(cols[idx.pages])  || null,
       year:    parseInt(cols[idx.year])   || null,
-      status:  mapShelf(cols[idx.shelf]   || ''),
+      ...mapShelf(cols[idx.shelf]   || ''),
       review:  cols[idx.review]?.trim()   || null,
       format:  cols[idx.binding]?.trim()  || null,
     }
@@ -179,6 +179,7 @@ export default function GoodreadsImportModal({ session, onClose, onImported }) {
               user_id:     user.id,
               book_id:     bookId,
               read_status: b.status,
+              has_read:    b.has_read ?? false,
               user_rating: b.rating || null,
               review_text: b.review || null,
             }, { onConflict: 'user_id,book_id' })

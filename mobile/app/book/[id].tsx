@@ -166,13 +166,39 @@ export default function BookDetailScreen() {
     setJournalEntries(data || []);
   }
 
-  async function handleCoverUpload() {
+  function handleCoverUpload() {
     if (!book) return;
-    const result = await ImagePicker.launchImageLibraryAsync({
+    Alert.alert('Upload Cover', 'Choose a source', [
+      { text: 'Take Photo', onPress: () => pickCover('camera') },
+      { text: 'Choose from Library', onPress: () => pickCover('library') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
+
+  async function pickCover(source: 'camera' | 'library') {
+    if (!book) return;
+
+    // Request permissions
+    if (source === 'camera') {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Camera access is required to take a photo.');
+        return;
+      }
+    }
+
+    const options: ImagePicker.ImagePickerOptions = {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.85,
       base64: true,
-    });
+      allowsEditing: true,
+      aspect: [2, 3] as [number, number],
+    };
+
+    const result = source === 'camera'
+      ? await ImagePicker.launchCameraAsync(options)
+      : await ImagePicker.launchImageLibraryAsync(options);
+
     if (result.canceled || !result.assets[0]?.base64) return;
     setCoverUploading(true);
     try {
@@ -185,8 +211,9 @@ export default function BookDetailScreen() {
         .upload(path, bytes, { contentType: asset.mimeType || 'image/jpeg', upsert: true });
       if (!error) {
         const { data } = supabase.storage.from('book-covers').getPublicUrl(path);
-        await supabase.from('books').update({ cover_image_url: data.publicUrl }).eq('id', book.id);
-        setBook(prev => prev ? { ...prev, cover_image_url: data.publicUrl } : prev);
+        const url = data.publicUrl + '?t=' + Date.now();
+        await supabase.from('books').update({ cover_image_url: url }).eq('id', book.id);
+        setBook(prev => prev ? { ...prev, cover_image_url: url } : prev);
       }
     } catch { /* silent */ }
     setCoverUploading(false);

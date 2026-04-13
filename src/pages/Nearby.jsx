@@ -353,7 +353,7 @@ export default function Nearby({ session }) {
               <div style={s.empty}>
                 <div style={{ fontSize: 36, marginBottom: 12 }}>📚</div>
                 <div style={{ fontWeight: 600, color: theme.text, marginBottom: 6 }}>No book drops yet</div>
-                <div>Open a book and tap "Free This Book" to get started!</div>
+                <div>Open a book and tap "Free Book Drop" to get started!</div>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

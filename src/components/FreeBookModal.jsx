@@ -148,7 +148,7 @@ export default function FreeBookModal({ session, book, parentDropId, onClose, on
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: theme.text, margin: 0 }}>
-            📍 Free This Book
+            📍 Free Book Drop
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textSubtle }}>✕</button>
         </div>
@@ -238,7 +238,7 @@ export default function FreeBookModal({ session, book, parentDropId, onClose, on
             fontFamily: "'DM Sans', sans-serif",
           }}
         >
-          {submitting ? 'Dropping book...' : 'Free This Book'}
+          {submitting ? 'Dropping book...' : 'Drop This Book'}
         </button>
       </div>
     </div>

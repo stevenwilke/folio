@@ -1238,7 +1238,7 @@ export default function BookDetail({ bookId, session, onBack }) {
                   💌 Recommend
                 </button>
                 <button style={{ ...s.lendOutBtn, borderColor: theme.rust, color: theme.rust }} onClick={() => setShowFreeModal(true)}>
-                  📍 Free This Book
+                  📍 Free Book Drop
                 </button>
               </div>
             )}

@@ -22,6 +22,10 @@ import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { FakeCover } from '../../components/FakeCover';
 import { ReadStatus } from '../../components/BookCard';
+import RatingDistribution from '../../components/RatingDistribution';
+import QuoteCard from '../../components/QuoteCard';
+import AddQuoteModal from '../../components/AddQuoteModal';
+import BookJourney from '../../components/BookJourney';
 import { fetchUsedPrices } from '../../lib/fetchUsedPrices';
 import { isFiction, computeReadingSpeeds, estimateReadingTime, formatTimer, checkSessionIdle, ReadingSpeeds } from '../../lib/readingSpeed';
 
@@ -113,6 +117,7 @@ export default function BookDetailScreen() {
   const [book, setBook] = useState<Book | null>(null);
   const [entry, setEntry] = useState<CollectionEntry | null>(null);
   const [communityRating, setCommunityRating] = useState<number | null>(null);
+  const [ratingDist, setRatingDist] = useState<{stars_1:number,stars_2:number,stars_3:number,stars_4:number,stars_5:number}|null>(null);
   const [friendStats, setFriendStats] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -143,6 +148,37 @@ export default function BookDetailScreen() {
   const [recDone, setRecDone] = useState(false);
   const [endPageInput, setEndPageInput]   = useState('');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Quotes
+  const [quotes, setQuotes] = useState<any[]>([]);
+  const [showAddQuote, setShowAddQuote] = useState(false);
+
+  async function fetchQuotes(bookId: string) {
+    const { data } = await supabase
+      .from('book_quotes')
+      .select('*, profiles:user_id(username)')
+      .eq('book_id', bookId)
+      .order('created_at', { ascending: false });
+    setQuotes(data || []);
+  }
+
+  async function deleteQuote(id: string) {
+    await supabase.from('book_quotes').delete().eq('id', id);
+    if (book) fetchQuotes(book.id);
+  }
+
+  async function shareQuoteToFeed(quote: any) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !book) return;
+    await supabase.from('reading_posts').insert({
+      user_id: user.id,
+      book_id: book.id,
+      content: `"${quote.quote_text}"${quote.page_number ? ` (p.${quote.page_number})` : ''}`,
+      post_type: 'quote',
+      quote_id: quote.id,
+    });
+    Alert.alert('Shared', 'Quote posted to your feed!');
+  }
 
   // Feature 1: Reading Journal
   const [journalEntries, setJournalEntries] = useState<{id: string, content: string, created_at: string}[]>([]);
@@ -290,12 +326,20 @@ export default function BookDetailScreen() {
         0
       );
       setCommunityRating(Math.round((sum / ratingsData.length) * 10) / 10);
+      const dist = { stars_1: 0, stars_2: 0, stars_3: 0, stars_4: 0, stars_5: 0 };
+      ratingsData.forEach((r: { user_rating: number }) => {
+        const key = `stars_${Math.round(r.user_rating)}` as keyof typeof dist;
+        if (key in dist) dist[key]++;
+      });
+      setRatingDist(ratingsData.length >= 5 ? dist : null);
     } else {
       setCommunityRating(null);
+      setRatingDist(null);
     }
 
-    // Fetch journal entries
+    // Fetch journal entries + quotes
     await fetchJournal(id, user.id);
+    await fetchQuotes(id);
 
     // Fetch series books if applicable
     if (bookData?.series_name) {
@@ -459,16 +503,24 @@ export default function BookDetailScreen() {
       setCurrentPage(endPage);
     }
     // Auto-post reading session to feed (if significant)
-    if (pagesRead >= 10 && book) {
+    if (pagesRead >= 5 && book) {
       const durationMin = Math.round((Date.now() - new Date(activeSession.started_at).getTime()) / 60000);
-      const durLabel = durationMin >= 60
-        ? `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`
-        : `${durationMin} min`;
+      const speedPpm = durationMin > 0 ? Math.round((pagesRead / durationMin) * 100) / 100 : null;
       const { data: { user: u } } = await supabase.auth.getUser();
       if (u) {
         await supabase.from('reading_posts').insert({
-          user_id: u.id, book_id: book.id,
-          content: `📖 Read ${pagesRead} pages of ${book.title} in ${durLabel}`,
+          user_id: u.id,
+          book_id: book.id,
+          post_type: 'activity',
+          content: null,
+          session_data: {
+            pages_read: pagesRead,
+            duration_min: durationMin,
+            start_page: activeSession.start_page || 0,
+            end_page: endPage,
+            total_pages: (book as any).pages || null,
+            speed_ppm: speedPpm,
+          },
         }).catch(() => {});
       }
     }
@@ -832,6 +884,7 @@ export default function BookDetailScreen() {
                 <Text style={styles.communityRatingValue}>
                   {communityRating}/5 community
                 </Text>
+                {ratingDist && <RatingDistribution {...ratingDist} />}
               </View>
             ) : null}
 
@@ -979,6 +1032,54 @@ export default function BookDetailScreen() {
             )}
           </View>
         )}
+
+        {/* Quotes */}
+        <View style={styles.section}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <Text style={styles.sectionLabel}>Quotes</Text>
+            {entry && (
+              <TouchableOpacity onPress={() => setShowAddQuote(true)}>
+                <Text style={{ fontSize: 12, color: Colors.rust, fontWeight: '600' }}>+ Add Quote</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {quotes.length === 0 ? (
+            <Text style={{ fontSize: 13, color: Colors.muted, textAlign: 'center', paddingVertical: 12 }}>
+              No quotes saved yet
+            </Text>
+          ) : (
+            <View style={{ gap: 10 }}>
+              {quotes.map(q => (
+                <QuoteCard
+                  key={q.id}
+                  quoteText={q.quote_text}
+                  bookTitle={book?.title}
+                  bookAuthor={book?.author}
+                  pageNumber={q.page_number}
+                  note={q.note}
+                  username={q.profiles?.username}
+                  onShare={() => shareQuoteToFeed(q)}
+                  onDelete={q.user_id === entry?.user_id ? () => deleteQuote(q.id) : undefined}
+                />
+              ))}
+            </View>
+          )}
+        </View>
+        <AddQuoteModal
+          visible={showAddQuote}
+          bookTitle={book?.title || ''}
+          onClose={() => setShowAddQuote(false)}
+          onSave={async (quote) => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user || !book) return;
+            await supabase.from('book_quotes').insert({
+              user_id: user.id,
+              book_id: book.id,
+              ...quote,
+            });
+            fetchQuotes(book.id);
+          }}
+        />
 
         {/* Reading progress — only shown when currently reading + book has page count */}
         {entry?.read_status === 'reading' && (book as any).pages ? (
@@ -1274,16 +1375,30 @@ export default function BookDetailScreen() {
           </View>
         )}
 
-        {/* Recommend to friend */}
+        {/* Recommend + Free Book Drop */}
         {entry && (
           <View style={styles.section}>
             <TouchableOpacity
-              style={{ borderWidth: 1.5, borderColor: Colors.sage, borderRadius: 8, paddingVertical: 12, alignItems: 'center' }}
+              style={{ borderWidth: 1.5, borderColor: Colors.sage, borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginBottom: 8 }}
               onPress={() => setShowRecommendModal(true)}
               activeOpacity={0.8}
             >
               <Text style={{ color: Colors.sage, fontSize: 14, fontWeight: '600' }}>💌 Recommend to Friend</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={{ borderWidth: 1.5, borderColor: Colors.rust, borderRadius: 8, paddingVertical: 12, alignItems: 'center' }}
+              onPress={() => router.push('/nearby')}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: Colors.rust, fontSize: 14, fontWeight: '600' }}>📍 Free Book Drop</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Book Journey */}
+        {book && (
+          <View style={styles.section}>
+            <BookJourney bookId={book.id} />
           </View>
         )}
 

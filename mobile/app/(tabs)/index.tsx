@@ -24,7 +24,7 @@ import { Colors } from '../../constants/colors';
 import { BookCard, ReadStatus } from '../../components/BookCard';
 import ShelfPlannerModal, { ShelfBook } from '../../components/ShelfPlannerModal';
 
-type FilterKey = 'all' | ReadStatus;
+type FilterKey = 'all' | ReadStatus | 'series';
 
 const FILTER_OPTIONS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -32,6 +32,7 @@ const FILTER_OPTIONS: { key: FilterKey; label: string }[] = [
   { key: 'read', label: 'Read' },
   { key: 'reading', label: 'Reading' },
   { key: 'want', label: 'Want' },
+  { key: 'series', label: 'Series' },
 ];
 
 interface CollectionEntry {
@@ -245,7 +246,30 @@ export default function LibraryScreen() {
   }
 
   const filtered =
-    filter === 'all' ? entries : entries.filter((e) => e.read_status === filter);
+    filter === 'all' ? entries
+    : filter === 'series' ? entries.filter(e => e.books?.series_name)
+    : entries.filter((e) => e.read_status === filter);
+
+  // Series grouping when series filter is active
+  const seriesGroups = filter === 'series' ? (() => {
+    const groups: Record<string, CollectionEntry[]> = {};
+    filtered.forEach(e => {
+      const name = e.books?.series_name || 'Unknown';
+      if (!groups[name]) groups[name] = [];
+      groups[name].push(e);
+    });
+    return Object.entries(groups)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, books]) => ({
+        name,
+        books: books.sort((a, b) => {
+          const an = parseFloat(String(a.books?.series_position || '999'));
+          const bn = parseFloat(String(b.books?.series_position || '999'));
+          return an - bn;
+        }),
+        readCount: books.filter(b => b.read_status === 'read' || (b as any).has_read).length,
+      }));
+  })() : [];
 
   const stats: Stats = {
     total: entries.length,
@@ -387,23 +411,73 @@ export default function LibraryScreen() {
           <ActivityIndicator size="large" color={Colors.rust} />
         </View>
       ) : (
-        <FlatList
-          key={COLUMNS}
-          data={filtered}
-          numColumns={COLUMNS}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          ListHeaderComponent={ListHeader}
-          ListEmptyComponent={EmptyState}
-          contentContainerStyle={[styles.gridContent, filtered.length === 0 && styles.gridContentEmpty]}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={Colors.rust}
-            />
-          }
-        />
+        {filter === 'series' ? (
+          <FlatList
+            data={seriesGroups}
+            keyExtractor={(item) => item.name}
+            ListHeaderComponent={ListHeader}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <Text style={styles.emptyIcon}>📚</Text>
+                <Text style={styles.emptyTitle}>No series found</Text>
+                <Text style={styles.emptyDesc}>Books with series info will appear here.</Text>
+              </View>
+            }
+            renderItem={({ item: group }) => (
+              <View style={{ marginHorizontal: 16, marginBottom: 16, backgroundColor: Colors.card, borderRadius: 12, borderWidth: 1, borderColor: Colors.border, padding: 14 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <Text style={{ fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }), fontSize: 16, fontWeight: '700', color: Colors.ink }}>{group.name}</Text>
+                  <Text style={{ fontSize: 12, color: group.readCount === group.books.length ? Colors.sage : Colors.muted, fontWeight: '500' }}>
+                    {group.readCount}/{group.books.length} read
+                  </Text>
+                </View>
+                <FlatList
+                  data={group.books}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      onPress={() => router.push(`/book/${item.book_id}`)}
+                      style={{ width: 60, marginRight: 8 }}
+                    >
+                      {item.books?.cover_image_url ? (
+                        <Image source={{ uri: item.books.cover_image_url }} style={{ width: 60, height: 90, borderRadius: 4 }} />
+                      ) : (
+                        <View style={{ width: 60, height: 90, borderRadius: 4, backgroundColor: Colors.border, alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ fontSize: 8, color: Colors.muted, textAlign: 'center', paddingHorizontal: 2 }}>{item.books?.title}</Text>
+                        </View>
+                      )}
+                      <Text style={{ fontSize: 10, color: Colors.muted, marginTop: 2 }} numberOfLines={1}>
+                        #{item.books?.series_position || '?'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            )}
+            contentContainerStyle={[styles.gridContent, seriesGroups.length === 0 && styles.gridContentEmpty]}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.rust} />}
+          />
+        ) : (
+          <FlatList
+            key={COLUMNS}
+            data={filtered}
+            numColumns={COLUMNS}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            ListHeaderComponent={ListHeader}
+            ListEmptyComponent={EmptyState}
+            contentContainerStyle={[styles.gridContent, filtered.length === 0 && styles.gridContentEmpty]}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={Colors.rust}
+              />
+            }
+          />
+        )}
       )}
 
       <ShelfPlannerModal

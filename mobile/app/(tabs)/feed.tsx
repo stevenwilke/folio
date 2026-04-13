@@ -21,6 +21,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { ReadStatus } from '../../components/BookCard';
+import ActivityCard from '../../components/ActivityCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -159,7 +160,7 @@ export default function FeedScreen() {
       supabase
         .from('reading_posts')
         .select(`
-          id, user_id, content, image_url, created_at,
+          id, user_id, content, image_url, post_type, session_data, created_at,
           books ( id, title, author, cover_image_url ),
           profiles!reading_posts_user_id_fkey ( username ),
           post_likes ( user_id ),
@@ -651,8 +652,29 @@ function PostCard({ post, currentUserId, onLike, onComments, onBookPress }: {
         </TouchableOpacity>
       )}
 
+      {/* Activity card (Strava-style) */}
+      {post.post_type === 'activity' && post.session_data ? (
+        <ActivityCard
+          pagesRead={post.session_data.pages_read}
+          durationMin={post.session_data.duration_min}
+          speedPpm={post.session_data.speed_ppm}
+          startPage={post.session_data.start_page}
+          endPage={post.session_data.end_page}
+          totalPages={post.session_data.total_pages}
+        />
+      ) : null}
+
+      {/* Quote post */}
+      {post.post_type === 'quote' && post.content ? (
+        <View style={{ borderLeftWidth: 3, borderLeftColor: Colors.gold, paddingLeft: 14, marginHorizontal: 16, marginBottom: 8 }}>
+          <Text style={{ fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }), fontStyle: 'italic', fontSize: 15, lineHeight: 22, color: Colors.ink }}>
+            {post.content}
+          </Text>
+        </View>
+      ) : null}
+
       {/* Text */}
-      {post.content ? (
+      {post.content && post.post_type !== 'quote' && post.post_type !== 'activity' ? (
         <Text style={styles.postContent}>{post.content}</Text>
       ) : null}
 

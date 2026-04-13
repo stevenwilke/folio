@@ -7,12 +7,18 @@ import {
   ActivityIndicator,
   Platform,
   RefreshControl,
+  TouchableOpacity,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 // BadgesSection moved to dedicated /badges screen
 import { computeReadingSpeeds, formatDuration, ReadingSpeeds } from '../lib/readingSpeed';
+import { computeChallengeProgress, generateMonthlyChallenges } from '../lib/challenges';
+import ChallengeCard from '../components/ChallengeCard';
+import NewChallengeModal from '../components/NewChallengeModal';
+import ReadingHeatmap from '../components/ReadingHeatmap';
+import ReadingWrapped from '../components/ReadingWrapped';
 
 // ---- Types ----
 
@@ -190,6 +196,10 @@ export default function StatsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [rawEntries, setRawEntries] = useState<any[]>([]);
   const [friendCount, setFriendCount] = useState(0);
+  const [challenges, setChallenges] = useState<any[]>([]);
+  const [allSessions, setAllSessions] = useState<any[]>([]);
+  const [sessionDates, setSessionDates] = useState<string[]>([]);
+  const [showNewChallenge, setShowNewChallenge] = useState(false);
 
   async function fetchStats() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -294,6 +304,18 @@ export default function StatsScreen() {
         return sum + (new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 60000;
       }, 0));
     }
+
+    setAllSessions(sessions || []);
+    setSessionDates((sessions || []).map((s: any) => s.ended_at?.slice(0, 10)).filter(Boolean));
+
+    // Challenges
+    const { data: challengeData } = await supabase
+      .from('reading_challenges')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('year', new Date().getFullYear())
+      .order('created_at', { ascending: false });
+    setChallenges(challengeData || []);
 
     // Valuations
     const bookIds = all.map((e: any) => e.book_id).filter(Boolean);
@@ -490,6 +512,77 @@ export default function StatsScreen() {
           </Text>
         </Section>
       )}
+
+      {/* Reading Challenges */}
+      <Section title="Challenges">
+        <View style={{ gap: 10 }}>
+          {challenges.filter(c => c.status === 'active').map(c => (
+            <ChallengeCard
+              key={c.id}
+              challenge={c}
+              progress={computeChallengeProgress(c, rawEntries, allSessions)}
+              onDelete={async () => {
+                await supabase.from('reading_challenges').delete().eq('id', c.id);
+                setChallenges(prev => prev.filter(x => x.id !== c.id));
+              }}
+            />
+          ))}
+          {challenges.length === 0 && (
+            <Text style={{ fontSize: 13, color: Colors.muted, textAlign: 'center', paddingVertical: 12 }}>
+              No challenges yet
+            </Text>
+          )}
+          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: 4 }}>
+            <TouchableOpacity
+              onPress={() => setShowNewChallenge(true)}
+              style={{ paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, backgroundColor: Colors.rust }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.white }}>+ New Challenge</Text>
+            </TouchableOpacity>
+            {challenges.filter(c => c.is_system && c.month === new Date().getMonth() + 1).length === 0 && rawEntries.length > 0 && (
+              <TouchableOpacity
+                onPress={async () => {
+                  const { data: { user } } = await supabase.auth.getUser();
+                  if (!user) return;
+                  const suggestions = generateMonthlyChallenges(rawEntries, allSessions);
+                  for (const s of suggestions) {
+                    await supabase.from('reading_challenges').insert({ user_id: user.id, ...s });
+                  }
+                  const { data } = await supabase.from('reading_challenges').select('*').eq('user_id', user.id).eq('year', new Date().getFullYear()).order('created_at', { ascending: false });
+                  setChallenges(data || []);
+                }}
+                style={{ paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderColor: Colors.border }}
+              >
+                <Text style={{ fontSize: 12, color: Colors.rust }}>Auto-Generate</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Section>
+      <NewChallengeModal
+        visible={showNewChallenge}
+        onClose={() => setShowNewChallenge(false)}
+        onSave={async (challenge) => {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+          await supabase.from('reading_challenges').insert({ user_id: user.id, ...challenge });
+          const { data } = await supabase.from('reading_challenges').select('*').eq('user_id', user.id).eq('year', new Date().getFullYear()).order('created_at', { ascending: false });
+          setChallenges(data || []);
+        }}
+      />
+
+      {/* Reading Activity Heatmap */}
+      {sessionDates.length > 0 && (
+        <Section title="Reading Activity">
+          <ReadingHeatmap activityDates={[
+            ...sessionDates,
+            ...rawEntries.filter((e: any) => e.read_status === 'read' || e.read_status === 'reading').map((e: any) => e.added_at?.slice(0, 10)).filter(Boolean),
+          ]} />
+        </Section>
+      )}
+
+      {/* Reading Wrapped */}
+      <ReadingWrapped entries={rawEntries} sessions={allSessions} year={new Date().getFullYear()} />
 
       {/* Reading highlights */}
       <Section title="Reading Highlights">

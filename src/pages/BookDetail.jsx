@@ -451,28 +451,35 @@ export default function BookDetail({ bookId, session, onBack }) {
 
       const data = retailResult.status === 'fulfilled' ? retailResult.value.data : null
       const used = usedResult.status === 'fulfilled' ? usedResult.value : null
+      // Prefer client-side ThriftBooks data; fall back to edge function data
+      const usedData = used?.avg_price != null ? used : (data?.avg_price != null ? data : null)
 
-      const found = data?.found || used
+      const found = data?.found || usedData
 
       if (!found) {
-        await supabase.from('valuations').upsert(
-          { book_id: bookData.id, avg_price: null, fetched_at: new Date().toISOString() },
-          { onConflict: 'book_id' }
-        )
+        // Don't overwrite existing prices with null — only write if no cache exists
+        if (!cached?.avg_price && !cached?.list_price) {
+          await supabase.from('valuations').upsert(
+            { book_id: bookData.id, fetched_at: new Date().toISOString() },
+            { onConflict: 'book_id' }
+          )
+        }
         setValuation(false)
       } else {
         const row = {
           book_id:             bookData.id,
-          avg_price:           used?.avg_price       ?? null,
-          min_price:           used?.min_price       ?? null,
-          max_price:           used?.max_price       ?? null,
-          sample_count:        used?.sample_count    ?? null,
-          paperback_avg:       used?.paperback_avg   ?? null,
-          hardcover_avg:       used?.hardcover_avg   ?? null,
           currency:            data?.currency        || 'USD',
           list_price:          data?.list_price ?? used?.new_price ?? null,
           list_price_currency: data?.list_price_currency ?? (used?.new_price ? 'USD' : null),
           fetched_at:          new Date().toISOString(),
+        }
+        if (usedData?.avg_price != null) {
+          row.avg_price     = usedData.avg_price
+          row.min_price     = usedData.min_price     ?? null
+          row.max_price     = usedData.max_price     ?? null
+          row.sample_count  = usedData.sample_count  ?? null
+          row.paperback_avg = usedData.paperback_avg ?? null
+          row.hardcover_avg = usedData.hardcover_avg ?? null
         }
         await supabase.from('valuations').upsert(row, { onConflict: 'book_id' })
         setValuation(row)

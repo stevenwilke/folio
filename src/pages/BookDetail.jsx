@@ -1000,7 +1000,7 @@ export default function BookDetail({ bookId, session, onBack }) {
                     · {communityRating.rating_count} {communityRating.rating_count === 1 ? 'rating' : 'ratings'} on Ex Libris
                   </span>
                 </div>
-                {communityRating.rating_count >= 2 && (
+                {communityRating.rating_count >= 5 && (
                   <RatingDistribution
                     stars_1={communityRating.stars_1}
                     stars_2={communityRating.stars_2}

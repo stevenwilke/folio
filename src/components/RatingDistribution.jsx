@@ -1,6 +1,6 @@
 import { useTheme } from '../contexts/ThemeContext'
 
-export default function RatingDistribution({ stars_1 = 0, stars_2 = 0, stars_3 = 0, stars_4 = 0, stars_5 = 0, rating_count = 0 }) {
+export default function RatingDistribution({ stars_1 = 0, stars_2 = 0, stars_3 = 0, stars_4 = 0, stars_5 = 0 }) {
   const { theme } = useTheme()
   const bars = [
     { label: '5', count: stars_5 },
@@ -12,24 +12,24 @@ export default function RatingDistribution({ stars_1 = 0, stars_2 = 0, stars_3 =
   const maxCount = Math.max(...bars.map(b => b.count), 1)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6, maxWidth: 200 }}>
       {bars.map(({ label, count }) => (
-        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 12, color: theme.gold, width: 16, textAlign: 'right', flexShrink: 0 }}>
-            {label}★
+        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 10, color: theme.textSubtle, width: 10, textAlign: 'right', flexShrink: 0 }}>
+            {label}
           </span>
           <div style={{
-            flex: 1, height: 10, background: theme.bgSubtle,
-            borderRadius: 5, overflow: 'hidden',
+            flex: 1, height: 6, background: theme.bgSubtle,
+            borderRadius: 3, overflow: 'hidden',
           }}>
             <div style={{
-              height: '100%', borderRadius: 5,
+              height: '100%', borderRadius: 3,
               background: theme.gold,
               width: count > 0 ? `${Math.max(4, (count / maxCount) * 100)}%` : '0%',
               transition: 'width 0.4s ease',
             }} />
           </div>
-          <span style={{ fontSize: 11, color: theme.textSubtle, width: 24, flexShrink: 0 }}>
+          <span style={{ fontSize: 10, color: theme.textSubtle, width: 16, flexShrink: 0 }}>
             {count}
           </span>
         </div>

@@ -86,7 +86,7 @@ export default function Feed({ session }) {
       supabase
         .from('reading_posts')
         .select(`
-          id, user_id, content, image_url, created_at,
+          id, user_id, content, image_url, post_type, session_data, created_at,
           books ( id, title, author, cover_image_url, isbn_13, isbn_10 ),
           profiles!reading_posts_user_id_fkey ( username ),
           post_likes ( user_id ),
@@ -464,6 +464,58 @@ function PostCard({ post, theme, isDark, currentUserId, onLike, onDelete, onBook
           <span style={{ marginLeft: 'auto', fontSize: 11, color: theme.rust, fontFamily: "'DM Sans', sans-serif" }}>View →</span>
         </div>
       )}
+
+      {/* ── Activity card (Strava-style) ── */}
+      {post.post_type === 'activity' && post.session_data && (() => {
+        const sd = post.session_data
+        const durLabel = sd.duration_min >= 60
+          ? `${Math.floor(sd.duration_min / 60)}h ${sd.duration_min % 60}m`
+          : `${sd.duration_min} min`
+        const pct = sd.total_pages && sd.end_page
+          ? Math.min(100, Math.round((sd.end_page / sd.total_pages) * 100))
+          : null
+        return (
+          <div style={{ margin: '0 16px 12px', padding: '14px 16px', background: isDark ? 'rgba(90,122,90,0.08)' : 'rgba(90,122,90,0.06)', borderRadius: 12, border: `1px solid ${isDark ? 'rgba(90,122,90,0.15)' : 'rgba(90,122,90,0.12)'}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 18 }}>📖</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: theme.text, fontFamily: "'DM Sans', sans-serif" }}>
+                Reading Session
+              </span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: pct != null ? 10 : 0 }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: theme.text, fontFamily: "'Playfair Display', Georgia, serif" }}>
+                  {sd.pages_read}
+                </div>
+                <div style={{ fontSize: 10, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.8 }}>Pages</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: theme.text, fontFamily: "'Playfair Display', Georgia, serif" }}>
+                  {durLabel}
+                </div>
+                <div style={{ fontSize: 10, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.8 }}>Time</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: theme.text, fontFamily: "'Playfair Display', Georgia, serif" }}>
+                  {sd.speed_ppm ? `${sd.speed_ppm}` : '—'}
+                </div>
+                <div style={{ fontSize: 10, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.8 }}>Pages/min</div>
+              </div>
+            </div>
+            {pct != null && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: theme.textSubtle, marginBottom: 4 }}>
+                  <span>p.{sd.start_page} → p.{sd.end_page}</span>
+                  <span>{pct}% complete</span>
+                </div>
+                <div style={{ height: 6, background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: '#5a7a5a', borderRadius: 3, transition: 'width 0.4s' }} />
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* ── Post text ── */}
       {post.content && (

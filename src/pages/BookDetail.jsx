@@ -628,17 +628,24 @@ export default function BookDetail({ bookId, session, onBack }) {
       setCurrentPage(endPage)
     }
 
-    // Auto-post reading session to feed (if significant)
-    if (pagesRead >= 10 && book) {
+    // Auto-post reading session to feed as Strava-style activity card
+    if (pagesRead >= 5 && book) {
       const durationMin = Math.round((Date.now() - new Date(activeSession.started_at).getTime()) / 60000)
-      const durLabel = durationMin >= 60
-        ? `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`
-        : `${durationMin} min`
+      const speedPpm = durationMin > 0 ? Math.round((pagesRead / durationMin) * 100) / 100 : null
       await supabase.from('reading_posts').insert({
         user_id: session.user.id,
         book_id: book.id,
-        content: `📖 Read ${pagesRead} pages of ${book.title} in ${durLabel}`,
-      }).catch(() => {}) // silent fail
+        post_type: 'activity',
+        content: null,
+        session_data: {
+          pages_read: pagesRead,
+          duration_min: durationMin,
+          start_page: activeSession.start_page || 0,
+          end_page: endPage,
+          total_pages: book.pages || null,
+          speed_ppm: speedPpm,
+        },
+      }).catch(() => {})
     }
 
     setActiveSession(null)

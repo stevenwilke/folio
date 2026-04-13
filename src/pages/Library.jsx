@@ -913,7 +913,11 @@ export default function Library({ session }) {
           <button style={{ ...s.filterInactive, color: theme.accent, borderColor: theme.accent }} onClick={() => setShowShelfPlanner(true)}>
             📚 Shelf Planner
           </button>
-          <div style={{ position: 'relative', display: 'inline-block' }}>
+          <div
+            style={{ position: 'relative', display: 'inline-block' }}
+            onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setShowExportMenu(false) }}
+            tabIndex={-1}
+          >
             <button style={{ ...s.filterInactive, color: theme.sage, borderColor: theme.sage }} onClick={() => setShowExportMenu(v => !v)}>
               📤 Export ▾
             </button>

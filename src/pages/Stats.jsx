@@ -5,6 +5,12 @@ import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { computeBadges, BADGE_CATEGORIES, TIER_STYLES } from '../lib/badges'
 import { computeReadingSpeeds, formatDuration } from '../lib/readingSpeed'
+import { computeChallengeProgress, generateMonthlyChallenges } from '../lib/challenges'
+import ChallengeCard from '../components/ChallengeCard'
+import NewChallengeModal from '../components/NewChallengeModal'
+import ReadingHeatmap from '../components/ReadingHeatmap'
+import SparklineChart from '../components/SparklineChart'
+import ReadingWrapped from '../components/ReadingWrapped'
 
 const CHART_COLORS = ['#c0521e', '#5a7a5a', '#b8860b', '#4a6b8a', '#7b4f3a', '#8b5e83', '#3d6b6b']
 
@@ -51,6 +57,9 @@ export default function Stats({ session }) {
   const [badges,       setBadges]       = useState([])
   const [readingSessionStats, setReadingSessionStats] = useState(null)
   const [sessionDates, setSessionDates] = useState([])
+  const [challenges, setChallenges]     = useState([])
+  const [allSessions, setAllSessions]   = useState([])
+  const [showNewChallenge, setShowNewChallenge] = useState(false)
 
   useEffect(() => { fetchData() }, [])
 
@@ -95,8 +104,38 @@ export default function Stats({ session }) {
       // Extract dates for heatmap/streak
       setSessionDates(sessions.map(s => s.ended_at?.slice(0, 10)).filter(Boolean))
     }
+    setAllSessions(sessions || [])
+
+    // Fetch reading challenges
+    const { data: challengeData } = await supabase
+      .from('reading_challenges')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .eq('year', new Date().getFullYear())
+      .order('created_at', { ascending: false })
+    setChallenges(challengeData || [])
 
     setLoading(false)
+  }
+
+  async function createChallenge(challenge) {
+    await supabase.from('reading_challenges').insert({
+      user_id: session.user.id,
+      ...challenge,
+    })
+    // Refetch
+    const { data } = await supabase
+      .from('reading_challenges')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .eq('year', new Date().getFullYear())
+      .order('created_at', { ascending: false })
+    setChallenges(data || [])
+  }
+
+  async function deleteChallenge(id) {
+    await supabase.from('reading_challenges').delete().eq('id', id)
+    setChallenges(prev => prev.filter(c => c.id !== id))
   }
 
   // ── COMPUTED STATS ──
@@ -451,6 +490,132 @@ export default function Stats({ session }) {
               </div>
             </div>
 
+            {/* ── READING HEATMAP ── */}
+            <div style={s.section}>
+              <div style={s.sectionHeadRow}>
+                <span style={{ fontSize: 22 }}>📅</span>
+                <span style={{ ...s.chartTitle, marginBottom: 0 }}>Reading Activity</span>
+              </div>
+              <ReadingHeatmap activityDates={allActivityDates} />
+            </div>
+
+            {/* ── WEEKLY TRENDS ── */}
+            {allSessions.length > 0 && (() => {
+              // Compute pages per week for last 12 weeks
+              const weeklyPages = []
+              const now = new Date()
+              for (let w = 11; w >= 0; w--) {
+                const weekStart = new Date(now)
+                weekStart.setDate(weekStart.getDate() - (w + 1) * 7)
+                const weekEnd = new Date(now)
+                weekEnd.setDate(weekEnd.getDate() - w * 7)
+                const pages = allSessions
+                  .filter(s => {
+                    if (!s.ended_at || !s.pages_read) return false
+                    const d = new Date(s.ended_at)
+                    return d >= weekStart && d < weekEnd
+                  })
+                  .reduce((sum, s) => sum + s.pages_read, 0)
+                weeklyPages.push(pages)
+              }
+              const weeklyMinutes = []
+              for (let w = 11; w >= 0; w--) {
+                const weekStart = new Date(now)
+                weekStart.setDate(weekStart.getDate() - (w + 1) * 7)
+                const weekEnd = new Date(now)
+                weekEnd.setDate(weekEnd.getDate() - w * 7)
+                const mins = allSessions
+                  .filter(s => {
+                    if (!s.ended_at || !s.started_at) return false
+                    const d = new Date(s.ended_at)
+                    return d >= weekStart && d < weekEnd
+                  })
+                  .reduce((sum, s) => sum + (new Date(s.ended_at) - new Date(s.started_at)) / 60000, 0)
+                weeklyMinutes.push(Math.round(mins))
+              }
+              return (
+                <div style={s.twoCol}>
+                  <div style={s.chartCard}>
+                    <div style={s.chartTitle}>Pages Per Week</div>
+                    <div style={{ fontSize: 12, color: theme.textSubtle, marginBottom: 8 }}>Last 12 weeks</div>
+                    <SparklineChart data={weeklyPages} width={280} height={60} color={theme.rust} />
+                    <div style={{ fontSize: 13, color: theme.text, fontWeight: 600, marginTop: 6 }}>
+                      {weeklyPages[weeklyPages.length - 1]} pages this week
+                    </div>
+                  </div>
+                  <div style={s.chartCard}>
+                    <div style={s.chartTitle}>Time Spent Reading</div>
+                    <div style={{ fontSize: 12, color: theme.textSubtle, marginBottom: 8 }}>Last 12 weeks</div>
+                    <SparklineChart data={weeklyMinutes} width={280} height={60} color={theme.sage} />
+                    <div style={{ fontSize: 13, color: theme.text, fontWeight: 600, marginTop: 6 }}>
+                      {weeklyMinutes[weeklyMinutes.length - 1]} min this week
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* ── READING CHALLENGES ── */}
+            <div style={s.section}>
+              <div style={s.sectionHeadRow}>
+                <span style={{ fontSize: 22 }}>🎯</span>
+                <span style={{ ...s.chartTitle, marginBottom: 0, flex: 1 }}>Reading Challenges</span>
+                <button
+                  onClick={() => setShowNewChallenge(true)}
+                  style={{
+                    padding: '6px 14px', background: theme.rust, color: 'white',
+                    border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+                  }}
+                >
+                  + New Challenge
+                </button>
+              </div>
+              {challenges.length === 0 ? (
+                <div style={{ fontSize: 13, color: theme.textSubtle, textAlign: 'center', padding: '20px 0' }}>
+                  No challenges yet. Create one to start tracking your reading goals!
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+                  {challenges.filter(c => c.status === 'active').map(c => (
+                    <ChallengeCard
+                      key={c.id}
+                      challenge={c}
+                      progress={computeChallengeProgress(c, entries, allSessions)}
+                      onDelete={() => deleteChallenge(c.id)}
+                    />
+                  ))}
+                </div>
+              )}
+              {/* Auto-suggest system challenges */}
+              {challenges.filter(c => c.is_system && c.month === new Date().getMonth() + 1).length === 0 && entries.length > 0 && (
+                <div style={{ marginTop: 12, textAlign: 'center' }}>
+                  <button
+                    onClick={async () => {
+                      const suggestions = generateMonthlyChallenges(entries, allSessions)
+                      for (const s of suggestions) {
+                        await createChallenge(s)
+                      }
+                    }}
+                    style={{
+                      padding: '8px 16px', background: 'transparent',
+                      border: `1px solid ${theme.border}`, borderRadius: 8,
+                      fontSize: 12, color: theme.rust, cursor: 'pointer',
+                      fontFamily: "'DM Sans', sans-serif", fontWeight: 500,
+                    }}
+                  >
+                    Generate monthly challenges for {new Date().toLocaleDateString('en-US', { month: 'long' })}
+                  </button>
+                </div>
+              )}
+            </div>
+            {showNewChallenge && (
+              <NewChallengeModal
+                onClose={() => setShowNewChallenge(false)}
+                onSave={createChallenge}
+              />
+            )}
+
             <div style={s.twoCol}>
 
               {/* ── BOOKS PER YEAR ── */}
@@ -649,6 +814,13 @@ export default function Stats({ session }) {
                 )
               })}
             </div>
+
+            {/* ── YEAR IN REVIEW ── */}
+            <ReadingWrapped
+              entries={entries}
+              sessions={allSessions}
+              year={new Date().getFullYear()}
+            />
 
           </>
         )}

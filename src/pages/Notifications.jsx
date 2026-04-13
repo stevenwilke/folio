@@ -94,6 +94,10 @@ export default function Notifications({ session }) {
   const [activeBorrows,   setActiveBorrows]   = useState([])
   const [recentOrders,    setRecentOrders]    = useState([])
 
+  // Unified notifications
+  const [unifiedNotifs, setUnifiedNotifs]     = useState([])
+  const [readNotifs,    setReadNotifs]         = useState([])
+
   useEffect(() => { fetchAll() }, [])
 
   async function fetchAll() {
@@ -230,6 +234,26 @@ export default function Notifications({ session }) {
     setPendingOrders((pendOrd || []).map(o => ({ ...o, profiles: { username: orderProfileMap[o.buyer_id] } })))
     setRecentOrders( (recOrd  || []).map(o => ({ ...o, profiles: { username: orderProfileMap[o.seller_id] } })))
     setPendingRecs(recsEnriched)
+
+    // Fetch unified notifications
+    const [{ data: unread }, { data: read }] = await Promise.all([
+      supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', uid)
+        .eq('is_read', false)
+        .order('created_at', { ascending: false })
+        .limit(50),
+      supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', uid)
+        .eq('is_read', true)
+        .order('created_at', { ascending: false })
+        .limit(30),
+    ])
+    setUnifiedNotifs(unread || [])
+    setReadNotifs(read || [])
     setLoading(false)
   }
 
@@ -242,6 +266,28 @@ export default function Notifications({ session }) {
     }
     setActing(null)
     fetchAll()
+  }
+
+  async function markNotifRead(id) {
+    await supabase.from('notifications').update({ is_read: true }).eq('id', id)
+    setUnifiedNotifs(prev => prev.filter(n => n.id !== id))
+    setReadNotifs(prev => {
+      const n = unifiedNotifs.find(x => x.id === id)
+      return n ? [{ ...n, is_read: true }, ...prev] : prev
+    })
+  }
+
+  async function markAllRead() {
+    await supabase.from('notifications').update({ is_read: true }).eq('user_id', uid).eq('is_read', false)
+    setReadNotifs(prev => [...unifiedNotifs.map(n => ({ ...n, is_read: true })), ...prev])
+    setUnifiedNotifs([])
+  }
+
+  const NOTIF_ICONS = {
+    friend_request: '👥', friend_accepted: '👥',
+    borrow_request: '📚', borrow_approved: '📚', borrow_returned: '📚',
+    order_update: '🏪', recommendation: '💌',
+    club_activity: '📖', achievement: '🏅', quote_shared: '💬',
   }
 
   const needsAttention = pendingFriends.length + pendingBorrows.length + pendingOrders.length + pendingRecs.length
@@ -469,7 +515,74 @@ export default function Notifications({ session }) {
               </Section>
             )}
 
-            {needsAttention === 0 && recentActivity === 0 && (
+            {/* ── UNIFIED UNREAD NOTIFICATIONS ── */}
+            {unifiedNotifs.length > 0 && (
+              <Section title="New" theme={theme}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 16px 0' }}>
+                  <button
+                    style={{ ...btnBase, background: 'transparent', color: theme.rust ?? '#c0521e', border: 'none', fontSize: 11 }}
+                    onClick={markAllRead}
+                  >
+                    Mark all as read
+                  </button>
+                </div>
+                {unifiedNotifs.map(n => (
+                  <NotifRow
+                    key={`un-${n.id}`}
+                    icon={NOTIF_ICONS[n.type] || '🔔'}
+                    title={n.title}
+                    sub={n.body}
+                    time={timeAgo(n.created_at)}
+                    theme={theme}
+                    actions={[
+                      n.link && (
+                        <button
+                          key="go"
+                          style={{ ...btnBase, background: '#c0521e', color: 'white' }}
+                          onClick={() => { markNotifRead(n.id); navigate(n.link) }}
+                        >
+                          View
+                        </button>
+                      ),
+                      <button
+                        key="read"
+                        style={{ ...btnBase, background: 'transparent', color: theme.textSubtle, border: `1px solid ${theme.border}` }}
+                        onClick={() => markNotifRead(n.id)}
+                      >
+                        Dismiss
+                      </button>,
+                    ].filter(Boolean)}
+                  />
+                ))}
+              </Section>
+            )}
+
+            {/* ── READ NOTIFICATIONS HISTORY ── */}
+            {readNotifs.length > 0 && (
+              <Section title="Earlier" theme={theme}>
+                {readNotifs.map(n => (
+                  <NotifRow
+                    key={`rn-${n.id}`}
+                    icon={NOTIF_ICONS[n.type] || '🔔'}
+                    title={n.title}
+                    sub={n.body}
+                    time={timeAgo(n.created_at)}
+                    theme={theme}
+                    actions={n.link ? [
+                      <button
+                        key="go"
+                        style={{ ...btnBase, background: 'transparent', color: theme.rust ?? '#c0521e', border: `1px solid ${theme.rust ?? '#c0521e'}` }}
+                        onClick={() => navigate(n.link)}
+                      >
+                        View
+                      </button>,
+                    ] : null}
+                  />
+                ))}
+              </Section>
+            )}
+
+            {needsAttention === 0 && recentActivity === 0 && unifiedNotifs.length === 0 && readNotifs.length === 0 && (
               <div style={{
                 textAlign: 'center', padding: '60px 20px',
                 background: theme.bgCard ?? '#fdfaf4',

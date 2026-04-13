@@ -432,6 +432,8 @@ export default function Library({ session }) {
         key = entry.books.genre || 'Uncategorized'
       } else if (groupBy === 'author') {
         key = entry.books.author || 'Unknown Author'
+      } else if (groupBy === 'series') {
+        key = entry.books.series_name || 'No Series'
       } else if (groupBy === 'decade') {
         const y = entry.books.published_year
         key = y ? `${Math.floor(y / 10) * 10}s` : 'Unknown'
@@ -446,6 +448,22 @@ export default function Library({ session }) {
         const ai = order.indexOf(a.label), bi = order.indexOf(b.label)
         return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
       })
+    } else if (groupBy === 'series') {
+      sortedGroups.sort((a, b) => {
+        if (a.label === 'No Series') return 1
+        if (b.label === 'No Series') return -1
+        return a.label.localeCompare(b.label)
+      })
+      // Within each series, sort by series_number
+      for (const g of sortedGroups) {
+        if (g.label !== 'No Series') {
+          g.entries.sort((a, b) => {
+            const an = parseFloat(a.books.series_number) || 999
+            const bn = parseFloat(b.books.series_number) || 999
+            return an - bn
+          })
+        }
+      }
     } else if (groupBy === 'decade') {
       sortedGroups.sort((a, b) => {
         if (a.label === 'Unknown') return 1
@@ -845,6 +863,7 @@ export default function Library({ session }) {
                   <option value="status">Status</option>
                   <option value="genre">Genre</option>
                   <option value="author">Author</option>
+                  <option value="series">Series</option>
                   <option value="decade">Decade</option>
                 </select>
               </div>
@@ -1019,6 +1038,14 @@ export default function Library({ session }) {
                       <span style={s.groupCollapse}>{isCollapsed ? '▶' : '▼'}</span>
                       <span style={s.groupLabel}>{label}</span>
                       <span style={s.groupCount}>{groupEntries.length}</span>
+                      {groupBy === 'series' && label !== 'No Series' && (() => {
+                        const readCount = groupEntries.filter(e => e.has_read || e.read_status === 'read').length
+                        return (
+                          <span style={{ fontSize: 11, color: readCount === groupEntries.length ? theme.sage : theme.textSubtle, fontWeight: 500, marginLeft: 4 }}>
+                            {readCount}/{groupEntries.length} read
+                          </span>
+                        )
+                      })()}
                       {selectMode && !isCollapsed && (
                         <button
                           style={s.selectAllBtn}
@@ -1504,6 +1531,11 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
       <div style={{ marginTop: 8 }}>
         <div style={s.bookTitle}>{book.title}</div>
         <div style={s.bookAuthor}>{book.author}</div>
+        {entry.user_rating > 0 && (
+          <div style={{ fontSize: 11, color: '#b8860b', letterSpacing: 0.5, marginTop: 3 }}>
+            {'★'.repeat(entry.user_rating)}{'☆'.repeat(5 - entry.user_rating)}
+          </div>
+        )}
         {status === 'reading' && (
           <div style={{ marginTop: 5 }} onClick={e => e.stopPropagation()}>
             {editingPage ? (

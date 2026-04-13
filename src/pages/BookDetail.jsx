@@ -10,6 +10,8 @@ import { fetchUsedPrices } from '../lib/fetchUsedPrices'
 import { isFiction, computeReadingSpeeds, estimateReadingTime, formatTimer, checkSessionIdle } from '../lib/readingSpeed'
 import { useIsMobile } from '../hooks/useIsMobile'
 import CoverCropModal from '../components/CoverCropModal'
+import RatingDistribution from '../components/RatingDistribution'
+import QuoteCard from '../components/QuoteCard'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -123,6 +125,11 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [showLendModal,    setShowLendModal]    = useState(false)
   const [showRecommendModal, setShowRecommendModal] = useState(false)
   const [alsoEnjoyed, setAlsoEnjoyed] = useState([])
+  const [quotes, setQuotes]           = useState([])
+  const [newQuoteText, setNewQuoteText]     = useState('')
+  const [newQuotePage, setNewQuotePage]     = useState('')
+  const [newQuoteNote, setNewQuoteNote]     = useState('')
+  const [savingQuote, setSavingQuote]       = useState(false)
   const [priceAlert, setPriceAlert] = useState(null) // { oldPrice, newPrice, pctChange }
   const [valuation, setValuation]       = useState(null)
   const [valuationLoading, setValuationLoading] = useState(true)
@@ -181,6 +188,7 @@ export default function BookDetail({ bookId, session, onBack }) {
     fetchEntry()
     fetchReviews()
     fetchCommunityRating()
+    fetchQuotes()
     fetchListing()
     fetchFriendStats()
   }, [activeBookId])
@@ -363,10 +371,51 @@ export default function BookDetail({ bookId, session, onBack }) {
   async function fetchCommunityRating() {
     const { data } = await supabase
       .from('book_ratings')
-      .select('avg_rating, rating_count')
+      .select('avg_rating, rating_count, stars_1, stars_2, stars_3, stars_4, stars_5')
       .eq('book_id', activeBookId)
       .maybeSingle()
     if (data) setCommunityRating(data)
+  }
+
+  async function fetchQuotes() {
+    const { data } = await supabase
+      .from('book_quotes')
+      .select('*, profiles:user_id(username)')
+      .eq('book_id', activeBookId)
+      .order('created_at', { ascending: false })
+    setQuotes(data || [])
+  }
+
+  async function saveQuote() {
+    if (!newQuoteText.trim() || !session) return
+    setSavingQuote(true)
+    await supabase.from('book_quotes').insert({
+      user_id: session.user.id,
+      book_id: activeBookId,
+      quote_text: newQuoteText.trim(),
+      page_number: newQuotePage ? parseInt(newQuotePage) : null,
+      note: newQuoteNote.trim() || null,
+    })
+    setNewQuoteText('')
+    setNewQuotePage('')
+    setNewQuoteNote('')
+    setSavingQuote(false)
+    fetchQuotes()
+  }
+
+  async function deleteQuote(id) {
+    await supabase.from('book_quotes').delete().eq('id', id)
+    fetchQuotes()
+  }
+
+  async function shareQuoteToFeed(quote) {
+    await supabase.from('reading_posts').insert({
+      user_id: session.user.id,
+      book_id: activeBookId,
+      content: `"${quote.quote_text}"${quote.page_number ? ` (p.${quote.page_number})` : ''}`,
+      post_type: 'quote',
+      quote_id: quote.id,
+    })
   }
 
   async function loadValuation(bookData) {
@@ -937,13 +986,25 @@ export default function BookDetail({ bookId, session, onBack }) {
 
             {/* Community rating */}
             {communityRating ? (
-              <div style={s.communityRatingRow}>
-                <CommunityStars avg={parseFloat(communityRating.avg_rating)} />
-                <span style={s.communityRatingNum}>{communityRating.avg_rating}</span>
-                <span style={s.communityRatingCount}>
-                  · {communityRating.rating_count} {communityRating.rating_count === 1 ? 'rating' : 'ratings'} on Ex Libris
-                </span>
-              </div>
+              <>
+                <div style={s.communityRatingRow}>
+                  <CommunityStars avg={parseFloat(communityRating.avg_rating)} />
+                  <span style={s.communityRatingNum}>{communityRating.avg_rating}</span>
+                  <span style={s.communityRatingCount}>
+                    · {communityRating.rating_count} {communityRating.rating_count === 1 ? 'rating' : 'ratings'} on Ex Libris
+                  </span>
+                </div>
+                {communityRating.rating_count >= 2 && (
+                  <RatingDistribution
+                    stars_1={communityRating.stars_1}
+                    stars_2={communityRating.stars_2}
+                    stars_3={communityRating.stars_3}
+                    stars_4={communityRating.stars_4}
+                    stars_5={communityRating.stars_5}
+                    rating_count={communityRating.rating_count}
+                  />
+                )}
+              </>
             ) : (
               <div style={{ ...s.communityRatingRow, fontStyle: 'italic' }}>
                 <span style={s.communityRatingCount}>No ratings yet — be the first!</span>
@@ -1402,7 +1463,7 @@ export default function BookDetail({ bookId, session, onBack }) {
 
         {/* Tabs */}
         <div style={s.tabs}>
-          {['about', 'details', 'reviews', 'your review'].map(t => (
+          {['about', 'details', 'reviews', 'your review', 'quotes'].map(t => (
             <div
               key={t}
               style={{ ...s.tab, ...(tab === t ? s.tabActive : {}) }}
@@ -1661,6 +1722,89 @@ export default function BookDetail({ bookId, session, onBack }) {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Quotes */}
+        {tab === 'quotes' && (
+          <div style={s.tabContent}>
+            {/* Add quote form */}
+            {entry && (
+              <div style={{ marginBottom: 20, padding: '16px 18px', background: theme.bgSubtle, borderRadius: 10 }}>
+                <textarea
+                  placeholder="Enter a memorable quote..."
+                  value={newQuoteText}
+                  onChange={e => setNewQuoteText(e.target.value)}
+                  rows={3}
+                  style={{
+                    width: '100%', boxSizing: 'border-box', resize: 'vertical',
+                    fontFamily: 'Georgia, serif', fontSize: 14, fontStyle: 'italic',
+                    background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 8,
+                    padding: '10px 12px', color: theme.text, outline: 'none',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    placeholder="Page #"
+                    value={newQuotePage}
+                    onChange={e => setNewQuotePage(e.target.value)}
+                    style={{
+                      width: 70, padding: '6px 8px', fontSize: 12, borderRadius: 6,
+                      border: `1px solid ${theme.border}`, background: theme.bgCard, color: theme.text,
+                      fontFamily: "'DM Sans', sans-serif", outline: 'none',
+                    }}
+                  />
+                  <input
+                    placeholder="Add a note (optional)"
+                    value={newQuoteNote}
+                    onChange={e => setNewQuoteNote(e.target.value)}
+                    style={{
+                      flex: 1, padding: '6px 8px', fontSize: 12, borderRadius: 6,
+                      border: `1px solid ${theme.border}`, background: theme.bgCard, color: theme.text,
+                      fontFamily: "'DM Sans', sans-serif", outline: 'none',
+                    }}
+                  />
+                  <button
+                    disabled={!newQuoteText.trim() || savingQuote}
+                    onClick={saveQuote}
+                    style={{
+                      padding: '6px 14px', background: theme.rust, color: 'white',
+                      border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                      cursor: newQuoteText.trim() ? 'pointer' : 'default',
+                      opacity: newQuoteText.trim() ? 1 : 0.5,
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  >
+                    {savingQuote ? 'Saving…' : 'Save Quote'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Quote list */}
+            {quotes.length === 0 ? (
+              <div style={{ fontSize: 14, color: theme.textSubtle, textAlign: 'center', padding: '30px 0' }}>
+                No quotes saved yet. Be the first to add one!
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {quotes.map(q => (
+                  <QuoteCard
+                    key={q.id}
+                    quoteText={q.quote_text}
+                    bookTitle={book.title}
+                    bookAuthor={book.author}
+                    pageNumber={q.page_number}
+                    note={q.note}
+                    username={q.profiles?.username}
+                    createdAt={q.created_at}
+                    onShare={session ? () => shareQuoteToFeed(q) : null}
+                    onDelete={q.user_id === session?.user?.id ? () => deleteQuote(q.id) : null}
+                  />
+                ))}
               </div>
             )}
           </div>

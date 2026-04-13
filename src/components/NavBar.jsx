@@ -40,6 +40,7 @@ export default function NavBar({ session, extra }) {
   const [friendReqs,   setFriendReqs]   = useState([])
   const [borrowNotifs, setBorrowNotifs] = useState([])
   const [orderNotifs,  setOrderNotifs]  = useState([])
+  const [unifiedNotifs, setUnifiedNotifs] = useState([])
   const avatarRef = useRef(null)
   const goodreadsImported = !!localStorage.getItem('exlibris-goodreads-imported')
 
@@ -130,6 +131,16 @@ export default function NavBar({ session, extra }) {
     setFriendReqs(friends)
     setBorrowNotifs(enrichedBorrows)
     setOrderNotifs(orders)
+
+    // Also fetch from unified notifications table
+    const { data: unified } = await supabase
+      .from('notifications')
+      .select('id, type, title, body, link, is_read, created_at')
+      .eq('user_id', session.user.id)
+      .eq('is_read', false)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    setUnifiedNotifs(unified || [])
   }
 
   async function respondToFriend(id, accept) {
@@ -152,7 +163,7 @@ export default function NavBar({ session, extra }) {
   }, [])
 
   const path      = location.pathname
-  const bellCount = friendReqs.length + borrowNotifs.length + orderNotifs.length
+  const bellCount = friendReqs.length + borrowNotifs.length + orderNotifs.length + unifiedNotifs.length
 
   function isActive(item) {
     if (item.path === '/') return path === '/'

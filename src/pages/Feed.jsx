@@ -468,9 +468,19 @@ function PostCard({ post, theme, isDark, currentUserId, onLike, onDelete, onBook
       {/* ── Post text ── */}
       {post.content && (
         <div style={{ padding: '0 16px', marginBottom: post.image_url ? 12 : 0 }}>
-          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: theme.text, fontFamily: "'DM Sans', sans-serif" }}>
-            {post.content}
-          </p>
+          {post.post_type === 'quote' ? (
+            <div style={{
+              borderLeft: `3px solid ${theme.gold}`, paddingLeft: 14, margin: '4px 0',
+              fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 15,
+              lineHeight: 1.6, color: theme.text,
+            }}>
+              {post.content}
+            </div>
+          ) : (
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: theme.text, fontFamily: "'DM Sans', sans-serif" }}>
+              {post.content}
+            </p>
+          )}
         </div>
       )}
 

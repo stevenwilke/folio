@@ -487,6 +487,30 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
 
   const shelfColors = ['#b8956a', '#a07850', '#8a6640', '#7a5630', '#6a4620']
 
+  // Resize image to keep base64 payload under edge function limits
+  function resizeImage(file, maxDim = 800) {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        let { width, height } = img
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height)
+          width = Math.round(width * scale)
+          height = Math.round(height * scale)
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+        // Convert to JPEG at 60% quality to stay under edge function body limit (~2MB)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6)
+        const base64 = dataUrl.split(',')[1]
+        resolve(base64)
+      }
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
   async function handlePhotoUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -502,17 +526,18 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
     setAnalysisResult(null)
 
     try {
-      const arrayBuffer = await file.arrayBuffer()
-      const bytes = new Uint8Array(arrayBuffer)
-      let binary = ''
-      bytes.forEach(b => binary += String.fromCharCode(b))
-      const base64 = btoa(binary)
+      const base64 = await resizeImage(file)
+
+      console.log('Shelf photo base64 size:', Math.round(base64.length / 1024), 'KB')
 
       const { data, error } = await supabase.functions.invoke('analyze-shelf', {
-        body: { imageBase64: base64, mimeType: file.type },
+        body: { imageBase64: base64, mimeType: 'image/jpeg' },
       })
 
+      console.log('analyze-shelf response:', { data, error })
+
       if (error || data?.error) {
+        console.log('analyze-shelf error detail:', data)
         setAnalysisError(data?.error || error?.message || 'Analysis failed')
       } else {
         setAnalysisResult(data)

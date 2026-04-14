@@ -28,12 +28,17 @@ serve(async (req) => {
       )
     }
 
-    const prompt = `Analyze this photo of a bookshelf or bookcase. Please respond with ONLY a valid JSON object (no markdown, no explanation) with these fields:
+    const prompt = `Analyze this photo of a bookshelf or bookcase. Many bookcases have vertical dividers creating multiple columns. Each individual cubby/section (row × column) counts as its own shelf.
+
+Please respond with ONLY a valid JSON object (no markdown, no explanation) with these fields:
 
 {
-  "shelf_count": <number of visible shelves>,
-  "books_per_shelf": [<estimated books on shelf 1>, <shelf 2>, ...],
-  "total_capacity": <total estimated book capacity>,
+  "rows": <number of horizontal rows>,
+  "columns": <number of vertical columns/sections>,
+  "shelf_count": <total number of individual cubbies/sections, i.e. rows × columns>,
+  "current_books_per_shelf": [<actual count of books currently visible in cubby 1>, <cubby 2>, ...],
+  "books_per_shelf": [<estimated MAX capacity if cubby were fully packed with books>, ...],
+  "total_capacity": <total estimated max book capacity across all cubbies>,
   "notes": "<brief observation about the shelves, e.g. size, style, any notable features>",
   "recognized_books": [
     {"title": "...", "author": "...", "shelf": <shelf number 1-based>},
@@ -41,9 +46,10 @@ serve(async (req) => {
   ]
 }
 
-For recognized_books: only include books you are highly confident about. List up to 10.
-For books_per_shelf: estimate how many books each shelf could hold if fully packed.
-Count from top shelf as shelf 1.`
+For shelf numbering: count left-to-right, top-to-bottom. E.g. a 3-row × 3-column bookcase has 9 shelves: top-left is 1, top-middle is 2, top-right is 3, middle-left is 4, etc.
+For current_books_per_shelf: count the actual number of books currently visible in each cubby. Include an entry for every cubby (use 0 if no books).
+For books_per_shelf: estimate the MAX capacity — how many books each cubby could hold if fully packed with average-sized books. Use the current book count as a minimum (capacity should be >= current count). Consider the remaining empty space in each cubby.
+For recognized_books: only include books you are highly confident about. List up to 10.`
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -62,7 +68,7 @@ Count from top shelf as shelf 1.`
               { text: prompt }
             ]
           }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
+          generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
         }),
       }
     )

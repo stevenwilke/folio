@@ -37,6 +37,7 @@ const GENRE_COLORS: Record<string, { spine: string; text: string }> = {
 const DEFAULT_COLOR = { spine: '#6b5c4a', text: '#fff8f0' };
 
 const GENRE_OVERRIDES_KEY = 'folio-genre-overrides';
+const PLANNER_CONFIG_KEY  = 'folio-planner-config';
 const ALL_GENRES = Object.keys(GENRE_COLORS);
 
 function getGenreColor(genre: string | null) {
@@ -160,6 +161,26 @@ interface Props {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
+  // Load saved planner config (if any) to resume where the user left off
+  const [savedConfig, setSavedConfig] = useState<any>(null);
+  const [configLoaded, setConfigLoaded] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(PLANNER_CONFIG_KEY).then((val) => {
+      if (val) {
+        try {
+          const cfg = JSON.parse(val);
+          setSavedConfig(cfg);
+          setStep(cfg ? 'arrange' : 'setup');
+          if (cfg.shelfCount) setShelfCount(cfg.shelfCount);
+          if (cfg.booksPerShelf) setBooksPerShelf(cfg.booksPerShelf);
+          if (cfg.sortMethod) setSortMethod(cfg.sortMethod);
+        } catch { /* ignore */ }
+      }
+      setConfigLoaded(true);
+    });
+  }, []);
+
   const [step, setStep] = useState<'setup' | 'arrange'>('setup');
 
   // Setup
@@ -174,6 +195,11 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
   // Arrange
   const [sortMethod, setSortMethod] = useState('genre-alpha');
   const [activeTab, setActiveTab] = useState<'visual' | 'guide'>('visual');
+
+  function savePlannerConfig(overrides: Record<string, any> = {}) {
+    const config = { shelfCount, booksPerShelf, sortMethod, ...overrides };
+    AsyncStorage.setItem(PLANNER_CONFIG_KEY, JSON.stringify(config));
+  }
 
   // Genre overrides (persisted to AsyncStorage, keyed by book_id)
   const [genreOverrides, setGenreOverrides] = useState<Record<string, string>>({});
@@ -427,7 +453,7 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
             <TouchableOpacity
               key={m.id}
               style={[styles.sortChip, sortMethod === m.id && styles.sortChipActive]}
-              onPress={() => setSortMethod(m.id)}
+              onPress={() => { setSortMethod(m.id); savePlannerConfig({ sortMethod: m.id }); }}
             >
               <Text
                 style={[styles.sortChipText, sortMethod === m.id && styles.sortChipTextActive]}
@@ -604,7 +630,7 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.btn, { flex: 1 }]}
-              onPress={() => setStep('arrange')}
+              onPress={() => { savePlannerConfig(); setStep('arrange'); }}
               activeOpacity={0.8}
             >
               <Text style={styles.btnText}>Plan my shelves →</Text>

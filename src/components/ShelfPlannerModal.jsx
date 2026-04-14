@@ -23,6 +23,7 @@ const GENRE_COLORS = {
 const DEFAULT_COLOR = { spine: '#6b5c4a', text: '#fff8f0' }
 
 const GENRE_OVERRIDES_KEY = 'folio-genre-overrides'
+const PLANNER_CONFIG_KEY  = 'folio-planner-config'
 const ALL_GENRES = Object.keys(GENRE_COLORS)
 
 function getGenreColor(genre) {
@@ -379,14 +380,21 @@ export default function ShelfPlannerModal({ books, session, onClose }) {
   const { theme } = useTheme()
   const fileInputRef = useRef(null)
 
+  // Load saved planner config (if any) to resume where the user left off
+  const savedConfig = (() => {
+    try { return JSON.parse(localStorage.getItem(PLANNER_CONFIG_KEY) || 'null') }
+    catch { return null }
+  })()
+
   // Steps: 'setup' | 'arrange' | 'guide'
-  const [step, setStep] = useState('setup')
+  // Skip straight to arrange if there's a saved config
+  const [step, setStep] = useState(savedConfig ? 'arrange' : 'setup')
 
   // Setup state
-  const [shelfCount, setShelfCount] = useState(3)
-  const [booksPerShelf, setBooksPerShelf] = useState(30)
-  const [customShelfSizes, setCustomShelfSizes] = useState([])
-  const [useCustomSizes, setUseCustomSizes] = useState(false)
+  const [shelfCount, setShelfCount] = useState(savedConfig?.shelfCount ?? 3)
+  const [booksPerShelf, setBooksPerShelf] = useState(savedConfig?.booksPerShelf ?? 30)
+  const [customShelfSizes, setCustomShelfSizes] = useState(savedConfig?.customShelfSizes ?? [])
+  const [useCustomSizes, setUseCustomSizes] = useState(savedConfig?.useCustomSizes ?? false)
 
   // Photo analysis state
   const [analyzing, setAnalyzing] = useState(false)
@@ -395,8 +403,17 @@ export default function ShelfPlannerModal({ books, session, onClose }) {
   const [analysisError, setAnalysisError] = useState(null)
 
   // Arrangement state
-  const [sortMethod, setSortMethod] = useState('genre-alpha')
+  const [sortMethod, setSortMethod] = useState(savedConfig?.sortMethod ?? 'genre-alpha')
   const [activeTab, setActiveTab] = useState('visual') // 'visual' | 'guide'
+
+  // Persist planner config whenever it changes
+  function savePlannerConfig(overrides = {}) {
+    const config = {
+      shelfCount, booksPerShelf, customShelfSizes, useCustomSizes, sortMethod,
+      ...overrides,
+    }
+    localStorage.setItem(PLANNER_CONFIG_KEY, JSON.stringify(config))
+  }
 
   // Genre overrides (persisted to localStorage, keyed by book_id)
   const [genreOverrides, setGenreOverrides] = useState(() => {
@@ -713,7 +730,7 @@ export default function ShelfPlannerModal({ books, session, onClose }) {
             flexShrink: 0,
           }}>
             <button style={s.btnSecondary} onClick={onClose}>Cancel</button>
-            <button style={s.btn} onClick={() => setStep('arrange')}>
+            <button style={s.btn} onClick={() => { savePlannerConfig(); setStep('arrange') }}>
               Plan my shelves →
             </button>
           </div>
@@ -756,7 +773,7 @@ export default function ShelfPlannerModal({ books, session, onClose }) {
             {SORT_METHODS.map(m => (
               <button
                 key={m.id}
-                onClick={() => setSortMethod(m.id)}
+                onClick={() => { setSortMethod(m.id); savePlannerConfig({ sortMethod: m.id }) }}
                 style={{
                   padding: '5px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
                   border: `1px solid ${sortMethod === m.id ? theme.rust : theme.border}`,

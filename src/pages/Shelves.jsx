@@ -296,6 +296,137 @@ function CreateShelfModal({ session, onClose, onCreated }) {
   )
 }
 
+// ── Genre colour palette (for bookshelf view) ───────────────────────────────
+const GENRE_COLORS = {
+  'Science Fiction':    { spine: '#1a5c8a', text: '#e8f4fd' },
+  'Fantasy':            { spine: '#5a2d82', text: '#f0e8ff' },
+  'Mystery':            { spine: '#1a4d2e', text: '#e8f5ee' },
+  'Thriller':           { spine: '#7a1a1a', text: '#ffe8e8' },
+  'Horror':             { spine: '#2a0a0a', text: '#ffd0d0' },
+  'Romance':            { spine: '#8a1a5c', text: '#ffe8f4' },
+  'Historical Fiction': { spine: '#5c3a1a', text: '#fff0e0' },
+  'Literary Fiction':   { spine: '#1a5c3a', text: '#e8fff0' },
+  'Biography':          { spine: '#4a3a0a', text: '#fff8e0' },
+  'Non-Fiction':        { spine: '#1a3a5c', text: '#e0f0ff' },
+  'Self-Help':          { spine: '#5c4a1a', text: '#fff5e0' },
+  'Young Adult':        { spine: '#1a7a5c', text: '#e0fff8' },
+  "Children's":         { spine: '#7a5c1a', text: '#fff8e0' },
+  'Graphic Novel':      { spine: '#3a1a7a', text: '#ece8ff' },
+  'Poetry':             { spine: '#7a3a5c', text: '#ffe8f4' },
+}
+const DEFAULT_SPINE_COLOR = { spine: '#6b5c4a', text: '#fff8f0' }
+
+function getGenreColor(genre) {
+  if (!genre) return DEFAULT_SPINE_COLOR
+  for (const [key, val] of Object.entries(GENRE_COLORS)) {
+    if (genre.toLowerCase().includes(key.toLowerCase())) return val
+  }
+  return DEFAULT_SPINE_COLOR
+}
+
+function getSpineWidth(pages) {
+  if (!pages) return 22
+  return Math.max(16, Math.min(36, Math.round(pages / 18)))
+}
+
+// ── Book Spine component ─────────────────────────────────────────────────────
+function BookSpine({ book }) {
+  const [hovered, setHovered] = useState(false)
+  const colors = getGenreColor(book.genre)
+  const w = getSpineWidth(book.pages)
+  // deterministic height variation based on title to avoid flicker
+  const h = 130 + ((book.title?.charCodeAt(0) || 0) % 5) * 5
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: 'relative',
+        width: w,
+        height: h,
+        background: colors.spine,
+        borderRadius: '2px 2px 1px 1px',
+        flexShrink: 0,
+        cursor: 'default',
+        boxShadow: hovered
+          ? '2px 0 8px rgba(0,0,0,0.4), inset 1px 0 0 rgba(255,255,255,0.1)'
+          : '1px 0 3px rgba(0,0,0,0.3)',
+        transition: 'transform 0.1s, box-shadow 0.1s',
+        transform: hovered ? 'translateY(-4px) scaleY(1.02)' : 'none',
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        writingMode: 'vertical-rl',
+        textOrientation: 'mixed',
+        transform: 'rotate(180deg)',
+        fontSize: Math.max(7, Math.min(10, w - 4)),
+        color: colors.text,
+        padding: '4px 2px',
+        lineHeight: 1.2,
+        wordBreak: 'break-word',
+        overflow: 'hidden',
+      }}>
+        {book.title?.length > 30 ? book.title.slice(0, 28) + '…' : book.title}
+      </div>
+      {hovered && (
+        <div style={{
+          position: 'absolute',
+          bottom: '110%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.85)',
+          color: '#fff',
+          padding: '6px 10px',
+          borderRadius: 8,
+          fontSize: 11,
+          whiteSpace: 'nowrap',
+          zIndex: 100,
+          pointerEvents: 'none',
+          minWidth: 160,
+          textAlign: 'center',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>{book.title}</div>
+          {book.author && <div style={{ opacity: 0.8, fontSize: 10 }}>by {book.author}</div>}
+          {book.genre && <div style={{ opacity: 0.6, fontSize: 10, marginTop: 2 }}>{book.genre}</div>}
+          {book.pages && <div style={{ opacity: 0.5, fontSize: 10, marginTop: 1 }}>{book.pages} pages</div>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Bookshelf View component ─────────────────────────────────────────────────
+function BookshelfView({ books, theme }) {
+  if (books.length === 0) return null
+  return (
+    <div>
+      <div style={{
+        background: '#f5efe6',
+        borderRadius: 6,
+        padding: '12px 16px 0 16px',
+        boxShadow: 'inset 0 -4px 0 #b8956a, 0 2px 8px rgba(0,0,0,0.08)',
+        minHeight: 165,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, flexWrap: 'wrap', paddingBottom: 0 }}>
+          {books.map((book, i) => (
+            <BookSpine key={book.id || i} book={book} />
+          ))}
+        </div>
+      </div>
+      <div style={{ fontSize: 12, color: theme.textSubtle, textAlign: 'center', marginTop: 8 }}>
+        Hover over any spine to see details · Width reflects page count · Colours represent genre
+      </div>
+    </div>
+  )
+}
+
 // ---- SHELF DETAIL VIEW ----
 function ShelfDetail({ shelf, session, onBack }) {
   const { theme } = useTheme()
@@ -305,6 +436,7 @@ function ShelfDetail({ shelf, session, onBack }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [collection, setCollection]   = useState([])
   const [collectionLoaded, setCollectionLoaded] = useState(false)
+  const [viewMode, setViewMode]       = useState('list') // 'list' | 'shelf'
 
   useEffect(() => {
     fetchShelfBooks()
@@ -394,12 +526,25 @@ function ShelfDetail({ shelf, session, onBack }) {
             <h1 style={s.pageTitle}>{shelf.name}</h1>
             {shelf.description && <p style={s.detailDesc}>{shelf.description}</p>}
           </div>
-          <button
-            style={s.btnPrimary}
-            onClick={() => { setShowAddBooks(v => !v); loadCollection() }}
-          >
-            {showAddBooks ? '✕ Close' : '+ Add Books'}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* View mode toggle */}
+            <div style={{ display: 'flex', border: `1px solid ${theme.border}`, borderRadius: 8, overflow: 'hidden' }}>
+              <button onClick={() => setViewMode('list')} title="List view"
+                style={{ padding: '5px 10px', border: 'none', background: viewMode === 'list' ? theme.rust : 'transparent', color: viewMode === 'list' ? 'white' : theme.textSubtle, cursor: 'pointer', fontSize: 15, lineHeight: 1 }}>
+                ☰
+              </button>
+              <button onClick={() => setViewMode('shelf')} title="Bookshelf view"
+                style={{ padding: '5px 10px', border: 'none', borderLeft: `1px solid ${theme.border}`, background: viewMode === 'shelf' ? theme.rust : 'transparent', color: viewMode === 'shelf' ? 'white' : theme.textSubtle, cursor: 'pointer', fontSize: 15, lineHeight: 1 }}>
+                📚
+              </button>
+            </div>
+            <button
+              style={s.btnPrimary}
+              onClick={() => { setShowAddBooks(v => !v); loadCollection() }}
+            >
+              {showAddBooks ? '✕ Close' : '+ Add Books'}
+            </button>
+          </div>
         </div>
 
         {/* Add books panel */}
@@ -458,6 +603,11 @@ function ShelfDetail({ shelf, session, onBack }) {
             <div style={{ fontSize: 15, color: theme.textSubtle }}>No books on this shelf yet.</div>
             <div style={{ fontSize: 13, color: theme.textSubtle, marginTop: 6 }}>Use "+ Add Books" to add from your collection.</div>
           </div>
+        ) : viewMode === 'shelf' ? (
+          <BookshelfView
+            books={shelfBooks.map(sb => sb.books).filter(Boolean)}
+            theme={theme}
+          />
         ) : (
           <div style={s.shelfBooksGrid}>
             {shelfBooks.map(sb => {

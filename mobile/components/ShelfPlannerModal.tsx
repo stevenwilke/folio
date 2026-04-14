@@ -47,6 +47,11 @@ function getGenreColor(genre: string | null) {
   return DEFAULT_COLOR;
 }
 
+function getSpineWidth(pages: number | null) {
+  if (!pages) return 22;
+  return Math.max(16, Math.min(36, Math.round(pages / 18)));
+}
+
 // ── Sort methods ──────────────────────────────────────────────────────────────
 const SORT_METHODS = [
   { id: 'alpha-title',  label: 'A–Z by Title',  icon: '🔤' },
@@ -469,11 +474,12 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
                   >
                     {shelf.map((book, bi) => {
                       const colors = getGenreColor(book.genre);
-                      const spineH = 100 + (bi % 4) * 8; // gentle height variation
+                      const spineW = getSpineWidth(book.pages);
+                      const spineH = 100 + ((book.title?.charCodeAt(0) || 0) % 5) * 8;
                       return (
                         <View
                           key={book.id || bi}
-                          style={[styles.spine, { backgroundColor: colors.spine, height: spineH }]}
+                          style={[styles.spine, { backgroundColor: colors.spine, width: spineW, height: spineH }]}
                         >
                           <Text
                             style={[styles.spineText, { color: colors.text }]}
@@ -1006,7 +1012,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   spine: {
-    width: 22,
     borderRadius: 2,
     overflow: 'hidden',
     alignItems: 'center',

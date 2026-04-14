@@ -1132,6 +1132,7 @@ export default function Library({ session }) {
             published_year: b.books?.published_year || null,
             series_name: b.books?.series_name || null,
             series_position: b.books?.series_position || null,
+            pages: b.books?.pages || null,
             read_status: b.read_status,
             user_rating: b.user_rating || null,
           }))}

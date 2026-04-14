@@ -33,6 +33,11 @@ function getGenreColor(genre) {
   return DEFAULT_COLOR
 }
 
+function getSpineWidth(pages) {
+  if (!pages) return 22
+  return Math.max(16, Math.min(36, Math.round(pages / 18)))
+}
+
 // ── Sort methods ──────────────────────────────────────────────────────────────
 const SORT_METHODS = [
   { id: 'alpha-title',  label: 'A → Z by Title',       icon: '🔤' },
@@ -118,16 +123,17 @@ function distributeToShelves(books, shelves) {
 }
 
 // ── Book Spine component ──────────────────────────────────────────────────────
-function BookSpine({ book, width = 24, height = 140, showTitle = true }) {
+function BookSpine({ book, width, height = 140, showTitle = true }) {
   const [hovered, setHovered] = useState(false)
   const colors = getGenreColor(book.genre)
+  const w = width ?? getSpineWidth(book.pages)
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
         position: 'relative',
-        width,
+        width: w,
         height,
         background: colors.spine,
         borderRadius: '2px 2px 1px 1px',
@@ -151,7 +157,7 @@ function BookSpine({ book, width = 24, height = 140, showTitle = true }) {
           writingMode: 'vertical-rl',
           textOrientation: 'mixed',
           transform: 'rotate(180deg)',
-          fontSize: Math.max(7, Math.min(10, width - 4)),
+          fontSize: Math.max(7, Math.min(10, w - 4)),
           color: colors.text,
           padding: '4px 2px',
           lineHeight: 1.2,
@@ -222,7 +228,7 @@ function ShelfRow({ shelfNumber, books, shelfColor }) {
         ) : (
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, flexWrap: 'wrap', paddingBottom: 0 }}>
             {books.map((book, i) => (
-              <BookSpine key={book.id || i} book={book} width={22} height={130 + Math.random() * 20 | 0} />
+              <BookSpine key={book.id || i} book={book} height={130 + ((book.title?.charCodeAt(0) || 0) % 5) * 5} />
             ))}
           </div>
         )}

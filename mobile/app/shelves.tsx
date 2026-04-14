@@ -40,6 +40,8 @@ interface ShelfBook {
     cover_image_url: string | null;
     isbn_13: string | null;
     isbn_10: string | null;
+    genre: string | null;
+    pages: number | null;
   } | null;
 }
 
@@ -527,6 +529,130 @@ function AddBooksModal({
   );
 }
 
+// ── Genre colour palette (for bookshelf view) ───────────────────────────────
+const GENRE_COLORS: Record<string, { spine: string; text: string }> = {
+  'Science Fiction':    { spine: '#1a5c8a', text: '#e8f4fd' },
+  'Fantasy':            { spine: '#5a2d82', text: '#f0e8ff' },
+  'Mystery':            { spine: '#1a4d2e', text: '#e8f5ee' },
+  'Thriller':           { spine: '#7a1a1a', text: '#ffe8e8' },
+  'Horror':             { spine: '#2a0a0a', text: '#ffd0d0' },
+  'Romance':            { spine: '#8a1a5c', text: '#ffe8f4' },
+  'Historical Fiction': { spine: '#5c3a1a', text: '#fff0e0' },
+  'Literary Fiction':   { spine: '#1a5c3a', text: '#e8fff0' },
+  'Biography':          { spine: '#4a3a0a', text: '#fff8e0' },
+  'Non-Fiction':        { spine: '#1a3a5c', text: '#e0f0ff' },
+  'Self-Help':          { spine: '#5c4a1a', text: '#fff5e0' },
+  'Young Adult':        { spine: '#1a7a5c', text: '#e0fff8' },
+  "Children's":         { spine: '#7a5c1a', text: '#fff8e0' },
+  'Graphic Novel':      { spine: '#3a1a7a', text: '#ece8ff' },
+  'Poetry':             { spine: '#7a3a5c', text: '#ffe8f4' },
+};
+const DEFAULT_SPINE_COLOR = { spine: '#6b5c4a', text: '#fff8f0' };
+
+function getGenreColor(genre: string | null) {
+  if (!genre) return DEFAULT_SPINE_COLOR;
+  for (const [key, val] of Object.entries(GENRE_COLORS)) {
+    if (genre.toLowerCase().includes(key.toLowerCase())) return val;
+  }
+  return DEFAULT_SPINE_COLOR;
+}
+
+function getSpineWidth(pages: number | null) {
+  if (!pages) return 22;
+  return Math.max(16, Math.min(36, Math.round(pages / 18)));
+}
+
+function BookshelfView({ books }: { books: NonNullable<ShelfBook['books']>[] }) {
+  if (books.length === 0) return null;
+  return (
+    <View style={shelfStyles.container}>
+      <View style={shelfStyles.inner}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={shelfStyles.spinesRow}
+        >
+          {books.map((book, i) => {
+            const colors = getGenreColor(book.genre);
+            const w = getSpineWidth(book.pages);
+            const h = 100 + ((book.title?.charCodeAt(0) || 0) % 5) * 8;
+            return (
+              <View
+                key={book.id || i}
+                style={[
+                  shelfStyles.spine,
+                  { backgroundColor: colors.spine, width: w, height: h },
+                ]}
+              >
+                <Text
+                  style={[shelfStyles.spineText, { color: colors.text }]}
+                  numberOfLines={5}
+                >
+                  {book.title.length > 35 ? book.title.slice(0, 33) + '…' : book.title}
+                </Text>
+              </View>
+            );
+          })}
+        </ScrollView>
+        <View style={shelfStyles.board} />
+      </View>
+      <Text style={shelfStyles.hint}>
+        Scroll to see all spines · Width reflects page count · Colours represent genre
+      </Text>
+    </View>
+  );
+}
+
+const FONT_SANS = Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' });
+
+const shelfStyles = StyleSheet.create({
+  container: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+  },
+  inner: {
+    backgroundColor: '#f5efe6',
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  spinesRow: {
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 0,
+    gap: 3,
+    alignItems: 'flex-end',
+  },
+  spine: {
+    borderRadius: 2,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+  spineText: {
+    fontSize: 7,
+    fontWeight: '600',
+    textAlign: 'center',
+    transform: [{ rotate: '-90deg' }],
+    width: 90,
+    lineHeight: 9,
+    fontFamily: FONT_SANS,
+  },
+  board: {
+    height: 10,
+    backgroundColor: '#b8956a',
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 4,
+  },
+  hint: {
+    fontSize: 11,
+    color: Colors.muted,
+    textAlign: 'center',
+    marginTop: 8,
+    fontFamily: FONT_SANS,
+  },
+});
+
 // ─── ShelfDetail ───────────────────────────────────────────────────────────────
 
 function ShelfDetail({
@@ -545,12 +671,13 @@ function ShelfDetail({
   const [showAddBooks, setShowAddBooks] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'shelf'>('list');
 
   async function fetchShelfBooks() {
     setLoading(true);
     const { data } = await supabase
       .from('shelf_books')
-      .select('book_id, books(id, title, author, cover_image_url, isbn_13, isbn_10)')
+      .select('book_id, books(id, title, author, cover_image_url, isbn_13, isbn_10, genre, pages)')
       .eq('shelf_id', shelf.id);
     setShelfBooks((data as any[]) || []);
     setLoading(false);
@@ -620,28 +747,64 @@ function ShelfDetail({
         </TouchableOpacity>
       </View>
 
-      {/* Book list */}
+      {/* View mode toggle */}
+      {!loading && shelfBooks.length > 0 && (
+        <View style={styles.viewToggleRow}>
+          <TouchableOpacity
+            style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnActive]}
+            onPress={() => setViewMode('list')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.viewToggleBtnText, viewMode === 'list' && styles.viewToggleBtnTextActive]}>
+              ☰ List
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.viewToggleBtn, viewMode === 'shelf' && styles.viewToggleBtnActive]}
+            onPress={() => setViewMode('shelf')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.viewToggleBtnText, viewMode === 'shelf' && styles.viewToggleBtnTextActive]}>
+              📚 Shelf
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Book list / bookshelf */}
       {loading ? (
         <View style={styles.loader}>
           <ActivityIndicator size="large" color={Colors.rust} />
         </View>
+      ) : shelfBooks.length === 0 ? (
+        <View style={[styles.emptyState, { paddingTop: 40 }]}>
+          <Text style={styles.emptyIcon}>📖</Text>
+          <Text style={styles.emptyTitle}>No books on this shelf yet</Text>
+          <Text style={styles.emptySubtitle}>
+            Tap "+ Add Books" to add from your collection.
+          </Text>
+        </View>
+      ) : viewMode === 'shelf' ? (
+        <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+          <BookshelfView books={shelfBooks.map((sb) => sb.books).filter(Boolean) as NonNullable<ShelfBook['books']>[]} />
+          <TouchableOpacity
+            style={[styles.btnDanger, deleting && styles.btnDisabled, { marginHorizontal: 16, marginTop: 24 }]}
+            onPress={handleDeleteShelf}
+            disabled={deleting}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.btnDangerText}>
+              {deleting ? 'Deleting…' : 'Delete Shelf'}
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
       ) : (
         <FlatList
           data={shelfBooks}
           keyExtractor={(item) => item.book_id}
           contentContainerStyle={[
             styles.detailListContent,
-            shelfBooks.length === 0 && styles.detailListEmpty,
           ]}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyIcon}>📖</Text>
-              <Text style={styles.emptyTitle}>No books on this shelf yet</Text>
-              <Text style={styles.emptySubtitle}>
-                Tap "+ Add Books" to add from your collection.
-              </Text>
-            </View>
-          }
           renderItem={({ item }) => {
             const book = item.books;
             if (!book) return null;
@@ -1164,6 +1327,34 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     paddingHorizontal: 8,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+
+  // ── View toggle ──
+  viewToggleRow: {
+    flexDirection: 'row',
+    gap: 0,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    marginBottom: 4,
+  },
+  viewToggleBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  viewToggleBtnActive: {
+    backgroundColor: Colors.rust,
+  },
+  viewToggleBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  viewToggleBtnTextActive: {
+    color: '#fff',
   },
 
   // ── Shelf detail ──

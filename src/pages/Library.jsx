@@ -1140,6 +1140,7 @@ export default function Library({ session }) {
             isbn_10: b.books?.isbn_10 || null,
           }))}
           onClose={() => setShowShelfPlanner(false)}
+          onSaved={() => { setShowShelfPlanner(false); navigate('/shelves') }}
         />
       )}
       </div>

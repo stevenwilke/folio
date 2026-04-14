@@ -378,7 +378,7 @@ ${shelves.map((shelf, si) => `
 }
 
 // ── Main Modal ────────────────────────────────────────────────────────────────
-export default function ShelfPlannerModal({ books, session, onClose }) {
+export default function ShelfPlannerModal({ books, session, onClose, onSaved }) {
   const { theme } = useTheme()
   const fileInputRef = useRef(null)
 
@@ -433,6 +433,42 @@ export default function ShelfPlannerModal({ books, session, onClose }) {
     else delete next[bookId]
     setGenreOverrides(next)
     localStorage.setItem(GENRE_OVERRIDES_KEY, JSON.stringify(next))
+  }
+
+  // Save to My Shelves state
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function saveToMyShelves() {
+    if (saving) return
+    setSaving(true)
+    try {
+      const methodLabel = SORT_METHODS.find(m => m.id === sortMethod)?.label || sortMethod
+      for (let i = 0; i < shelvesWithBooks.length; i++) {
+        const shelf = shelvesWithBooks[i]
+        if (shelf.books.length === 0) continue
+        const { data: newShelf, error: shelfErr } = await supabase
+          .from('shelves')
+          .insert({
+            user_id: session.user.id,
+            name: `Shelf ${i + 1}`,
+            description: `Arranged by ${methodLabel}`,
+          })
+          .select()
+          .single()
+        if (shelfErr) throw shelfErr
+        const rows = shelf.books.map(b => ({ shelf_id: newShelf.id, book_id: b.id }))
+        const { error: booksErr } = await supabase.from('shelf_books').insert(rows)
+        if (booksErr) throw booksErr
+      }
+      setSaved(true)
+      setTimeout(() => { onSaved?.() }, 800)
+    } catch (err) {
+      console.error('Failed to save shelves:', err)
+      alert('Failed to save shelves. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   // Computed — apply overrides before sorting so genre-based sorts use the override
@@ -822,6 +858,29 @@ export default function ShelfPlannerModal({ books, session, onClose }) {
               ))}
               <div style={{ fontSize: 12, color: theme.textSubtle, textAlign: 'center', marginTop: 8 }}>
                 Click any spine to see its cover · Colors represent genre
+              </div>
+
+              {/* Save to My Shelves */}
+              <div style={{ textAlign: 'center', marginTop: 20 }}>
+                <button
+                  onClick={saveToMyShelves}
+                  disabled={saving || saved}
+                  style={{
+                    padding: '12px 28px',
+                    background: saved ? '#4a7c59' : theme.rust || '#c0521e',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: 10,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: saving || saved ? 'default' : 'pointer',
+                    opacity: saving ? 0.7 : 1,
+                    fontFamily: "'DM Sans', sans-serif",
+                    transition: 'background 0.2s',
+                  }}
+                >
+                  {saved ? '✓ Saved to My Shelves!' : saving ? 'Saving…' : '📂 Save to My Shelves'}
+                </button>
               </div>
 
               {/* Lightbox */}

@@ -46,7 +46,7 @@ For books_per_shelf: estimate how many books each shelf could hold if fully pack
 Count from top shelf as shelf 1.`
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -82,18 +82,28 @@ Count from top shelf as shelf 1.`
     const text: string = (nonThoughtParts.length > 0 ? nonThoughtParts : parts)
       .map((p: any) => p.text ?? '').join('')
 
-    // Strip markdown fences
-    const stripped = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
+    // Strip markdown fences and extract JSON
+    const stripped = text.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
     const jsonMatch = stripped.match(/\{[\s\S]*\}/)
 
     if (!jsonMatch) {
+      console.error('Could not find JSON in response:', text.slice(0, 500))
       return new Response(
         JSON.stringify({ error: 'Could not parse shelf analysis', raw: text.slice(0, 300) }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    const result = JSON.parse(jsonMatch[0])
+    let result
+    try {
+      result = JSON.parse(jsonMatch[0])
+    } catch (parseErr) {
+      console.error('JSON parse error:', parseErr, 'Raw:', jsonMatch[0].slice(0, 300))
+      return new Response(
+        JSON.stringify({ error: 'Could not parse shelf analysis', raw: text.slice(0, 300) }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
     return new Response(
       JSON.stringify({ success: true, ...result }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

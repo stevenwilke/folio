@@ -226,7 +226,7 @@ function ShelfRow({ shelfNumber, books, shelfColor }) {
             Empty shelf
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, flexWrap: 'wrap', paddingBottom: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, overflowX: 'auto', paddingBottom: 0 }}>
             {books.map((book, i) => (
               <BookSpine key={book.id || i} book={book} height={130 + ((book.title?.charCodeAt(0) || 0) % 5) * 5} />
             ))}
@@ -522,7 +522,7 @@ export default function ShelfPlannerModal({ books, session, onClose }) {
       fontSize: 14, background: theme.bgCard, color: theme.text, width: '100%',
     },
     btn: {
-      background: theme.accent, color: '#fff', border: 'none', borderRadius: 10,
+      background: theme.rust, color: '#fff', border: 'none', borderRadius: 10,
       padding: '10px 24px', fontSize: 14, fontWeight: 600, cursor: 'pointer',
     },
     btnSecondary: {
@@ -531,8 +531,8 @@ export default function ShelfPlannerModal({ books, session, onClose }) {
     },
     tab: (active) => ({
       padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: active ? 600 : 400,
-      background: active ? theme.accent + '18' : 'none',
-      color: active ? theme.accent : theme.textSubtle,
+      background: active ? theme.rust + '18' : 'none',
+      color: active ? theme.rust : theme.textSubtle,
       border: 'none', cursor: 'pointer',
     }),
     uploadArea: {
@@ -759,9 +759,9 @@ export default function ShelfPlannerModal({ books, session, onClose }) {
                 onClick={() => setSortMethod(m.id)}
                 style={{
                   padding: '5px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
-                  border: `1px solid ${sortMethod === m.id ? theme.accent : theme.border}`,
-                  background: sortMethod === m.id ? theme.accent + '15' : 'none',
-                  color: sortMethod === m.id ? theme.accent : theme.text,
+                  border: `1px solid ${sortMethod === m.id ? theme.rust : theme.border}`,
+                  background: sortMethod === m.id ? theme.rust + '15' : 'none',
+                  color: sortMethod === m.id ? theme.rust : theme.text,
                   fontWeight: sortMethod === m.id ? 600 : 400,
                 }}
               >

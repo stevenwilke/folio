@@ -414,7 +414,7 @@ function BookshelfView({ books, theme }) {
         boxShadow: 'inset 0 -4px 0 #b8956a, 0 2px 8px rgba(0,0,0,0.08)',
         minHeight: 165,
       }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, flexWrap: 'wrap', paddingBottom: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, overflowX: 'auto', paddingBottom: 0 }}>
           {books.map((book, i) => (
             <BookSpine key={book.id || i} book={book} />
           ))}

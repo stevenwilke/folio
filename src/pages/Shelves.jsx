@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { getCoverUrl } from '../lib/coverUrl'
 
 export default function Shelves({ session }) {
   const { theme } = useTheme()
@@ -330,7 +331,7 @@ function getSpineWidth(pages) {
 }
 
 // ── Book Spine component ─────────────────────────────────────────────────────
-function BookSpine({ book }) {
+function BookSpine({ book, onClick }) {
   const [hovered, setHovered] = useState(false)
   const colors = getGenreColor(book.genre)
   const w = getSpineWidth(book.pages)
@@ -340,6 +341,7 @@ function BookSpine({ book }) {
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={() => onClick?.(book)}
       style={{
         position: 'relative',
         width: w,
@@ -347,7 +349,7 @@ function BookSpine({ book }) {
         background: colors.spine,
         borderRadius: '2px 2px 1px 1px',
         flexShrink: 0,
-        cursor: 'default',
+        cursor: 'pointer',
         boxShadow: hovered
           ? '2px 0 8px rgba(0,0,0,0.4), inset 1px 0 0 rgba(255,255,255,0.1)'
           : '1px 0 3px rgba(0,0,0,0.3)',
@@ -404,6 +406,9 @@ function BookSpine({ book }) {
 
 // ── Bookshelf View component ─────────────────────────────────────────────────
 function BookshelfView({ books, theme }) {
+  const [selectedBook, setSelectedBook] = useState(null)
+  const [imgError, setImgError] = useState(false)
+
   if (books.length === 0) return null
   return (
     <div>
@@ -416,13 +421,80 @@ function BookshelfView({ books, theme }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, overflowX: 'auto', paddingBottom: 0 }}>
           {books.map((book, i) => (
-            <BookSpine key={book.id || i} book={book} />
+            <BookSpine key={book.id || i} book={book} onClick={(b) => { setSelectedBook(b); setImgError(false) }} />
           ))}
         </div>
       </div>
       <div style={{ fontSize: 12, color: theme.textSubtle, textAlign: 'center', marginTop: 8 }}>
-        Hover over any spine to see details · Width reflects page count · Colours represent genre
+        Click any spine to see its cover · Width reflects page count · Colours represent genre
       </div>
+
+      {/* Lightbox */}
+      {selectedBook && (
+        <div
+          onClick={() => setSelectedBook(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, padding: 20,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: theme.bgCard, borderRadius: 16, padding: 28,
+              maxWidth: 340, width: '100%', textAlign: 'center',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              position: 'relative',
+            }}
+          >
+            <button
+              onClick={() => setSelectedBook(null)}
+              style={{
+                position: 'absolute', top: 12, right: 14,
+                background: 'none', border: 'none', fontSize: 18,
+                cursor: 'pointer', color: theme.textSubtle, padding: 4,
+              }}
+            >
+              ✕
+            </button>
+            {(() => {
+              const coverUrl = getCoverUrl(selectedBook)
+              return coverUrl && !imgError ? (
+                <img
+                  src={coverUrl}
+                  alt={selectedBook.title}
+                  onError={() => setImgError(true)}
+                  style={{
+                    width: 180, maxHeight: 270, objectFit: 'contain',
+                    borderRadius: 6, marginBottom: 16,
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                  }}
+                />
+              ) : (
+                <div style={{
+                  width: 180, height: 270, margin: '0 auto 16px',
+                  borderRadius: 6, overflow: 'hidden',
+                }}>
+                  <MiniCover title={selectedBook.title} rounded />
+                </div>
+              )
+            })()}
+            <div style={{
+              fontFamily: "'Playfair Display', Georgia, serif",
+              fontSize: 18, fontWeight: 700, color: theme.text,
+              marginBottom: 4, lineHeight: 1.3,
+            }}>
+              {selectedBook.title}
+            </div>
+            {selectedBook.author && (
+              <div style={{ fontSize: 14, color: theme.textMuted }}>
+                by {selectedBook.author}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

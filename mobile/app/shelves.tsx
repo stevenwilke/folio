@@ -563,6 +563,8 @@ function getSpineWidth(pages: number | null) {
 }
 
 function BookshelfView({ books }: { books: NonNullable<ShelfBook['books']>[] }) {
+  const [selectedBook, setSelectedBook] = useState<NonNullable<ShelfBook['books']> | null>(null);
+
   if (books.length === 0) return null;
   return (
     <View style={shelfStyles.container}>
@@ -577,8 +579,10 @@ function BookshelfView({ books }: { books: NonNullable<ShelfBook['books']>[] }) 
             const w = getSpineWidth(book.pages);
             const h = 100 + ((book.title?.charCodeAt(0) || 0) % 5) * 8;
             return (
-              <View
+              <TouchableOpacity
                 key={book.id || i}
+                activeOpacity={0.7}
+                onPress={() => setSelectedBook(book)}
                 style={[
                   shelfStyles.spine,
                   { backgroundColor: colors.spine, width: w, height: h },
@@ -590,15 +594,61 @@ function BookshelfView({ books }: { books: NonNullable<ShelfBook['books']>[] }) 
                 >
                   {book.title.length > 35 ? book.title.slice(0, 33) + '…' : book.title}
                 </Text>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </ScrollView>
         <View style={shelfStyles.board} />
       </View>
       <Text style={shelfStyles.hint}>
-        Scroll to see all spines · Width reflects page count · Colours represent genre
+        Tap any spine to see its cover · Width reflects page count · Colours represent genre
       </Text>
+
+      {/* Lightbox */}
+      <Modal
+        visible={!!selectedBook}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedBook(null)}
+      >
+        <Pressable
+          style={shelfStyles.lightboxOverlay}
+          onPress={() => setSelectedBook(null)}
+        >
+          <View style={shelfStyles.lightboxCard}>
+            <TouchableOpacity
+              style={shelfStyles.lightboxClose}
+              onPress={() => setSelectedBook(null)}
+              hitSlop={8}
+            >
+              <Text style={shelfStyles.lightboxCloseText}>✕</Text>
+            </TouchableOpacity>
+            {selectedBook && (() => {
+              const uri = getCoverUrl(selectedBook.cover_image_url, selectedBook.isbn_13, selectedBook.isbn_10);
+              return (
+                <>
+                  {uri ? (
+                    <Image
+                      source={{ uri }}
+                      style={shelfStyles.lightboxCover}
+                      resizeMode="contain"
+                    />
+                  ) : (
+                    <MiniCoverPlaceholder
+                      title={selectedBook.title}
+                      style={shelfStyles.lightboxCover}
+                    />
+                  )}
+                  <Text style={shelfStyles.lightboxTitle}>{selectedBook.title}</Text>
+                  {selectedBook.author ? (
+                    <Text style={shelfStyles.lightboxAuthor}>by {selectedBook.author}</Text>
+                  ) : null}
+                </>
+              );
+            })()}
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -649,6 +699,57 @@ const shelfStyles = StyleSheet.create({
     color: Colors.muted,
     textAlign: 'center',
     marginTop: 8,
+    fontFamily: FONT_SANS,
+  },
+  lightboxOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  lightboxCard: {
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    padding: 28,
+    width: '85%',
+    maxWidth: 320,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.3,
+    shadowRadius: 30,
+    elevation: 20,
+  },
+  lightboxClose: {
+    position: 'absolute',
+    top: 12,
+    right: 14,
+    padding: 4,
+  },
+  lightboxCloseText: {
+    fontSize: 18,
+    color: Colors.muted,
+  },
+  lightboxCover: {
+    width: 160,
+    height: 240,
+    borderRadius: 6,
+    marginBottom: 16,
+  },
+  lightboxTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.ink,
+    textAlign: 'center',
+    lineHeight: 24,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+    marginBottom: 4,
+  },
+  lightboxAuthor: {
+    fontSize: 14,
+    color: Colors.muted,
+    textAlign: 'center',
     fontFamily: FONT_SANS,
   },
 });

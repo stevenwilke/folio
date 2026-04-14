@@ -1135,6 +1135,9 @@ export default function Library({ session }) {
             pages: b.books?.pages || null,
             read_status: b.read_status,
             user_rating: b.user_rating || null,
+            cover_image_url: b.books?.cover_image_url || null,
+            isbn_13: b.books?.isbn_13 || null,
+            isbn_10: b.books?.isbn_10 || null,
           }))}
           onClose={() => setShowShelfPlanner(false)}
         />
@@ -1224,6 +1227,7 @@ function ListRow({ entry, isLast, selectMode, isSelected, onSelect, theme, isMob
   const sc      = STATUS_COLORS[status] || {}
   const sl      = (status === 'owned' && entry.has_read) ? 'In Library ✓' : (STATUS_LABELS[status] || status)
   const touchStartY = useRef(0)
+  const wasScrolling = useRef(false)
   const [hover, setHover]       = useState(false)
   const [imgError, setImgError] = useState(false)
   const coverUrl = getCoverUrl(book)
@@ -1233,9 +1237,9 @@ function ListRow({ entry, isLast, selectMode, isSelected, onSelect, theme, isMob
 
   return (
     <div
-      onClick={onSelect}
-      onTouchStart={(e) => { touchStartY.current = e.touches[0].clientY }}
-      onTouchEnd={(e) => { if (Math.abs(e.changedTouches[0].clientY - touchStartY.current) < 10) onSelect?.() }}
+      onClick={(e) => { if (wasScrolling.current) { wasScrolling.current = false; return } onSelect() }}
+      onTouchStart={(e) => { touchStartY.current = e.touches[0].clientY; wasScrolling.current = false }}
+      onTouchEnd={(e) => { wasScrolling.current = Math.abs(e.changedTouches[0].clientY - touchStartY.current) >= 10 }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -1305,6 +1309,7 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
   const status = entry.read_status
   const [menuOpen,     setMenuOpen]     = useState(false)
   const touchStartY = useRef(0)
+  const wasScrolling = useRef(false)
   const [hover,        setHover]        = useState(false)
   const [imgError,     setImgError]     = useState(false)
   const [currentPage,  setCurrentPage]  = useState(entry.current_page || 0)
@@ -1397,9 +1402,9 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
         position: 'relative',
         touchAction: 'manipulation',
       }}
-      onClick={onSelect}
-      onTouchStart={(e) => { touchStartY.current = e.touches[0].clientY }}
-      onTouchEnd={(e) => { if (Math.abs(e.changedTouches[0].clientY - touchStartY.current) < 10) onSelect?.() }}
+      onClick={(e) => { if (wasScrolling.current) { wasScrolling.current = false; return } onSelect() }}
+      onTouchStart={(e) => { touchStartY.current = e.touches[0].clientY; wasScrolling.current = false }}
+      onTouchEnd={(e) => { wasScrolling.current = Math.abs(e.changedTouches[0].clientY - touchStartY.current) >= 10 }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >

@@ -55,6 +55,12 @@ html, body {
   padding: 0;
   width: 100%;
   overflow-x: clip;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+
+html {
+  overflow-x: hidden;
 }
 
 #root {
@@ -63,6 +69,7 @@ html, body {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 h1,

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
+import { getCoverUrl } from '../lib/coverUrl'
 
 // ── Genre colour palette ──────────────────────────────────────────────────────
 const GENRE_COLORS = {
@@ -124,7 +125,7 @@ function distributeToShelves(books, shelves) {
 }
 
 // ── Book Spine component ──────────────────────────────────────────────────────
-function BookSpine({ book, width, height = 140, showTitle = true }) {
+function BookSpine({ book, width, height = 140, showTitle = true, onClick }) {
   const [hovered, setHovered] = useState(false)
   const colors = getGenreColor(book.genre)
   const w = width ?? getSpineWidth(book.pages)
@@ -132,6 +133,7 @@ function BookSpine({ book, width, height = 140, showTitle = true }) {
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={() => onClick?.(book)}
       style={{
         position: 'relative',
         width: w,
@@ -139,7 +141,7 @@ function BookSpine({ book, width, height = 140, showTitle = true }) {
         background: colors.spine,
         borderRadius: '2px 2px 1px 1px',
         flexShrink: 0,
-        cursor: 'default',
+        cursor: 'pointer',
         boxShadow: hovered
           ? '2px 0 8px rgba(0,0,0,0.4), inset 1px 0 0 rgba(255,255,255,0.1)'
           : '1px 0 3px rgba(0,0,0,0.3)',
@@ -202,7 +204,7 @@ function BookSpine({ book, width, height = 140, showTitle = true }) {
 }
 
 // ── Shelf Row component ───────────────────────────────────────────────────────
-function ShelfRow({ shelfNumber, books, shelfColor }) {
+function ShelfRow({ shelfNumber, books, shelfColor, onBookClick }) {
   return (
     <div style={{ marginBottom: 24 }}>
       <div style={{
@@ -229,7 +231,7 @@ function ShelfRow({ shelfNumber, books, shelfColor }) {
         ) : (
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, overflowX: 'auto', paddingBottom: 0 }}>
             {books.map((book, i) => (
-              <BookSpine key={book.id || i} book={book} height={130 + ((book.title?.charCodeAt(0) || 0) % 5) * 5} />
+              <BookSpine key={book.id || i} book={book} height={130 + ((book.title?.charCodeAt(0) || 0) % 5) * 5} onClick={onBookClick} />
             ))}
           </div>
         )}
@@ -405,6 +407,10 @@ export default function ShelfPlannerModal({ books, session, onClose }) {
   // Arrangement state
   const [sortMethod, setSortMethod] = useState(savedConfig?.sortMethod ?? 'genre-alpha')
   const [activeTab, setActiveTab] = useState('visual') // 'visual' | 'guide'
+
+  // Lightbox state
+  const [selectedBook, setSelectedBook] = useState(null)
+  const [imgError, setImgError] = useState(false)
 
   // Persist planner config whenever it changes
   function savePlannerConfig(overrides = {}) {
@@ -811,11 +817,83 @@ export default function ShelfPlannerModal({ books, session, onClose }) {
                   shelfNumber={si + 1}
                   books={shelf.books}
                   shelfColor={shelfColors[si % shelfColors.length]}
+                  onBookClick={(b) => { setSelectedBook(b); setImgError(false) }}
                 />
               ))}
               <div style={{ fontSize: 12, color: theme.textSubtle, textAlign: 'center', marginTop: 8 }}>
-                Hover over any spine to see the book title · Colors represent genre
+                Click any spine to see its cover · Colors represent genre
               </div>
+
+              {/* Lightbox */}
+              {selectedBook && (
+                <div
+                  onClick={() => setSelectedBook(null)}
+                  style={{
+                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 2000, padding: 20,
+                  }}
+                >
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      background: theme.bgCard || '#fff', borderRadius: 16, padding: 28,
+                      maxWidth: 340, width: '100%', textAlign: 'center',
+                      boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+                      position: 'relative',
+                    }}
+                  >
+                    <button
+                      onClick={() => setSelectedBook(null)}
+                      style={{
+                        position: 'absolute', top: 12, right: 14,
+                        background: 'none', border: 'none', fontSize: 18,
+                        cursor: 'pointer', color: theme.textSubtle || '#999', padding: 4,
+                      }}
+                    >
+                      ✕
+                    </button>
+                    {(() => {
+                      const coverUrl = getCoverUrl(selectedBook)
+                      return coverUrl && !imgError ? (
+                        <img
+                          src={coverUrl}
+                          alt={selectedBook.title}
+                          onError={() => setImgError(true)}
+                          style={{
+                            width: 180, maxHeight: 270, objectFit: 'contain',
+                            borderRadius: 6, marginBottom: 16,
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                          }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: 180, height: 270, margin: '0 auto 16px',
+                          background: getGenreColor(selectedBook.genre).spine,
+                          borderRadius: 6, display: 'flex', alignItems: 'center',
+                          justifyContent: 'center', padding: 16,
+                          color: getGenreColor(selectedBook.genre).text,
+                          fontSize: 14, fontWeight: 600, textAlign: 'center',
+                        }}>
+                          {selectedBook.title}
+                        </div>
+                      )
+                    })()}
+                    <div style={{
+                      fontFamily: "'Playfair Display', Georgia, serif",
+                      fontSize: 18, fontWeight: 700, color: theme.text || '#333',
+                      marginBottom: 4, lineHeight: 1.3,
+                    }}>
+                      {selectedBook.title}
+                    </div>
+                    {selectedBook.author && (
+                      <div style={{ fontSize: 14, color: theme.textMuted || '#888' }}>
+                        by {selectedBook.author}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <PrintGuide

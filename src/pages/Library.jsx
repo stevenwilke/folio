@@ -156,7 +156,7 @@ export default function Library({ session }) {
     const { data, error } = await supabase
       .from('collection_entries')
       .select(`
-        *, books ( id, title, author, cover_image_url, isbn_13, isbn_10, genre, published_year, pages )
+        *, books ( id, title, author, cover_image_url, isbn_13, isbn_10, genre, published_year, pages, format )
       `)
       .eq('user_id', session.user.id)
       .order('added_at', { ascending: false })
@@ -1124,7 +1124,9 @@ export default function Library({ session }) {
       {showShelfPlanner && (
         <ShelfPlannerModal
           session={session}
-          books={books.map(b => ({
+          books={books
+            .filter(b => b.books?.format !== 'eBook' && b.books?.format !== 'Audiobook')
+            .map(b => ({
             id: b.book_id,
             title: b.books?.title || '',
             author: b.books?.author || null,

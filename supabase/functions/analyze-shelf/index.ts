@@ -28,28 +28,26 @@ serve(async (req) => {
       )
     }
 
-    const prompt = `Analyze this photo of a bookshelf or bookcase. Many bookcases have vertical dividers creating multiple columns. Each individual cubby/section (row × column) counts as its own shelf.
+    const prompt = `Analyze this bookshelf photo. The photo may be at an angle. Only count actual enclosed cubbies/sections where books can stand upright — do NOT count the top surface, open areas above the bookcase, or decorative ledges as shelves.
 
-Please respond with ONLY a valid JSON object (no markdown, no explanation) with these fields:
+Respond with a JSON object:
 
 {
-  "rows": <number of horizontal rows>,
-  "columns": <number of vertical columns/sections>,
-  "shelf_count": <total number of individual cubbies/sections, i.e. rows × columns>,
-  "current_books_per_shelf": [<actual count of books currently visible in cubby 1>, <cubby 2>, ...],
-  "books_per_shelf": [<estimated MAX capacity if cubby were fully packed with books>, ...],
-  "total_capacity": <total estimated max book capacity across all cubbies>,
-  "notes": "<brief observation about the shelves, e.g. size, style, any notable features>",
-  "recognized_books": [
-    {"title": "...", "author": "...", "shelf": <shelf number 1-based>},
-    ...
-  ]
+  "rows": <number of rows of cubbies>,
+  "columns": <number of columns>,
+  "shelf_count": <rows × columns>,
+  "current_books_per_shelf": [<books visible in cubby 1>, ...],
+  "books_per_shelf": [<max capacity per cubby>, ...],
+  "shelf_bounds": [{"x":<left%>,"y":<top%>,"w":<width%>,"h":<height%>}, ...],
+  "total_capacity": <sum of books_per_shelf>,
+  "notes": "<brief observation>",
+  "recognized_books": [{"title":"...","author":"...","shelf":<n>}, ...]
 }
 
-For shelf numbering: count left-to-right, top-to-bottom. E.g. a 3-row × 3-column bookcase has 9 shelves: top-left is 1, top-middle is 2, top-right is 3, middle-left is 4, etc.
-For current_books_per_shelf: count the actual number of books currently visible in each cubby. Include an entry for every cubby (use 0 if no books).
-For books_per_shelf: estimate the MAX capacity — how many books each cubby could hold if fully packed with average-sized books. Use the current book count as a minimum (capacity should be >= current count). Consider the remaining empty space in each cubby.
-For recognized_books: only include books you are highly confident about. List up to 10.`
+Shelf numbering: left-to-right, top-to-bottom.
+shelf_bounds: bounding box of each cubby as percentages (0-100) of image size. Trace the actual wood dividers as they appear in the photo. Account for perspective — do NOT use a uniform grid. Keep values compact (integers, no decimals).
+books_per_shelf: max capacity >= current count.
+recognized_books: high confidence only, up to 10.`
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -68,7 +66,7 @@ For recognized_books: only include books you are highly confident about. List up
               { text: prompt }
             ]
           }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
+          generationConfig: { temperature: 0.2, maxOutputTokens: 16384, responseMimeType: 'application/json' },
         }),
       }
     )
@@ -78,7 +76,7 @@ For recognized_books: only include books you are highly confident about. List up
       console.error('Gemini API error:', err)
       return new Response(
         JSON.stringify({ error: 'Gemini API error', detail: err.slice(0, 200) }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       )
     }
 
@@ -96,7 +94,7 @@ For recognized_books: only include books you are highly confident about. List up
       console.error('Could not find JSON in response:', text.slice(0, 500))
       return new Response(
         JSON.stringify({ error: 'Could not parse shelf analysis', raw: text.slice(0, 300) }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       )
     }
 
@@ -107,7 +105,7 @@ For recognized_books: only include books you are highly confident about. List up
       console.error('JSON parse error:', parseErr, 'Raw:', jsonMatch[0].slice(0, 300))
       return new Response(
         JSON.stringify({ error: 'Could not parse shelf analysis', raw: text.slice(0, 300) }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       )
     }
     return new Response(

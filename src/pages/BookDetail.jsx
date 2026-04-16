@@ -1206,6 +1206,41 @@ export default function BookDetail({ bookId, session, onBack }) {
               </div>
             )}
 
+            {/* Format toggle */}
+            {entry && (
+              <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                {[
+                  { value: 'Hardcover',   label: '📖 Hardcover' },
+                  { value: 'Paperback',   label: '📕 Paperback' },
+                  { value: 'eBook',       label: '📱 eBook' },
+                  { value: 'Audiobook',   label: '🎧 Audiobook' },
+                ].map(opt => {
+                  const isActive = (book.format || 'physical') === opt.value
+                  const isDigital = opt.value === 'eBook' || opt.value === 'Audiobook'
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={async () => {
+                        if (isActive) return
+                        await supabase.from('books').update({ format: opt.value }).eq('id', book.id)
+                        setBook(prev => ({ ...prev, format: opt.value }))
+                      }}
+                      style={{
+                        padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                        fontFamily: "'DM Sans', sans-serif", cursor: isActive ? 'default' : 'pointer',
+                        transition: 'all 0.15s',
+                        border: `1px solid ${isActive ? (isDigital ? '#5a6e8a' : '#5a7a5a') : theme.border}`,
+                        background: isActive ? (isDigital ? 'rgba(90,110,138,0.15)' : 'rgba(90,122,90,0.15)') : 'transparent',
+                        color: isActive ? (isDigital ? '#5a6e8a' : '#5a7a5a') : theme.textMuted,
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
             {/* Remove from collection */}
             {entry && (
               <div style={{ marginTop: 10 }}>

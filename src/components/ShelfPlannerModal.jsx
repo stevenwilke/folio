@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
@@ -25,6 +25,8 @@ const DEFAULT_COLOR = { spine: '#6b5c4a', text: '#fff8f0' }
 
 const GENRE_OVERRIDES_KEY = 'folio-genre-overrides'
 const PLANNER_CONFIG_KEY  = 'folio-planner-config'
+const SHELF_PHOTO_KEY     = 'folio-shelf-photo'
+const SHELF_ANALYSIS_KEY  = 'folio-shelf-analysis'
 const ALL_GENRES = Object.keys(GENRE_COLORS)
 
 function getGenreColor(genre) {
@@ -231,7 +233,7 @@ function ShelfRow({ shelfNumber, books, shelfColor, onBookClick }) {
         ) : (
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, overflowX: 'auto', paddingBottom: 0 }}>
             {books.map((book, i) => (
-              <BookSpine key={book.id || i} book={book} height={130 + ((book.title?.charCodeAt(0) || 0) % 5) * 5} onClick={onBookClick} />
+              <BookSpine key={book.id || i} book={book} height={130 + ((book.title?.charCodeAt(0) || 0) % 5) * 5} onClick={() => onBookClick?.(book, i)} />
             ))}
           </div>
         )}
@@ -382,6 +384,13 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
   const { theme } = useTheme()
   const fileInputRef = useRef(null)
 
+  // Lock body scroll while modal is open
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = originalOverflow }
+  }, [])
+
   // Load saved planner config (if any) to resume where the user left off
   const savedConfig = (() => {
     try { return JSON.parse(localStorage.getItem(PLANNER_CONFIG_KEY) || 'null') }
@@ -398,19 +407,26 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
   const [customShelfSizes, setCustomShelfSizes] = useState(savedConfig?.customShelfSizes ?? [])
   const [useCustomSizes, setUseCustomSizes] = useState(savedConfig?.useCustomSizes ?? false)
 
-  // Photo analysis state
+  // Photo analysis state — restore from localStorage if available
   const [analyzing, setAnalyzing] = useState(false)
-  const [analysisResult, setAnalysisResult] = useState(null)
-  const [photoPreview, setPhotoPreview] = useState(null)
+  const [analysisResult, setAnalysisResult] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(SHELF_ANALYSIS_KEY) || 'null') } catch { return null }
+  })
+  const [photoPreview, setPhotoPreview] = useState(() => localStorage.getItem(SHELF_PHOTO_KEY) || null)
   const [analysisError, setAnalysisError] = useState(null)
 
   // Arrangement state
   const [sortMethod, setSortMethod] = useState(savedConfig?.sortMethod ?? 'genre-alpha')
-  const [activeTab, setActiveTab] = useState('visual') // 'visual' | 'guide'
+  const [activeTab, setActiveTab] = useState('visual') // 'visual' | 'photo' | 'guide'
 
   // Lightbox state
   const [selectedBook, setSelectedBook] = useState(null)
+  const [selectedBookPos, setSelectedBookPos] = useState(null) // { shelf, index, total }
   const [imgError, setImgError] = useState(false)
+  const [showShelfPhoto, setShowShelfPhoto] = useState(false)
+
+  // My Shelf tab state
+  const [selectedShelfIdx, setSelectedShelfIdx] = useState(null)
 
   // Persist planner config whenever it changes
   function savePlannerConfig(overrides = {}) {
@@ -517,7 +533,10 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
 
     // Preview
     const reader = new FileReader()
-    reader.onload = (ev) => setPhotoPreview(ev.target.result)
+    reader.onload = (ev) => {
+      setPhotoPreview(ev.target.result)
+      try { localStorage.setItem(SHELF_PHOTO_KEY, ev.target.result) } catch (e) { /* storage full */ }
+    }
     reader.readAsDataURL(file)
 
     // Analyze
@@ -541,6 +560,10 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
         setAnalysisError(data?.error || error?.message || 'Analysis failed')
       } else {
         setAnalysisResult(data)
+        // Persist photo and analysis to localStorage
+        try {
+          localStorage.setItem(SHELF_ANALYSIS_KEY, JSON.stringify(data))
+        } catch (e) { /* storage full */ }
         // Auto-configure shelves from analysis
         if (data.shelf_count) setShelfCount(data.shelf_count)
         if (data.books_per_shelf?.length) {
@@ -655,22 +678,33 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
                       <img src={photoPreview} alt="Shelf" style={{
                         width: '100%', objectFit: 'cover', borderRadius: 8, display: 'block',
                       }} />
-                      {analysisResult?.rows && analysisResult?.columns && (
-                        <div style={{
-                          position: 'absolute', inset: 0, borderRadius: 8,
-                          display: 'grid',
-                          gridTemplateRows: `repeat(${analysisResult.rows}, 1fr)`,
-                          gridTemplateColumns: `repeat(${analysisResult.columns}, 1fr)`,
-                        }}>
-                          {Array.from({ length: analysisResult.rows * analysisResult.columns }, (_, i) => {
+                      {analysisResult?.shelf_count > 0 && (
+                        <div style={{ position: 'absolute', inset: 0, borderRadius: 8 }}>
+                          {Array.from({ length: analysisResult.shelf_count }, (_, i) => {
                             const currentBooks = analysisResult.current_books_per_shelf?.[i]
                             const capacity = analysisResult.books_per_shelf?.[i]
+                            const bounds = analysisResult.shelf_bounds?.[i]
+                            // Use precise bounding boxes if available, otherwise fall back to grid
+                            const posStyle = bounds
+                              ? {
+                                  position: 'absolute',
+                                  left: `${bounds.x}%`, top: `${bounds.y}%`,
+                                  width: `${bounds.w}%`, height: `${bounds.h}%`,
+                                }
+                              : {
+                                  position: 'absolute',
+                                  left: `${((i % (analysisResult.columns || 1)) / (analysisResult.columns || 1)) * 100}%`,
+                                  top: `${(Math.floor(i / (analysisResult.columns || 1)) / (analysisResult.rows || 1)) * 100}%`,
+                                  width: `${100 / (analysisResult.columns || 1)}%`,
+                                  height: `${100 / (analysisResult.rows || 1)}%`,
+                                }
                             return (
                               <div key={i} style={{
-                                border: '1px solid rgba(255,255,255,0.5)',
+                                ...posStyle,
+                                border: '1.5px solid rgba(255,255,255,0.6)',
                                 display: 'flex', flexDirection: 'column',
                                 alignItems: 'center', justifyContent: 'center',
-                                position: 'relative',
+                                borderRadius: 4,
                               }}>
                                 <div style={{
                                   width: 28, height: 28, borderRadius: '50%',
@@ -733,7 +767,7 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
                         )}
                       </div>
                       <button
-                        onClick={() => { setPhotoPreview(null); setAnalysisResult(null) }}
+                        onClick={() => { setPhotoPreview(null); setAnalysisResult(null); localStorage.removeItem(SHELF_PHOTO_KEY); localStorage.removeItem(SHELF_ANALYSIS_KEY) }}
                         style={{ ...s.btnSecondary, padding: '6px 12px', fontSize: 12 }}
                       >
                         Remove
@@ -818,20 +852,27 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
             {/* Genre legend */}
             <div style={{ marginBottom: 24 }}>
               <div style={s.sectionLabel}>Genre colour guide</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {Object.entries(GENRE_COLORS).map(([genre, colors]) => (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+                gap: '6px 12px',
+              }}>
+                {[...Object.entries(GENRE_COLORS), ['Other', DEFAULT_COLOR]].map(([genre, colors]) => (
                   <div key={genre} style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    fontSize: 11, color: theme.text,
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    fontSize: 12, color: theme.text,
+                    padding: '5px 8px',
+                    borderRadius: 6,
+                    background: theme.bgSubtle || 'rgba(0,0,0,0.03)',
                   }}>
-                    <div style={{ width: 12, height: 20, background: colors.spine, borderRadius: 2 }} />
-                    {genre}
+                    <div style={{
+                      width: 16, height: 24, background: colors.spine,
+                      borderRadius: 3, flexShrink: 0,
+                      boxShadow: '1px 0 3px rgba(0,0,0,0.2)',
+                    }} />
+                    <span style={{ fontWeight: 500 }}>{genre}</span>
                   </div>
                 ))}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: theme.text }}>
-                  <div style={{ width: 12, height: 20, background: DEFAULT_COLOR.spine, borderRadius: 2 }} />
-                  Other
-                </div>
               </div>
             </div>
           </div>
@@ -912,6 +953,11 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
           <button style={s.tab(activeTab === 'visual')} onClick={() => setActiveTab('visual')}>
             🖼️ Visual Preview
           </button>
+          {photoPreview && (
+            <button style={s.tab(activeTab === 'photo')} onClick={() => setActiveTab('photo')}>
+              🗄️ My Shelf
+            </button>
+          )}
           <button style={s.tab(activeTab === 'guide')} onClick={() => setActiveTab('guide')}>
             📋 Arrangement Guide
           </button>
@@ -926,7 +972,7 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
                   shelfNumber={si + 1}
                   books={shelf.books}
                   shelfColor={shelfColors[si % shelfColors.length]}
-                  onBookClick={(b) => { setSelectedBook(b); setImgError(false) }}
+                  onBookClick={(b, idx) => { setSelectedBook(b); setSelectedBookPos({ shelf: si + 1, index: idx, total: shelf.books.length }); setImgError(false); setShowShelfPhoto(false) }}
                 />
               ))}
               <div style={{ fontSize: 12, color: theme.textSubtle, textAlign: 'center', marginTop: 8 }}>
@@ -970,8 +1016,9 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
                     onClick={e => e.stopPropagation()}
                     style={{
                       background: theme.bgCard || '#fff', borderRadius: 16, padding: 28,
-                      maxWidth: 340, width: '100%', textAlign: 'center',
+                      maxWidth: showShelfPhoto ? 500 : 340, width: '100%', textAlign: 'center',
                       boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+                      transition: 'max-width 0.2s ease',
                       position: 'relative',
                     }}
                   >
@@ -1023,9 +1070,309 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
                         by {selectedBook.author}
                       </div>
                     )}
+                    {selectedBookPos && (() => {
+                      const fromLeft = selectedBookPos.index + 1
+                      const fromRight = selectedBookPos.total - selectedBookPos.index
+                      const useRight = selectedBookPos.index >= selectedBookPos.total / 2
+                      const pos = useRight ? fromRight : fromLeft
+                      const suffix = pos === 1 ? 'st' : pos === 2 ? 'nd' : pos === 3 ? 'rd' : 'th'
+                      const dir = useRight ? 'right' : 'left'
+                      return (
+                        <div
+                          onClick={() => setShowShelfPhoto(v => !v)}
+                          style={{
+                            marginTop: 10, fontSize: 13, fontWeight: 600,
+                            color: theme.rust || '#c0521e',
+                            background: (theme.rust || '#c0521e') + '12',
+                            padding: '6px 12px', borderRadius: 8,
+                            display: 'inline-block',
+                            cursor: 'pointer',
+                            transition: 'background 0.15s',
+                          }}
+                        >
+                          📍 Shelf {selectedBookPos.shelf}, {pos}{suffix} from the {dir}
+                          <span style={{ fontSize: 11, marginLeft: 6, opacity: 0.7 }}>
+                            {showShelfPhoto ? '▲' : '▼'}
+                          </span>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Shelf photo with highlighted cubby */}
+                    {showShelfPhoto && selectedBookPos && (
+                      <div style={{ marginTop: 12, width: '100%' }}>
+                        {photoPreview ? (
+                          <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden' }}>
+                            <img src={photoPreview} alt="Your shelf" style={{
+                              width: '100%', display: 'block', borderRadius: 8,
+                            }} />
+                            {/* Dim overlay */}
+                            <div style={{
+                              position: 'absolute', inset: 0, borderRadius: 8,
+                              background: 'rgba(0,0,0,0.5)',
+                            }} />
+                            {/* Highlighted shelf cutout */}
+                            {(() => {
+                              const shelfIdx = selectedBookPos.shelf - 1
+                              const bounds = analysisResult?.shelf_bounds?.[shelfIdx]
+                              if (!bounds) {
+                                // Fallback to grid if no bounds
+                                const rows = analysisResult?.rows || shelvesWithBooks.length
+                                const cols = analysisResult?.columns || 1
+                                const row = Math.floor(shelfIdx / cols)
+                                const col = shelfIdx % cols
+                                return (
+                                  <div style={{
+                                    position: 'absolute',
+                                    left: `${(col / cols) * 100}%`,
+                                    top: `${(row / rows) * 100}%`,
+                                    width: `${100 / cols}%`,
+                                    height: `${100 / rows}%`,
+                                    border: `3px solid ${theme.rust || '#c0521e'}`,
+                                    borderRadius: 4,
+                                    boxShadow: '0 0 0 2000px rgba(0,0,0,0)', // Clear the dim
+                                    background: 'rgba(0,0,0,0)', // Transparent cutout
+                                    // Use backdrop to clear the dim layer
+                                  }} />
+                                )
+                              }
+                              return (
+                                <div style={{
+                                  position: 'absolute',
+                                  left: `${bounds.x}%`, top: `${bounds.y}%`,
+                                  width: `${bounds.w}%`, height: `${bounds.h}%`,
+                                  border: `3px solid ${theme.rust || '#c0521e'}`,
+                                  borderRadius: 4,
+                                  boxShadow: `0 0 12px ${theme.rust || '#c0521e'}80`,
+                                }} />
+                              )
+                            })()}
+                            {/* Re-show the photo only in the highlighted area using clip-path */}
+                            {(() => {
+                              const shelfIdx = selectedBookPos.shelf - 1
+                              const bounds = analysisResult?.shelf_bounds?.[shelfIdx]
+                              const rows = analysisResult?.rows || shelvesWithBooks.length
+                              const cols = analysisResult?.columns || 1
+                              const row = Math.floor(shelfIdx / cols)
+                              const col = shelfIdx % cols
+                              const x = bounds ? bounds.x : (col / cols) * 100
+                              const y = bounds ? bounds.y : (row / rows) * 100
+                              const w = bounds ? bounds.w : 100 / cols
+                              const h = bounds ? bounds.h : 100 / rows
+                              return (
+                                <img src={photoPreview} alt="" style={{
+                                  position: 'absolute', inset: 0,
+                                  width: '100%', height: '100%',
+                                  objectFit: 'cover', borderRadius: 8,
+                                  clipPath: `polygon(${x}% ${y}%, ${x + w}% ${y}%, ${x + w}% ${y + h}%, ${x}% ${y + h}%)`,
+                                  pointerEvents: 'none',
+                                }} />
+                              )
+                            })()}
+                            {/* Shelf number badge */}
+                            {(() => {
+                              const shelfIdx = selectedBookPos.shelf - 1
+                              const bounds = analysisResult?.shelf_bounds?.[shelfIdx]
+                              const rows = analysisResult?.rows || shelvesWithBooks.length
+                              const cols = analysisResult?.columns || 1
+                              const row = Math.floor(shelfIdx / cols)
+                              const col = shelfIdx % cols
+                              const cx = bounds ? bounds.x + bounds.w / 2 : ((col + 0.5) / cols) * 100
+                              const cy = bounds ? bounds.y + bounds.h / 2 : ((row + 0.5) / rows) * 100
+                              return (
+                                <div style={{
+                                  position: 'absolute',
+                                  left: `${cx}%`, top: `${cy}%`,
+                                  transform: 'translate(-50%, -50%)',
+                                  width: 32, height: 32, borderRadius: '50%',
+                                  background: theme.rust || '#c0521e',
+                                  color: 'white', fontWeight: 700, fontSize: 14,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                                }}>
+                                  {selectedBookPos.shelf}
+                                </div>
+                              )
+                            })()}
+                          </div>
+                        ) : (
+                          <div style={{
+                            padding: '16px 12px', borderRadius: 8,
+                            background: theme.bgSubtle || '#f5f0eb',
+                            color: theme.textSubtle || '#8a7f72',
+                            fontSize: 13, textAlign: 'center',
+                            lineHeight: 1.5,
+                          }}>
+                            📷 Upload a shelf photo in the setup step to see where this book goes on your actual bookcase
+                            <div
+                              onClick={() => { setSelectedBook(null); setShowShelfPhoto(false); setStep('setup') }}
+                              style={{
+                                marginTop: 8, fontSize: 12, fontWeight: 600,
+                                color: theme.rust || '#c0521e', cursor: 'pointer',
+                              }}
+                            >
+                              ← Go to setup
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
+            </div>
+          ) : activeTab === 'photo' ? (
+            <div>
+              {/* Shelf photo with clickable cubbies */}
+              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', flex: '1 1 300px', maxWidth: 520 }}>
+                  <img src={photoPreview} alt="Your bookshelf" style={{
+                    width: '100%', display: 'block', borderRadius: 8,
+                  }} />
+                  {/* Dim overlay when a shelf is selected */}
+                  {selectedShelfIdx != null && (
+                    <div style={{
+                      position: 'absolute', inset: 0, borderRadius: 8,
+                      background: 'rgba(0,0,0,0.45)', pointerEvents: 'none',
+                    }} />
+                  )}
+                  {/* Clickable shelf overlays */}
+                  {Array.from({ length: analysisResult?.shelf_count || shelvesWithBooks.length }, (_, i) => {
+                    const bounds = analysisResult?.shelf_bounds?.[i]
+                    const rows = analysisResult?.rows || shelvesWithBooks.length
+                    const cols = analysisResult?.columns || 1
+                    const row = Math.floor(i / cols)
+                    const col = i % cols
+                    const posStyle = bounds
+                      ? { left: `${bounds.x}%`, top: `${bounds.y}%`, width: `${bounds.w}%`, height: `${bounds.h}%` }
+                      : { left: `${(col / cols) * 100}%`, top: `${(row / rows) * 100}%`, width: `${100 / cols}%`, height: `${100 / rows}%` }
+                    const isSelected = selectedShelfIdx === i
+                    return (
+                      <div
+                        key={i}
+                        onClick={() => setSelectedShelfIdx(isSelected ? null : i)}
+                        style={{
+                          position: 'absolute', ...posStyle,
+                          border: isSelected ? `3px solid ${theme.rust || '#c0521e'}` : '1.5px solid rgba(255,255,255,0.4)',
+                          borderRadius: 4, cursor: 'pointer',
+                          boxShadow: isSelected ? `0 0 12px ${theme.rust || '#c0521e'}80` : 'none',
+                          display: 'flex', flexDirection: 'column',
+                          alignItems: 'center', justifyContent: 'center',
+                          transition: 'border 0.15s, box-shadow 0.15s',
+                          zIndex: isSelected ? 2 : 1,
+                        }}
+                      >
+                        <div style={{
+                          width: 28, height: 28, borderRadius: '50%',
+                          background: isSelected ? (theme.rust || '#c0521e') : 'rgba(192,82,30,0.85)',
+                          color: 'white', fontWeight: 700, fontSize: 13,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+                          transition: 'background 0.15s',
+                        }}>
+                          {i + 1}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {/* Re-show photo in selected shelf area (un-dim) */}
+                  {selectedShelfIdx != null && (() => {
+                    const i = selectedShelfIdx
+                    const bounds = analysisResult?.shelf_bounds?.[i]
+                    const rows = analysisResult?.rows || shelvesWithBooks.length
+                    const cols = analysisResult?.columns || 1
+                    const row = Math.floor(i / cols)
+                    const col = i % cols
+                    const x = bounds ? bounds.x : (col / cols) * 100
+                    const y = bounds ? bounds.y : (row / rows) * 100
+                    const w = bounds ? bounds.w : 100 / cols
+                    const h = bounds ? bounds.h : 100 / rows
+                    return (
+                      <img src={photoPreview} alt="" style={{
+                        position: 'absolute', inset: 0,
+                        width: '100%', height: '100%',
+                        objectFit: 'cover', borderRadius: 8,
+                        clipPath: `polygon(${x}% ${y}%, ${x + w}% ${y}%, ${x + w}% ${y + h}%, ${x}% ${y + h}%)`,
+                        pointerEvents: 'none',
+                      }} />
+                    )
+                  })()}
+                </div>
+
+                {/* Book list for selected shelf */}
+                <div style={{ flex: '1 1 240px', minWidth: 240 }}>
+                  {selectedShelfIdx != null && shelvesWithBooks[selectedShelfIdx] ? (
+                    <div>
+                      <div style={{
+                        fontSize: 15, fontWeight: 700, color: theme.text,
+                        marginBottom: 12, paddingBottom: 8,
+                        borderBottom: `2px solid ${theme.rust || '#c0521e'}`,
+                      }}>
+                        Shelf {selectedShelfIdx + 1} · {shelvesWithBooks[selectedShelfIdx].books.length} books
+                      </div>
+                      <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                        {shelvesWithBooks[selectedShelfIdx].books.map((book, bi) => (
+                          <div key={book.id || bi} style={{
+                            display: 'flex', alignItems: 'center', gap: 10,
+                            padding: '8px 0',
+                            borderBottom: `1px solid ${theme.border || '#eee'}`,
+                          }}>
+                            <div style={{
+                              width: 22, height: 22, borderRadius: '50%',
+                              background: theme.bgSubtle || '#f0ebe4',
+                              color: theme.textSubtle || '#8a7f72',
+                              fontSize: 11, fontWeight: 700,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              flexShrink: 0,
+                            }}>
+                              {bi + 1}
+                            </div>
+                            {(() => {
+                              const coverUrl = getCoverUrl(book)
+                              return coverUrl ? (
+                                <img src={coverUrl} alt="" style={{
+                                  width: 30, height: 44, objectFit: 'cover',
+                                  borderRadius: 3, flexShrink: 0,
+                                  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+                                }} />
+                              ) : (
+                                <div style={{
+                                  width: 30, height: 44, borderRadius: 3, flexShrink: 0,
+                                  background: getGenreColor(book.genre).spine,
+                                }} />
+                              )
+                            })()}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{
+                                fontSize: 13, fontWeight: 600, color: theme.text,
+                                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                              }}>
+                                {book.title}
+                              </div>
+                              {book.author && (
+                                <div style={{
+                                  fontSize: 11, color: theme.textMuted || '#999',
+                                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                }}>
+                                  {book.author}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{
+                      textAlign: 'center', padding: '40px 20px',
+                      color: theme.textSubtle || '#8a7f72', fontSize: 14,
+                    }}>
+                      <div style={{ fontSize: 32, marginBottom: 12 }}>👆</div>
+                      Tap a shelf to see which books go there
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           ) : (
             <PrintGuide

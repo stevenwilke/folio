@@ -144,7 +144,7 @@ export default function Profile({ session }) {
 
     const { data: entries } = await supabase
       .from('collection_entries')
-      .select('id, read_status, user_rating, review_text, added_at, updated_at, books(id, title, author, cover_image_url, isbn_13, isbn_10, genre, published_year, pages)')
+      .select('id, read_status, user_rating, review_text, added_at, updated_at, books(id, title, author, cover_image_url, isbn_13, isbn_10, genre, published_year, pages, format)')
       .eq('user_id', prof.id)
       .order('added_at', { ascending: false })
 
@@ -210,6 +210,7 @@ export default function Profile({ session }) {
   const want    = books.filter(b => b.read_status === 'want')
   const owned   = books.filter(b => b.read_status === 'owned')
   const reviews = books.filter(b => b.review_text)
+  const ebooks  = books.filter(b => b.books?.format === 'eBook' || b.books?.format === 'Audiobook')
 
   const stats = {
     total:     books.length,
@@ -585,6 +586,101 @@ export default function Profile({ session }) {
               </div>
             </section>
           )}
+        </div>
+      )}
+
+      {/* Get Physical — show ebooks with links to buy physical copies */}
+      {isOwnProfile && ebooks.length > 0 && (
+        <div style={{ maxWidth: 820, margin: '0 auto', padding: isMobile ? '0 16px 0' : '0 32px 0' }}>
+          <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 32, marginTop: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 4 }}>
+              Get Physical
+            </div>
+            <div style={{ fontSize: 13, color: theme.textMuted, marginBottom: 16 }}>
+              You have {ebooks.length} digital {ebooks.length === 1 ? 'book' : 'books'}. Grab the physical edition to add {ebooks.length === 1 ? 'it' : 'them'} to your shelves.
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))',
+              gap: 10,
+            }}>
+              {ebooks.map(entry => {
+                const b = entry.books
+                if (!b) return null
+                const searchQuery = encodeURIComponent(`${b.title} ${b.author || ''}`)
+                const isbnQuery = b.isbn_13 || b.isbn_10
+                return (
+                  <div key={entry.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    background: theme.bgCard, border: `1px solid ${theme.border}`,
+                    borderRadius: 12, padding: '12px 14px',
+                  }}>
+                    {b.cover_image_url ? (
+                      <img src={b.cover_image_url} alt="" style={{
+                        width: 40, height: 60, objectFit: 'cover', borderRadius: 4, flexShrink: 0,
+                      }} />
+                    ) : (
+                      <div style={{
+                        width: 40, height: 60, borderRadius: 4, flexShrink: 0,
+                        background: theme.bgSubtle, display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', fontSize: 18,
+                      }}>📖</div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 13, fontWeight: 600, color: theme.text,
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}>
+                        {b.title}
+                      </div>
+                      {b.author && (
+                        <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 4 }}>
+                          {b.author}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <a
+                          href={`https://bookshop.org/search?keywords=${searchQuery}`}
+                          target="_blank" rel="noopener noreferrer"
+                          style={{
+                            fontSize: 10, fontWeight: 600, padding: '2px 8px',
+                            borderRadius: 4, background: '#e8f0e4', color: '#3a6b35',
+                            textDecoration: 'none',
+                          }}
+                        >
+                          Bookshop.org
+                        </a>
+                        <a
+                          href={isbnQuery
+                            ? `https://www.amazon.com/dp/${isbnQuery}`
+                            : `https://www.amazon.com/s?k=${searchQuery}`}
+                          target="_blank" rel="noopener noreferrer"
+                          style={{
+                            fontSize: 10, fontWeight: 600, padding: '2px 8px',
+                            borderRadius: 4, background: '#fef3e2', color: '#b5651d',
+                            textDecoration: 'none',
+                          }}
+                        >
+                          Amazon
+                        </a>
+                        <a
+                          href={`https://www.thriftbooks.com/browse/?b.search=${searchQuery}`}
+                          target="_blank" rel="noopener noreferrer"
+                          style={{
+                            fontSize: 10, fontWeight: 600, padding: '2px 8px',
+                            borderRadius: 4, background: '#e8e4f0', color: '#5b4a8a',
+                            textDecoration: 'none',
+                          }}
+                        >
+                          ThriftBooks
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       )}
 

@@ -24,6 +24,70 @@ const TABS: TabConfig[] = [
 
 const HIDDEN_TABS = ['profile', 'loans'];
 
+function NotificationBell() {
+  const router = useRouter();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    async function fetchCount() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || !mounted) return;
+
+      // Count unread notifications
+      const { count: notifCount } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('is_read', false);
+
+      // Count pending friend requests
+      const { count: friendCount } = await supabase
+        .from('friendships')
+        .select('id', { count: 'exact', head: true })
+        .eq('friend_id', user.id)
+        .eq('status', 'pending');
+
+      if (mounted) setUnreadCount((notifCount || 0) + (friendCount || 0));
+    }
+    fetchCount();
+    const interval = setInterval(fetchCount, 60000);
+    return () => { mounted = false; clearInterval(interval); };
+  }, []);
+
+  return (
+    <TouchableOpacity
+      onPress={() => router.push('/notifications')}
+      style={{ marginRight: 12, padding: 6 }}
+      activeOpacity={0.7}
+    >
+      <Ionicons name="notifications-outline" size={22} color={Colors.ink} />
+      {unreadCount > 0 && (
+        <View style={{
+          position: 'absolute', top: 2, right: 2,
+          minWidth: 16, height: 16, borderRadius: 8,
+          backgroundColor: Colors.rust,
+          alignItems: 'center', justifyContent: 'center',
+          paddingHorizontal: 3,
+        }}>
+          <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+function HeaderRight() {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <NotificationBell />
+      <AvatarButton />
+    </View>
+  );
+}
+
 function AvatarButton() {
   const router = useRouter();
   const pathname = usePathname();
@@ -94,7 +158,7 @@ export default function TabsLayout() {
         },
         headerShadowVisible: false,
         headerTintColor: Colors.rust,
-        headerRight: () => <AvatarButton />,
+        headerRight: () => <HeaderRight />,
       }}
     >
       {TABS.map((tab) => (
@@ -115,7 +179,7 @@ export default function TabsLayout() {
           name={name}
           options={{
             href: null,
-            headerRight: () => <AvatarButton />,
+            headerRight: () => <HeaderRight />,
           }}
         />
       ))}

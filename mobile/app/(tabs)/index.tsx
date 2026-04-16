@@ -13,6 +13,7 @@ import {
   Image,
   Alert,
   Pressable,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -78,6 +79,8 @@ export default function LibraryScreen() {
   const [showShelfPlanner, setShowShelfPlanner] = useState(false);
   const [pendingCoverIds, setPendingCoverIds] = useState<Set<string>>(new Set());
   const [coverUploadTarget, setCoverUploadTarget] = useState<{ id: string; title: string } | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [valuationStats, setValuationStats] = useState<{ retailTotal: number; retailCount: number; usedTotal: number; usedCount: number } | null>(null);
 
   const COLUMNS = SIZE_COLUMNS[coverSize];
   const HORIZONTAL_PADDING = 16;
@@ -164,6 +167,20 @@ export default function LibraryScreen() {
           .in('book_id', bookIds);
         setPendingCoverIds(new Set((pending ?? []).map((p: any) => p.book_id)));
       }
+
+      // Fetch library valuation stats
+      const { data: vals } = await supabase
+        .from('valuations')
+        .select('book_id, list_price, avg_price')
+        .in('book_id', bookIds);
+      if (vals?.length) {
+        let retailTotal = 0, retailCount = 0, usedTotal = 0, usedCount = 0;
+        for (const v of vals) {
+          if (v.list_price) { retailTotal += v.list_price; retailCount++; }
+          if (v.avg_price) { usedTotal += v.avg_price; usedCount++; }
+        }
+        setValuationStats({ retailTotal, retailCount, usedTotal, usedCount });
+      }
     }
   }
 
@@ -249,11 +266,19 @@ export default function LibraryScreen() {
     setRefreshing(false);
   }
 
-  const filtered =
+  const filteredByStatus =
     filter === 'all' ? entries.filter((e) => e.read_status !== 'want')
     : filter === 'read' ? entries.filter((e) => e.has_read === true)
     : filter === 'series' ? entries.filter(e => e.books?.series_name)
     : entries.filter((e) => e.read_status === filter);
+
+  // Apply search query
+  const q = searchQuery.trim().toLowerCase();
+  const filtered = q
+    ? filteredByStatus.filter(e =>
+        e.books?.title?.toLowerCase().includes(q) ||
+        e.books?.author?.toLowerCase().includes(q))
+    : filteredByStatus;
 
   // Series grouping when series filter is active
   const seriesGroups = filter === 'series' ? (() => {
@@ -339,7 +364,7 @@ export default function LibraryScreen() {
       {/* Stats row — tapping a card filters the grid */}
       <View style={styles.statsRow}>
         {([
-          { label: 'Total',   value: stats.total,   key: 'all'     },
+          { label: 'In Library', value: stats.total,   key: 'all'     },
           { label: 'Read',    value: stats.read,    key: 'read'    },
           { label: 'Reading', value: stats.reading, key: 'reading' },
           { label: 'Want',    value: stats.want,    key: 'want'    },
@@ -359,6 +384,45 @@ export default function LibraryScreen() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* Search bar */}
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search your library…"
+          placeholderTextColor={Colors.muted}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+      </View>
+
+      {/* Library value boxes */}
+      {valuationStats && (valuationStats.retailTotal > 0 || valuationStats.usedTotal > 0) && (
+        <View style={styles.valueRow}>
+          <View style={styles.valueCard}>
+            <Text style={styles.valueIcon}>💰</Text>
+            <View>
+              <Text style={styles.valueAmount}>
+                ${valuationStats.retailTotal.toFixed(0)}
+              </Text>
+              <Text style={styles.valueLabel}>Retail Value</Text>
+              <Text style={styles.valueCount}>{valuationStats.retailCount} books priced</Text>
+            </View>
+          </View>
+          <View style={[styles.valueCard, { borderColor: Colors.gold }]}>
+            <Text style={styles.valueIcon}>📊</Text>
+            <View>
+              <Text style={[styles.valueAmount, { color: Colors.gold }]}>
+                ${valuationStats.usedTotal.toFixed(0)}
+              </Text>
+              <Text style={styles.valueLabel}>Used Value</Text>
+              <Text style={styles.valueCount}>{valuationStats.usedCount} books priced</Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Filter chips */}
       <FlatList
@@ -964,6 +1028,59 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: Colors.rust,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  searchInput: {
+    backgroundColor: Colors.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.select({ ios: 10, android: 8 }),
+    fontSize: 14,
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  valueRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: 8,
+    marginBottom: 8,
+  },
+  valueCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.sage,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  valueIcon: {
+    fontSize: 20,
+  },
+  valueAmount: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.sage,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  valueLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  valueCount: {
+    fontSize: 10,
+    color: Colors.muted,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
 });

@@ -84,6 +84,12 @@ export default function LibraryScreen() {
   const [sort, setSort] = useState('added');
   const [groupBy, setGroupBy] = useState('none');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [pickerSheet, setPickerSheet] = useState<{
+    title: string;
+    options: { key: string; label: string }[];
+    selected: string;
+    onSelect: (key: string) => void;
+  } | null>(null);
 
   const COLUMNS = SIZE_COLUMNS[coverSize];
   const HORIZONTAL_PADDING = 16;
@@ -502,15 +508,18 @@ export default function LibraryScreen() {
         {/* Sort dropdown */}
         <TouchableOpacity
           style={styles.dropdownBtn}
-          onPress={() => {
-            const options = ['Date Added', 'Title', 'Author', 'Rating', 'Year', 'Cancel'];
-            const keys = ['added', 'title', 'author', 'rating', 'year'];
-            Alert.alert('Sort by', undefined, options.map((label, i) => ({
-              text: label,
-              style: i === options.length - 1 ? 'cancel' as const : 'default' as const,
-              onPress: i < keys.length ? () => setSort(keys[i]) : undefined,
-            })));
-          }}
+          onPress={() => setPickerSheet({
+            title: 'Sort by',
+            options: [
+              { key: 'added',  label: 'Date Added' },
+              { key: 'title',  label: 'Title' },
+              { key: 'author', label: 'Author' },
+              { key: 'rating', label: 'Rating' },
+              { key: 'year',   label: 'Year' },
+            ],
+            selected: sort,
+            onSelect: (key) => { setSort(key); setPickerSheet(null); },
+          })}
         >
           <Text style={styles.dropdownBtnText}>
             Sort: {({ added: 'Date', title: 'Title', author: 'Author', rating: 'Rating', year: 'Year' } as Record<string, string>)[sort] || 'Date'}
@@ -521,15 +530,19 @@ export default function LibraryScreen() {
         {/* Group dropdown */}
         <TouchableOpacity
           style={styles.dropdownBtn}
-          onPress={() => {
-            const options = ['None', 'Status', 'Genre', 'Author', 'Series', 'Decade', 'Cancel'];
-            const keys = ['none', 'status', 'genre', 'author', 'series', 'decade'];
-            Alert.alert('Group by', undefined, options.map((label, i) => ({
-              text: label,
-              style: i === options.length - 1 ? 'cancel' as const : 'default' as const,
-              onPress: i < keys.length ? () => setGroupBy(keys[i]) : undefined,
-            })));
-          }}
+          onPress={() => setPickerSheet({
+            title: 'Group by',
+            options: [
+              { key: 'none',   label: 'None' },
+              { key: 'status', label: 'Status' },
+              { key: 'genre',  label: 'Genre' },
+              { key: 'author', label: 'Author' },
+              { key: 'series', label: 'Series' },
+              { key: 'decade', label: 'Decade' },
+            ],
+            selected: groupBy,
+            onSelect: (key) => { setGroupBy(key); setPickerSheet(null); },
+          })}
         >
           <Text style={[styles.dropdownBtnText, groupBy !== 'none' && { color: Colors.rust }]}>
             {groupBy === 'none' ? 'Group' : ({ status: 'Status', genre: 'Genre', author: 'Author', series: 'Series', decade: 'Decade' } as Record<string, string>)[groupBy] || 'Group'}
@@ -746,6 +759,53 @@ export default function LibraryScreen() {
             fetchLibrary();
           }}
         />
+      )}
+
+      {/* Picker bottom sheet */}
+      {pickerSheet && (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPickerSheet(null)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => setPickerSheet(null)}
+            style={styles.sheetOverlay}
+          >
+            <View style={styles.sheetContainer}>
+              <TouchableOpacity activeOpacity={1}>
+                <Text style={styles.sheetTitle}>{pickerSheet.title}</Text>
+                {pickerSheet.options.map((opt) => {
+                  const isSelected = opt.key === pickerSheet.selected;
+                  return (
+                    <TouchableOpacity
+                      key={opt.key}
+                      style={[styles.sheetOption, isSelected && styles.sheetOptionSelected]}
+                      onPress={() => pickerSheet.onSelect(opt.key)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.sheetOptionText, isSelected && styles.sheetOptionTextSelected]}>
+                        {opt.label}
+                      </Text>
+                      {isSelected && (
+                        <Text style={{ color: Colors.rust, fontSize: 16 }}>✓</Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+                <TouchableOpacity
+                  style={styles.sheetCancel}
+                  onPress={() => setPickerSheet(null)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.sheetCancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
       )}
     </View>
   );
@@ -1229,6 +1289,63 @@ const styles = StyleSheet.create({
   },
   listAuthor: {
     fontSize: 12,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  sheetContainer: {
+    backgroundColor: Colors.card,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: Platform.select({ ios: 40, android: 24 }),
+  },
+  sheetTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.ink,
+    textAlign: 'center',
+    marginBottom: 16,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  sheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    marginBottom: 4,
+  },
+  sheetOptionSelected: {
+    backgroundColor: Colors.rust + '14',
+  },
+  sheetOptionText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  sheetOptionTextSelected: {
+    color: Colors.rust,
+    fontWeight: '700',
+  },
+  sheetCancel: {
+    marginTop: 12,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  sheetCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
     color: Colors.muted,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },

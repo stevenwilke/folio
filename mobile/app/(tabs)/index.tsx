@@ -14,6 +14,7 @@ import {
   Alert,
   Pressable,
   TextInput,
+  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';

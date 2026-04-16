@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl, Platform, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl, Platform, Alert, Image, Modal, ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
@@ -7,6 +7,8 @@ import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 import { haversineKm, formatDistance } from '../lib/geo';
 import BookDropCard from '../components/BookDropCard';
+import AddLibraryModal from '../components/AddLibraryModal';
+import ScanLibraryModal from '../components/ScanLibraryModal';
 
 const RADIUS_OPTIONS = [5, 10, 25, 50, null] as const;
 const RADIUS_LABELS: Record<string, string> = { '5': '5 km', '10': '10 km', '25': '25 km', '50': '50 km', 'null': 'Any' };
@@ -14,18 +16,38 @@ const RADIUS_LABELS: Record<string, string> = { '5': '5 km', '10': '10 km', '25'
 const CONDITION_LABELS: Record<string, string> = { like_new: 'Like New', very_good: 'Very Good', good: 'Good', acceptable: 'Acceptable' };
 const CONDITION_COLORS: Record<string, string> = { like_new: Colors.sage, very_good: Colors.sage, good: Colors.gold, acceptable: Colors.rust };
 
+const TEAL = '#2a9d8f';
+
+function timeAgo(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60_000);
+  const hours = Math.floor(diff / 3_600_000);
+  const days = Math.floor(diff / 86_400_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 30) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
 export default function NearbyScreen() {
   const router = useRouter();
   const [drops, setDrops] = useState<any[]>([]);
   const [myDrops, setMyDrops] = useState<any[]>([]);
+  const [libraries, setLibraries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [tab, setTab] = useState<'nearby' | 'my'>('nearby');
+  const [tab, setTab] = useState<'nearby' | 'libraries' | 'my'>('nearby');
   const [radius, setRadius] = useState<number | null>(25);
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLng, setUserLng] = useState<number | null>(null);
   const [claiming, setClaiming] = useState<string | null>(null);
   const [selectedDrop, setSelectedDrop] = useState<any>(null);
+  const [selectedLibrary, setSelectedLibrary] = useState<any>(null);
+  const [showAddLibrary, setShowAddLibrary] = useState(false);
+  const [showScanLibrary, setShowScanLibrary] = useState<any>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   async function fetchLocation() {
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -39,6 +61,7 @@ export default function NearbyScreen() {
   async function fetchDrops() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    setUserId(user.id);
     const [{ data: available }, { data: mine }] = await Promise.all([
       supabase.from('book_drops')
         .select('*, books(id, title, author, cover_image_url, genre), profiles:user_id(username)')
@@ -53,17 +76,31 @@ export default function NearbyScreen() {
     setMyDrops(mine || []);
   }
 
+  async function fetchLibraries() {
+    const { data, error } = await supabase
+      .from('little_libraries')
+      .select('*, little_library_scans(id, books_found, photo_url, created_at, user_id)')
+      .order('created_at', { ascending: false });
+    if (error) { console.error('fetchLibraries error:', error); return; }
+    setLibraries((data || []).map((lib: any) => ({
+      ...lib,
+      latest_scan: lib.little_library_scans
+        ?.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())?.[0] || null,
+    })));
+  }
+
   useFocusEffect(useCallback(() => {
     setLoading(true);
-    Promise.all([fetchLocation(), fetchDrops()]).finally(() => setLoading(false));
+    Promise.all([fetchLocation(), fetchDrops(), fetchLibraries()]).finally(() => setLoading(false));
   }, []));
 
   async function onRefresh() {
     setRefreshing(true);
-    await fetchDrops();
+    await Promise.all([fetchDrops(), fetchLibraries()]);
     setRefreshing(false);
   }
 
+  // Drops with distance
   const dropsWithDistance = drops.map(d => ({
     ...d,
     distanceKm: userLat != null ? haversineKm(userLat, userLng!, d.latitude, d.longitude) : null,
@@ -74,6 +111,20 @@ export default function NearbyScreen() {
       if (radius == null) return true;
       if (d.distanceKm == null) return true;
       return d.distanceKm <= radius;
+    })
+    .sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999));
+
+  // Libraries with distance
+  const librariesWithDistance = libraries.map(lib => ({
+    ...lib,
+    distanceKm: userLat != null ? haversineKm(userLat, userLng!, lib.latitude, lib.longitude) : null,
+  }));
+
+  const filteredLibraries = librariesWithDistance
+    .filter(lib => {
+      if (radius == null) return true;
+      if (lib.distanceKm == null) return true;
+      return lib.distanceKm <= radius;
     })
     .sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999));
 
@@ -117,11 +168,15 @@ export default function NearbyScreen() {
         <TouchableOpacity onPress={() => setTab('nearby')} style={[styles.tab, tab === 'nearby' && styles.tabActive]}>
           <Text style={[styles.tabText, tab === 'nearby' && styles.tabTextActive]}>Nearby</Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={() => setTab('libraries')} style={[styles.tab, tab === 'libraries' && styles.tabActive]}>
+          <Text style={[styles.tabText, tab === 'libraries' && styles.tabTextActive]}>Libraries ({libraries.length})</Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => setTab('my')} style={[styles.tab, tab === 'my' && styles.tabActive]}>
           <Text style={[styles.tabText, tab === 'my' && styles.tabTextActive]}>My Drops ({myDrops.length})</Text>
         </TouchableOpacity>
       </View>
 
+      {/* Nearby tab */}
       {tab === 'nearby' && (
         <>
           {/* Radius filter */}
@@ -156,6 +211,68 @@ export default function NearbyScreen() {
         </>
       )}
 
+      {/* Libraries tab */}
+      {tab === 'libraries' && (
+        <>
+          {/* Radius filter + Add button */}
+          <View style={styles.filterRow}>
+            {RADIUS_OPTIONS.map(r => (
+              <TouchableOpacity
+                key={String(r)}
+                onPress={() => setRadius(r)}
+                style={[styles.pill, radius === r && styles.pillActive]}
+              >
+                <Text style={[styles.pillText, radius === r && styles.pillTextActive]}>{RADIUS_LABELS[String(r)]}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity onPress={() => setShowAddLibrary(true)} style={styles.addLibBtn}>
+              <Text style={styles.addLibText}>+ Add</Text>
+            </TouchableOpacity>
+          </View>
+
+          <FlatList
+            data={filteredLibraries}
+            keyExtractor={item => item.id}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => setSelectedLibrary(item)}
+                style={styles.libRow}
+                activeOpacity={0.7}
+              >
+                {(item.photo_url || item.latest_scan?.photo_url) && (
+                  <Image
+                    source={{ uri: item.latest_scan?.photo_url || item.photo_url }}
+                    style={styles.libThumb}
+                  />
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.libName} numberOfLines={1}>{item.name || 'Little Library'}</Text>
+                  <Text style={styles.libLocation} numberOfLines={1}>📍 {item.location_name}</Text>
+                  {item.latest_scan && (
+                    <Text style={styles.libScan}>
+                      📷 {item.latest_scan.books_found?.length || 0} books found · {timeAgo(item.latest_scan.created_at)}
+                    </Text>
+                  )}
+                </View>
+                {item.distanceKm != null && (
+                  <Text style={styles.libDist}>{formatDistance(item.distanceKm)}</Text>
+                )}
+              </TouchableOpacity>
+            )}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80 }}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <Text style={styles.emptyIcon}>📚</Text>
+                <Text style={styles.emptyTitle}>No Little Libraries nearby</Text>
+                <Text style={styles.emptyDesc}>Know of one? Add it to the map!</Text>
+              </View>
+            }
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TEAL} />}
+          />
+        </>
+      )}
+
+      {/* My Drops tab */}
       {tab === 'my' && (
         <FlatList
           data={myDrops}
@@ -164,7 +281,7 @@ export default function NearbyScreen() {
             <View style={styles.myRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.myTitle}>{item.books?.title}</Text>
-                <Text style={styles.myMeta}>📍 {item.location_name}</Text>
+                <Text style={styles.myMeta}>📍 {item.location_name} · {timeAgo(item.created_at)}</Text>
               </View>
               <View style={[styles.statusBadge, { backgroundColor: item.status === 'available' ? Colors.statusBg.owned : Colors.statusBg.read }]}>
                 <Text style={[styles.statusText, { color: item.status === 'available' ? Colors.sage : Colors.gold }]}>
@@ -185,7 +302,7 @@ export default function NearbyScreen() {
         />
       )}
 
-      {/* Detail modal overlay */}
+      {/* Drop detail modal overlay */}
       {selectedDrop && (
         <View style={styles.overlay}>
           <View style={styles.detailCard}>
@@ -210,18 +327,96 @@ export default function NearbyScreen() {
             {selectedDrop.distanceKm != null && (
               <Text style={styles.detailMeta}>{formatDistance(selectedDrop.distanceKm)} from you</Text>
             )}
-            <Text style={styles.detailMeta}>Freed by {selectedDrop.profiles?.username}</Text>
+            <Text style={styles.detailMeta}>Freed by {selectedDrop.profiles?.username} · {timeAgo(selectedDrop.created_at)}</Text>
             {selectedDrop.note && <Text style={styles.detailNote}>"{selectedDrop.note}"</Text>}
             {selectedDrop.photo_url && <Image source={{ uri: selectedDrop.photo_url }} style={styles.detailPhoto} />}
-            <TouchableOpacity
-              onPress={() => claimDrop(selectedDrop.id)}
-              disabled={claiming === selectedDrop.id}
-              style={[styles.claimBtn, claiming === selectedDrop.id && { opacity: 0.6 }]}
-            >
-              <Text style={styles.claimText}>{claiming === selectedDrop.id ? 'Claiming...' : '🎉 Claim This Book'}</Text>
-            </TouchableOpacity>
+
+            {/* Own-drop guard: don't show claim button for user's own drops */}
+            {selectedDrop.user_id === userId ? (
+              <Text style={styles.ownDropText}>This is your book drop</Text>
+            ) : (
+              <TouchableOpacity
+                onPress={() => claimDrop(selectedDrop.id)}
+                disabled={claiming === selectedDrop.id}
+                style={[styles.claimBtn, claiming === selectedDrop.id && { opacity: 0.6 }]}
+              >
+                <Text style={styles.claimText}>{claiming === selectedDrop.id ? 'Claiming...' : '🎉 Claim This Book'}</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
+      )}
+
+      {/* Library detail modal overlay */}
+      {selectedLibrary && (
+        <View style={styles.overlay}>
+          <View style={styles.detailCard}>
+            <TouchableOpacity onPress={() => setSelectedLibrary(null)} style={styles.closeBtn}>
+              <Text style={styles.closeText}>✕</Text>
+            </TouchableOpacity>
+
+            <ScrollView style={{ maxHeight: '100%' }} showsVerticalScrollIndicator={false}>
+              <Text style={styles.libDetailTitle}>📚 {selectedLibrary.name || 'Little Library'}</Text>
+              <Text style={styles.detailMeta}>
+                📍 {selectedLibrary.location_name}
+                {selectedLibrary.distanceKm != null && ` · ${formatDistance(selectedLibrary.distanceKm)}`}
+              </Text>
+              <Text style={styles.detailMeta}>Added {timeAgo(selectedLibrary.created_at)}</Text>
+
+              {selectedLibrary.photo_url && (
+                <Image source={{ uri: selectedLibrary.photo_url }} style={styles.detailPhoto} />
+              )}
+
+              {/* Latest scan */}
+              {selectedLibrary.latest_scan ? (
+                <View style={styles.scanSection}>
+                  <Text style={styles.scanHeader}>📷 Latest Inventory · {timeAgo(selectedLibrary.latest_scan.created_at)}</Text>
+                  {selectedLibrary.latest_scan.photo_url && (
+                    <Image source={{ uri: selectedLibrary.latest_scan.photo_url }} style={styles.scanPhoto} />
+                  )}
+                  {selectedLibrary.latest_scan.books_found?.length > 0 ? (
+                    <View>
+                      {selectedLibrary.latest_scan.books_found.map((b: any, i: number) => (
+                        <View key={i} style={styles.bookItem}>
+                          <Text style={styles.bookTitle}>{b.title}</Text>
+                          {b.author && <Text style={styles.bookAuthor}> by {b.author}</Text>}
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={styles.noBooks}>No books identified in last scan</Text>
+                  )}
+                </View>
+              ) : (
+                <Text style={styles.noScans}>No inventory scans yet -- be the first!</Text>
+              )}
+
+              <TouchableOpacity
+                onPress={() => { setShowScanLibrary(selectedLibrary); setSelectedLibrary(null); }}
+                style={styles.scanBtn}
+              >
+                <Text style={styles.scanBtnText}>📷 Update Inventory</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {/* Add Library Modal */}
+      {showAddLibrary && (
+        <AddLibraryModal
+          onClose={() => setShowAddLibrary(false)}
+          onSuccess={() => { setShowAddLibrary(false); fetchLibraries(); }}
+        />
+      )}
+
+      {/* Scan Library Modal */}
+      {showScanLibrary && (
+        <ScanLibraryModal
+          library={showScanLibrary}
+          onClose={() => setShowScanLibrary(null)}
+          onSuccess={() => { setShowScanLibrary(null); fetchLibraries(); }}
+        />
       )}
     </View>
   );
@@ -233,9 +428,9 @@ const styles = StyleSheet.create({
   tabRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: Colors.border },
   tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
   tabActive: { borderBottomWidth: 2, borderBottomColor: Colors.rust },
-  tabText: { fontSize: 14, color: Colors.muted },
+  tabText: { fontSize: 13, color: Colors.muted },
   tabTextActive: { color: Colors.rust, fontWeight: '600' },
-  filterRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 16, paddingVertical: 10 },
+  filterRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 16, paddingVertical: 10, alignItems: 'center' },
   pill: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.card },
   pillActive: { borderColor: Colors.rust, backgroundColor: '#fdf0ea' },
   pillText: { fontSize: 12, color: Colors.ink },
@@ -244,11 +439,25 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 36, marginBottom: 12 },
   emptyTitle: { fontSize: 16, fontWeight: '600', color: Colors.ink, fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }) },
   emptyDesc: { fontSize: 14, color: Colors.muted, marginTop: 4 },
+
+  // My Drops
   myRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, borderRadius: 12, padding: 14, marginBottom: 10 },
   myTitle: { fontSize: 14, fontWeight: '600', color: Colors.ink },
   myMeta: { fontSize: 12, color: Colors.muted, marginTop: 2 },
   statusBadge: { paddingVertical: 3, paddingHorizontal: 10, borderRadius: 10 },
   statusText: { fontSize: 11, fontWeight: '600' },
+
+  // Libraries list
+  libRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, borderRadius: 12, padding: 14, marginBottom: 10 },
+  libThumb: { width: 48, height: 48, borderRadius: 8 },
+  libName: { fontSize: 14, fontWeight: '600', color: Colors.ink },
+  libLocation: { fontSize: 12, color: Colors.muted, marginTop: 2 },
+  libScan: { fontSize: 11, color: Colors.muted, marginTop: 2 },
+  libDist: { fontSize: 12, color: Colors.muted },
+  addLibBtn: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 8, backgroundColor: TEAL, marginLeft: 'auto' },
+  addLibText: { fontSize: 12, fontWeight: '600', color: Colors.white },
+
+  // Detail overlay
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 50 },
   detailCard: { backgroundColor: Colors.background, borderRadius: 16, padding: 20, width: '88%', maxHeight: '80%' },
   closeBtn: { position: 'absolute', top: 12, right: 12, zIndex: 1 },
@@ -263,4 +472,18 @@ const styles = StyleSheet.create({
   detailPhoto: { width: '100%', height: 150, borderRadius: 8, marginBottom: 8 },
   claimBtn: { backgroundColor: Colors.rust, borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginTop: 8 },
   claimText: { fontSize: 15, fontWeight: '700', color: Colors.white },
+  ownDropText: { fontSize: 12, color: Colors.muted, textAlign: 'center', marginTop: 12, fontStyle: 'italic' },
+
+  // Library detail
+  libDetailTitle: { fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }), fontSize: 18, fontWeight: '700', color: Colors.ink, marginBottom: 4 },
+  scanSection: { backgroundColor: Colors.card, borderRadius: 10, padding: 14, marginBottom: 14 },
+  scanHeader: { fontSize: 13, fontWeight: '600', color: Colors.ink, marginBottom: 8 },
+  scanPhoto: { width: '100%', height: 150, borderRadius: 8, marginBottom: 10 },
+  bookItem: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 3 },
+  bookTitle: { fontSize: 13, fontWeight: '600', color: Colors.ink },
+  bookAuthor: { fontSize: 13, color: Colors.muted },
+  noBooks: { fontSize: 13, color: Colors.muted },
+  noScans: { fontSize: 13, color: Colors.muted, fontStyle: 'italic', textAlign: 'center', marginBottom: 14 },
+  scanBtn: { backgroundColor: TEAL, borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginTop: 8, marginBottom: 8 },
+  scanBtnText: { fontSize: 15, fontWeight: '700', color: Colors.white },
 });

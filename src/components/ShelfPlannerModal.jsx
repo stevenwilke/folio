@@ -649,48 +649,96 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
               <div style={s.sectionLabel}>Option 1 — Upload a shelf photo (optional)</div>
               <div style={s.card}>
                 {photoPreview ? (
-                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                    <img src={photoPreview} alt="Shelf" style={{
-                      width: 180, height: 120, objectFit: 'cover', borderRadius: 8,
-                    }} />
-                    <div style={{ flex: 1 }}>
-                      {analyzing && (
-                        <div style={{ color: theme.textSubtle, fontSize: 13 }}>
-                          🔍 Analyzing your shelf...
-                        </div>
-                      )}
-                      {analysisError && (
-                        <div style={{ color: '#c0521e', fontSize: 13 }}>{analysisError}</div>
-                      )}
-                      {analysisResult && (
-                        <div>
-                          <div style={{ fontWeight: 600, color: theme.text, marginBottom: 8 }}>
-                            ✅ Shelf analysis complete!
-                          </div>
-                          <div style={{ fontSize: 13, color: theme.textSubtle, lineHeight: 1.8 }}>
-                            <div>🗄️ <strong>{analysisResult.shelf_count}</strong> shelves detected</div>
-                            <div>📦 Approx. <strong>{analysisResult.total_capacity}</strong> total book capacity</div>
-                            {analysisResult.notes && <div style={{ marginTop: 6, fontStyle: 'italic' }}>{analysisResult.notes}</div>}
-                            {analysisResult.recognized_books?.length > 0 && (
-                              <div style={{ marginTop: 8 }}>
-                                <div style={{ fontWeight: 600, marginBottom: 4 }}>Books I spotted:</div>
-                                {analysisResult.recognized_books.map((b, i) => (
-                                  <div key={i} style={{ fontSize: 12 }}>
-                                    • {b.title}{b.author ? ` by ${b.author}` : ''}{b.shelf ? ` (shelf ${b.shelf})` : ''}
+                  <div>
+                    {/* Photo with numbered grid overlay */}
+                    <div style={{ position: 'relative', display: 'inline-block', width: '100%', maxWidth: analysisResult ? 500 : 180, marginBottom: 12 }}>
+                      <img src={photoPreview} alt="Shelf" style={{
+                        width: '100%', objectFit: 'cover', borderRadius: 8, display: 'block',
+                      }} />
+                      {analysisResult?.rows && analysisResult?.columns && (
+                        <div style={{
+                          position: 'absolute', inset: 0, borderRadius: 8,
+                          display: 'grid',
+                          gridTemplateRows: `repeat(${analysisResult.rows}, 1fr)`,
+                          gridTemplateColumns: `repeat(${analysisResult.columns}, 1fr)`,
+                        }}>
+                          {Array.from({ length: analysisResult.rows * analysisResult.columns }, (_, i) => {
+                            const currentBooks = analysisResult.current_books_per_shelf?.[i]
+                            const capacity = analysisResult.books_per_shelf?.[i]
+                            return (
+                              <div key={i} style={{
+                                border: '1px solid rgba(255,255,255,0.5)',
+                                display: 'flex', flexDirection: 'column',
+                                alignItems: 'center', justifyContent: 'center',
+                                position: 'relative',
+                              }}>
+                                <div style={{
+                                  width: 28, height: 28, borderRadius: '50%',
+                                  background: 'rgba(192,82,30,0.9)',
+                                  color: 'white', fontWeight: 700, fontSize: 13,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+                                }}>
+                                  {i + 1}
+                                </div>
+                                {capacity != null && (
+                                  <div style={{
+                                    marginTop: 3, fontSize: 10, fontWeight: 600,
+                                    background: 'rgba(0,0,0,0.7)', color: 'white',
+                                    padding: '1px 6px', borderRadius: 4,
+                                    whiteSpace: 'nowrap',
+                                  }}>
+                                    {currentBooks != null ? `${currentBooks}/${capacity}` : `~${capacity}`}
                                   </div>
-                                ))}
+                                )}
                               </div>
-                            )}
-                          </div>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
-                    <button
-                      onClick={() => { setPhotoPreview(null); setAnalysisResult(null) }}
-                      style={{ ...s.btnSecondary, padding: '6px 12px', fontSize: 12 }}
-                    >
-                      Remove
-                    </button>
+
+                    {/* Analysis status */}
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1 }}>
+                        {analyzing && (
+                          <div style={{ color: theme.textSubtle, fontSize: 13 }}>
+                            🔍 Analyzing your shelf...
+                          </div>
+                        )}
+                        {analysisError && (
+                          <div style={{ color: '#c0521e', fontSize: 13 }}>{analysisError}</div>
+                        )}
+                        {analysisResult && (
+                          <div>
+                            <div style={{ fontWeight: 600, color: theme.text, marginBottom: 8 }}>
+                              ✅ Shelf analysis complete!
+                            </div>
+                            <div style={{ fontSize: 13, color: theme.textSubtle, lineHeight: 1.8 }}>
+                              <div>🗄️ <strong>{analysisResult.shelf_count}</strong> shelves detected ({analysisResult.rows} rows × {analysisResult.columns} columns)</div>
+                              <div>📦 Approx. <strong>{analysisResult.total_capacity}</strong> total book capacity</div>
+                              {analysisResult.notes && <div style={{ marginTop: 6, fontStyle: 'italic' }}>{analysisResult.notes}</div>}
+                              {analysisResult.recognized_books?.length > 0 && (
+                                <div style={{ marginTop: 8 }}>
+                                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Books I spotted:</div>
+                                  {analysisResult.recognized_books.map((b, i) => (
+                                    <div key={i} style={{ fontSize: 12 }}>
+                                      • {b.title}{b.author ? ` by ${b.author}` : ''}{b.shelf ? ` (shelf ${b.shelf})` : ''}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => { setPhotoPreview(null); setAnalysisResult(null) }}
+                        style={{ ...s.btnSecondary, padding: '6px 12px', fontSize: 12 }}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div

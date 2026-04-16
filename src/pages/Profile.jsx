@@ -66,7 +66,7 @@ export default function Profile({ session }) {
     if (window.location.hash === '#wishlist') {
       setTimeout(() => document.getElementById('wishlist')?.scrollIntoView({ behavior: 'smooth' }), 500)
     }
-  }, [entries])
+  }, [books])
 
   async function handleAvatarUpload(e) {
     const file = e.target.files?.[0]

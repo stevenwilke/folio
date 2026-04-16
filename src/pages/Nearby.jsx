@@ -4,6 +4,8 @@ import mapboxgl from 'mapbox-gl'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import BookDropCard from '../components/BookDropCard'
+import AddLibraryModal from '../components/AddLibraryModal'
+import ScanLibraryModal from '../components/ScanLibraryModal'
 import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { haversineKm, formatDistance } from '../lib/geo'
@@ -43,16 +45,20 @@ export default function Nearby({ session }) {
 
   const [drops, setDrops] = useState([])
   const [myDrops, setMyDrops] = useState([])
+  const [libraries, setLibraries] = useState([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState('nearby') // nearby | my-drops
+  const [tab, setTab] = useState('nearby') // nearby | my-drops | libraries
   const [view, setView] = useState('map') // map | list
   const [userLat, setUserLat] = useState(null)
   const [userLng, setUserLng] = useState(null)
   const [radius, setRadius] = useState(25)
   const [selectedDrop, setSelectedDrop] = useState(null)
+  const [selectedLibrary, setSelectedLibrary] = useState(null)
+  const [showAddLibrary, setShowAddLibrary] = useState(false)
+  const [showScanLibrary, setShowScanLibrary] = useState(null) // library object
   const [claiming, setClaiming] = useState(null)
 
-  useEffect(() => { fetchDrops() }, [])
+  useEffect(() => { fetchDrops(); fetchLibraries() }, [])
 
   useEffect(() => {
     navigator.geolocation?.getCurrentPosition(
@@ -80,6 +86,31 @@ export default function Nearby({ session }) {
     setLoading(false)
   }
 
+  async function fetchLibraries() {
+    const { data, error } = await supabase
+      .from('little_libraries')
+      .select('*, little_library_scans(id, books_found, photo_url, created_at, user_id)')
+      .order('created_at', { ascending: false })
+    if (error) { console.error('fetchLibraries error:', error); return }
+    // Pick most recent scan for each library
+    setLibraries((data || []).map(lib => ({
+      ...lib,
+      latest_scan: lib.little_library_scans?.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))?.[0] || null,
+    })))
+  }
+
+  // Compute distances for libraries
+  const librariesWithDistance = libraries.map(lib => ({
+    ...lib,
+    distanceKm: userLat != null ? haversineKm(userLat, userLng, lib.latitude, lib.longitude) : null,
+  }))
+
+  const filteredLibraries = librariesWithDistance.filter(lib => {
+    if (radius == null) return true
+    if (lib.distanceKm == null) return true
+    return lib.distanceKm <= radius
+  }).sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999))
+
   // Compute distances
   const dropsWithDistance = drops.map(d => ({
     ...d,
@@ -95,7 +126,19 @@ export default function Nearby({ session }) {
 
   // Initialize / update map
   useEffect(() => {
-    if (tab !== 'nearby' || view !== 'map' || !mapContainer.current || !MAPBOX_TOKEN) return
+    if ((tab !== 'nearby' && tab !== 'libraries') || view !== 'map' || !mapContainer.current || !MAPBOX_TOKEN) return
+
+    // Destroy old map if the container changed (tab switch unmounts the old one)
+    if (mapRef.current) {
+      try {
+        const oldContainer = mapRef.current.getContainer()
+        if (!document.body.contains(oldContainer)) {
+          mapRef.current.remove()
+          mapRef.current = null
+        }
+      } catch { mapRef.current = null }
+    }
+
     if (mapRef.current) {
       updateMarkers()
       return
@@ -119,12 +162,15 @@ export default function Nearby({ session }) {
     }
 
     map.on('load', () => updateMarkers())
-    return () => {} // don't remove map on re-render, just update markers
+    return () => {
+      map.remove()
+      mapRef.current = null
+    }
   }, [tab, view, userLat])
 
   useEffect(() => {
     if (mapRef.current) updateMarkers()
-  }, [filtered.length, radius])
+  }, [filtered.length, filteredLibraries.length, radius, tab])
 
   function updateMarkers() {
     const map = mapRef.current
@@ -133,33 +179,64 @@ export default function Nearby({ session }) {
     markersRef.current.forEach(m => m.remove())
     markersRef.current = []
 
-    for (const drop of filtered) {
-      const el = document.createElement('div')
-      el.style.width = '28px'
-      el.style.height = '28px'
-      el.style.borderRadius = '50%'
-      el.style.background = '#c0521e'
-      el.style.border = '3px solid white'
-      el.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)'
-      el.style.cursor = 'pointer'
-      el.style.display = 'flex'
-      el.style.alignItems = 'center'
-      el.style.justifyContent = 'center'
-      el.style.fontSize = '12px'
-      el.textContent = '📖'
-      el.addEventListener('click', () => setSelectedDrop(drop))
+    if (tab === 'nearby') {
+      for (const drop of filtered) {
+        const el = document.createElement('div')
+        el.style.width = '28px'
+        el.style.height = '28px'
+        el.style.borderRadius = '50%'
+        el.style.background = '#c0521e'
+        el.style.border = '3px solid white'
+        el.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)'
+        el.style.cursor = 'pointer'
+        el.style.display = 'flex'
+        el.style.alignItems = 'center'
+        el.style.justifyContent = 'center'
+        el.style.fontSize = '12px'
+        el.textContent = '📖'
+        el.addEventListener('click', () => setSelectedDrop(drop))
 
-      const marker = new mapboxgl.Marker(el)
-        .setLngLat([drop.longitude, drop.latitude])
-        .addTo(map)
-      markersRef.current.push(marker)
+        const marker = new mapboxgl.Marker(el)
+          .setLngLat([drop.longitude, drop.latitude])
+          .addTo(map)
+        markersRef.current.push(marker)
+      }
+
+      if (filtered.length > 0 && !userLat) {
+        const bounds = new mapboxgl.LngLatBounds()
+        filtered.forEach(d => bounds.extend([d.longitude, d.latitude]))
+        map.fitBounds(bounds, { padding: 60 })
+      }
     }
 
-    // Fit bounds if markers exist
-    if (filtered.length > 0 && !userLat) {
-      const bounds = new mapboxgl.LngLatBounds()
-      filtered.forEach(d => bounds.extend([d.longitude, d.latitude]))
-      map.fitBounds(bounds, { padding: 60 })
+    if (tab === 'libraries') {
+      for (const lib of filteredLibraries) {
+        const el = document.createElement('div')
+        el.style.width = '30px'
+        el.style.height = '30px'
+        el.style.borderRadius = '50%'
+        el.style.background = '#2a9d8f'
+        el.style.border = '3px solid white'
+        el.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)'
+        el.style.cursor = 'pointer'
+        el.style.display = 'flex'
+        el.style.alignItems = 'center'
+        el.style.justifyContent = 'center'
+        el.style.fontSize = '13px'
+        el.textContent = '📚'
+        el.addEventListener('click', () => setSelectedLibrary(lib))
+
+        const marker = new mapboxgl.Marker(el)
+          .setLngLat([lib.longitude, lib.latitude])
+          .addTo(map)
+        markersRef.current.push(marker)
+      }
+
+      if (filteredLibraries.length > 0 && !userLat) {
+        const bounds = new mapboxgl.LngLatBounds()
+        filteredLibraries.forEach(lib => bounds.extend([lib.longitude, lib.latitude]))
+        map.fitBounds(bounds, { padding: 60 })
+      }
     }
   }
 
@@ -205,15 +282,18 @@ export default function Nearby({ session }) {
 
         {/* Tabs */}
         <div style={s.tabRow}>
-          {[['nearby', 'Nearby'], ['my-drops', 'My Drops']].map(([key, label]) => (
+          {[['nearby', 'Nearby'], ['libraries', '📚 Little Libraries'], ['my-drops', 'My Drops']].map(([key, label]) => (
             <button
               key={key}
-              onClick={() => { setTab(key); setSelectedDrop(null) }}
+              onClick={() => { setTab(key); setSelectedDrop(null); setSelectedLibrary(null) }}
               style={tab === key ? s.tabActive : s.tab}
             >
               {label}
               {key === 'my-drops' && myDrops.length > 0 && (
                 <span style={s.tabCount}>{myDrops.length}</span>
+              )}
+              {key === 'libraries' && libraries.length > 0 && (
+                <span style={s.tabCount}>{libraries.length}</span>
               )}
             </button>
           ))}
@@ -243,12 +323,6 @@ export default function Nearby({ session }) {
 
             {loading ? (
               <div style={s.empty}>Loading nearby books...</div>
-            ) : filtered.length === 0 ? (
-              <div style={s.empty}>
-                <div style={{ fontSize: 36, marginBottom: 12 }}>📍</div>
-                <div style={{ fontWeight: 600, color: theme.text, marginBottom: 6 }}>No books nearby</div>
-                <div>Be the first to free a book in your area!</div>
-              </div>
             ) : (
               <>
                 {/* Map view */}
@@ -266,16 +340,24 @@ export default function Nearby({ session }) {
 
                 {/* List view */}
                 {view === 'list' && (
-                  <div style={s.grid}>
-                    {filtered.map(drop => (
-                      <BookDropCard
-                        key={drop.id}
-                        drop={drop}
-                        distanceKm={drop.distanceKm}
-                        onClick={() => setSelectedDrop(drop)}
-                      />
-                    ))}
-                  </div>
+                  filtered.length === 0 ? (
+                    <div style={s.empty}>
+                      <div style={{ fontSize: 36, marginBottom: 12 }}>📍</div>
+                      <div style={{ fontWeight: 600, color: theme.text, marginBottom: 6 }}>No books nearby</div>
+                      <div>Be the first to free a book in your area!</div>
+                    </div>
+                  ) : (
+                    <div style={s.grid}>
+                      {filtered.map(drop => (
+                        <BookDropCard
+                          key={drop.id}
+                          drop={drop}
+                          distanceKm={drop.distanceKm}
+                          onClick={() => setSelectedDrop(drop)}
+                        />
+                      ))}
+                    </div>
+                  )
                 )}
               </>
             )}
@@ -346,6 +428,155 @@ export default function Nearby({ session }) {
           </>
         )}
 
+        {/* Little Libraries tab */}
+        {tab === 'libraries' && (
+          <>
+            <div style={s.controls}>
+              <div style={s.filterRow}>
+                <span style={s.filterLabel}>Radius:</span>
+                {RADIUS_OPTIONS.map(r => (
+                  <button
+                    key={String(r)}
+                    onClick={() => setRadius(r)}
+                    style={radius === r ? s.pillActive : s.pill}
+                  >
+                    {RADIUS_LABELS[r]}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={s.viewToggle}>
+                  <button onClick={() => setView('map')} style={view === 'map' ? s.viewBtnActive : s.viewBtn}>🗺️ Map</button>
+                  <button onClick={() => setView('list')} style={view === 'list' ? s.viewBtnActive : s.viewBtn}>📋 List</button>
+                </div>
+                <button
+                  onClick={() => setShowAddLibrary(true)}
+                  style={{ padding: '5px 14px', borderRadius: 8, border: 'none', background: '#2a9d8f', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                >
+                  + Add Library
+                </button>
+              </div>
+            </div>
+
+            {loading ? (
+              <div style={s.empty}>Loading little libraries...</div>
+            ) : filteredLibraries.length === 0 ? (
+              <div style={s.empty}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>📚</div>
+                <div style={{ fontWeight: 600, color: theme.text, marginBottom: 6 }}>No Little Libraries nearby</div>
+                <div>Know of one? Add it to the map!</div>
+              </div>
+            ) : (
+              <>
+                {view === 'map' && (
+                  <div style={{ position: 'relative' }}>
+                    <div ref={mapContainer} style={s.mapContainer} />
+                    <div style={{ ...s.mapCount, background: 'rgba(42,157,143,0.92)', color: 'white' }}>
+                      {filteredLibraries.length} librar{filteredLibraries.length !== 1 ? 'ies' : 'y'}
+                    </div>
+                  </div>
+                )}
+
+                {view === 'list' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {filteredLibraries.map(lib => (
+                      <div
+                        key={lib.id}
+                        onClick={() => setSelectedLibrary(lib)}
+                        style={{ ...s.myDropRow, cursor: 'pointer' }}
+                      >
+                        {lib.photo_url && (
+                          <img src={lib.photo_url} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />
+                        )}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>
+                            {lib.name || 'Little Library'}
+                          </div>
+                          <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 2 }}>
+                            📍 {lib.location_name}
+                          </div>
+                          {lib.latest_scan && (
+                            <div style={{ fontSize: 11, color: theme.textSubtle, marginTop: 2 }}>
+                              📷 {lib.latest_scan.books_found?.length || 0} books spotted · {timeAgo(lib.latest_scan.created_at)}
+                            </div>
+                          )}
+                        </div>
+                        {lib.distanceKm != null && (
+                          <span style={{ fontSize: 12, color: theme.textSubtle }}>{formatDistance(lib.distanceKm)}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Library detail panel */}
+            {selectedLibrary && (
+              <div
+                style={s.detailOverlay}
+                onClick={e => { if (e.target === e.currentTarget) setSelectedLibrary(null) }}
+              >
+                <div style={s.detailCard}>
+                  <button onClick={() => setSelectedLibrary(null)} style={s.detailClose}>✕</button>
+
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ ...s.detailTitle, marginBottom: 4 }}>
+                      📚 {selectedLibrary.name || 'Little Library'}
+                    </div>
+                    <div style={{ fontSize: 13, color: theme.textSubtle }}>
+                      📍 {selectedLibrary.location_name}
+                      {selectedLibrary.distanceKm != null && ` · ${formatDistance(selectedLibrary.distanceKm)}`}
+                    </div>
+                    <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 2 }}>
+                      Added {timeAgo(selectedLibrary.created_at)}
+                    </div>
+                  </div>
+
+                  {selectedLibrary.photo_url && (
+                    <img src={selectedLibrary.photo_url} alt="Little Library" style={{ ...s.detailPhoto, marginBottom: 14 }} />
+                  )}
+
+                  {/* Latest scan */}
+                  {selectedLibrary.latest_scan ? (
+                    <div style={{ background: theme.bgSubtle || theme.bgCard, borderRadius: 10, padding: 14, marginBottom: 14 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: theme.text, marginBottom: 8 }}>
+                        📷 Latest Inventory · {timeAgo(selectedLibrary.latest_scan.created_at)}
+                      </div>
+                      {selectedLibrary.latest_scan.photo_url && (
+                        <img src={selectedLibrary.latest_scan.photo_url} alt="Library contents" style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 8, marginBottom: 10 }} />
+                      )}
+                      {selectedLibrary.latest_scan.books_found?.length > 0 ? (
+                        <div style={{ maxHeight: 160, overflow: 'auto' }}>
+                          {selectedLibrary.latest_scan.books_found.map((b, i) => (
+                            <div key={i} style={{ fontSize: 13, color: theme.text, marginBottom: 3 }}>
+                              <strong>{b.title}</strong>
+                              {b.author && <span style={{ color: theme.textSubtle }}> by {b.author}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 13, color: theme.textSubtle }}>No books identified in last scan</div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 13, color: theme.textSubtle, fontStyle: 'italic', marginBottom: 14, textAlign: 'center' }}>
+                      No inventory scans yet — be the first!
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => { setShowScanLibrary(selectedLibrary); setSelectedLibrary(null) }}
+                    style={{ width: '100%', padding: '12px', background: '#2a9d8f', color: 'white', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                  >
+                    📷 Update Inventory
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
         {/* My Drops tab */}
         {tab === 'my-drops' && (
           <div>
@@ -381,6 +612,22 @@ export default function Nearby({ session }) {
               </div>
             )}
           </div>
+        )}
+        {/* Modals */}
+        {showAddLibrary && (
+          <AddLibraryModal
+            session={session}
+            onClose={() => setShowAddLibrary(false)}
+            onSuccess={() => { setShowAddLibrary(false); fetchLibraries() }}
+          />
+        )}
+        {showScanLibrary && (
+          <ScanLibraryModal
+            session={session}
+            library={showScanLibrary}
+            onClose={() => setShowScanLibrary(null)}
+            onSuccess={() => { setShowScanLibrary(null); fetchLibraries() }}
+          />
         )}
       </div>
     </div>

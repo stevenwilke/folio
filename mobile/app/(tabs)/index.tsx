@@ -414,8 +414,7 @@ export default function LibraryScreen() {
         <View style={styles.loader}>
           <ActivityIndicator size="large" color={Colors.rust} />
         </View>
-      ) : (
-        {filter === 'series' ? (
+      ) : filter === 'series' ? (
           <FlatList
             data={seriesGroups}
             keyExtractor={(item) => item.name}
@@ -482,7 +481,6 @@ export default function LibraryScreen() {
             }
           />
         )}
-      )}
 
       <ShelfPlannerModal
         visible={showShelfPlanner}

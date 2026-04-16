@@ -10,6 +10,8 @@ import {
   Share,
   Alert,
   Platform,
+  Image,
+  Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -87,13 +89,27 @@ export interface ShelfBook {
   _hasOverride?: boolean;
 }
 
+interface ShelfBounds {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 interface AnalysisResult {
   shelf_count: number;
+  rows?: number;
+  columns?: number;
   books_per_shelf: number[];
+  current_books_per_shelf?: number[];
+  shelf_bounds?: ShelfBounds[];
   total_capacity: number;
   notes?: string;
   recognized_books?: { title: string; author?: string; shelf?: number }[];
 }
+
+const SHELF_PHOTO_KEY    = 'folio-shelf-photo-uri';
+const SHELF_ANALYSIS_KEY = 'folio-shelf-analysis';
 
 // ── Sorting ───────────────────────────────────────────────────────────────────
 function sortBooks(books: ShelfBook[], method: string): ShelfBook[] {
@@ -190,11 +206,15 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
   // Photo analysis
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // My Shelf tab
+  const [selectedShelfIdx, setSelectedShelfIdx] = useState<number | null>(null);
 
   // Arrange
   const [sortMethod, setSortMethod] = useState('genre-alpha');
-  const [activeTab, setActiveTab] = useState<'visual' | 'guide'>('visual');
+  const [activeTab, setActiveTab] = useState<'visual' | 'photo' | 'guide'>('visual');
 
   function savePlannerConfig(overrides: Record<string, any> = {}) {
     const config = { shelfCount, booksPerShelf, sortMethod, ...overrides };
@@ -213,6 +233,13 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
     AsyncStorage.getItem(GENRE_OVERRIDES_KEY).then((val) => {
       if (val) {
         try { setGenreOverrides(JSON.parse(val)); } catch { /* ignore */ }
+      }
+    });
+    // Restore saved shelf photo and analysis
+    AsyncStorage.getItem(SHELF_PHOTO_KEY).then((uri) => { if (uri) setPhotoUri(uri); });
+    AsyncStorage.getItem(SHELF_ANALYSIS_KEY).then((val) => {
+      if (val) {
+        try { setAnalysisResult(JSON.parse(val)); } catch { /* ignore */ }
       }
     });
   }, []);
@@ -256,6 +283,12 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
       return;
     }
 
+    // Save photo URI for persistence
+    if (asset.uri) {
+      setPhotoUri(asset.uri);
+      AsyncStorage.setItem(SHELF_PHOTO_KEY, asset.uri).catch(() => {});
+    }
+
     setAnalyzing(true);
     setAnalysisError(null);
     setAnalysisResult(null);
@@ -269,6 +302,7 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
         setAnalysisError(data?.error || error?.message || 'Analysis failed');
       } else {
         setAnalysisResult(data as AnalysisResult);
+        AsyncStorage.setItem(SHELF_ANALYSIS_KEY, JSON.stringify(data)).catch(() => {});
         if (data.shelf_count) setShelfCount(data.shelf_count);
         if (data.books_per_shelf?.length) {
           const avg = Math.round(
@@ -474,6 +508,16 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
               🖼️ Visual
             </Text>
           </TouchableOpacity>
+          {photoUri && (
+            <TouchableOpacity
+              style={[styles.tabBtn, activeTab === 'photo' && styles.tabBtnActive]}
+              onPress={() => setActiveTab('photo')}
+            >
+              <Text style={[styles.tabBtnText, activeTab === 'photo' && styles.tabBtnTextActive]}>
+                🗄️ My Shelf
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[styles.tabBtn, activeTab === 'guide' && styles.tabBtnActive]}
             onPress={() => setActiveTab('guide')}
@@ -484,7 +528,106 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
           </TouchableOpacity>
         </View>
 
-        {activeTab === 'visual' ? (
+        {activeTab === 'photo' && photoUri ? (
+          <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
+            {/* Shelf photo with clickable cubbies */}
+            <View style={{ position: 'relative', marginBottom: 16 }}>
+              <Image
+                source={{ uri: photoUri }}
+                style={{ width: '100%', aspectRatio: 4 / 3, borderRadius: 8 }}
+                resizeMode="cover"
+              />
+              {/* Dim overlay when selected */}
+              {selectedShelfIdx != null && (
+                <View style={{
+                  position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                  backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 8,
+                }} />
+              )}
+              {/* Clickable cubby overlays */}
+              {Array.from({ length: analysisResult?.shelf_count || shelves.length }, (_, i) => {
+                const bounds = analysisResult?.shelf_bounds?.[i];
+                const rows = analysisResult?.rows || shelves.length;
+                const cols = analysisResult?.columns || 1;
+                const row = Math.floor(i / cols);
+                const col = i % cols;
+                const x = bounds ? `${bounds.x}%` : `${(col / cols) * 100}%`;
+                const y = bounds ? `${bounds.y}%` : `${(row / rows) * 100}%`;
+                const w = bounds ? `${bounds.w}%` : `${100 / cols}%`;
+                const h = bounds ? `${bounds.h}%` : `${100 / rows}%`;
+                const isSelected = selectedShelfIdx === i;
+                return (
+                  <TouchableOpacity
+                    key={i}
+                    onPress={() => setSelectedShelfIdx(isSelected ? null : i)}
+                    activeOpacity={0.8}
+                    style={{
+                      position: 'absolute', left: x as any, top: y as any, width: w as any, height: h as any,
+                      borderWidth: isSelected ? 3 : 1,
+                      borderColor: isSelected ? Colors.rust : 'rgba(255,255,255,0.5)',
+                      borderRadius: 4,
+                      alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <View style={{
+                      width: 28, height: 28, borderRadius: 14,
+                      backgroundColor: isSelected ? Colors.rust : 'rgba(192,82,30,0.85)',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{i + 1}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Book list for selected shelf */}
+            {selectedShelfIdx != null && shelves[selectedShelfIdx] ? (
+              <View>
+                <Text style={{
+                  fontSize: 16, fontWeight: '700', color: Colors.text,
+                  marginBottom: 12, paddingBottom: 8,
+                  borderBottomWidth: 2, borderBottomColor: Colors.rust,
+                  fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }),
+                }}>
+                  Shelf {selectedShelfIdx + 1} · {shelves[selectedShelfIdx].length} books
+                </Text>
+                {shelves[selectedShelfIdx].map((book, bi) => {
+                  const gc = getGenreColor(book.genre);
+                  return (
+                    <View key={book.id || bi} style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 10,
+                      paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.border + '44',
+                    }}>
+                      <View style={{
+                        width: 22, height: 22, borderRadius: 11,
+                        backgroundColor: Colors.parchment, alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.muted }}>{bi + 1}</Text>
+                      </View>
+                      <View style={{ width: 8, height: 36, borderRadius: 2, backgroundColor: gc.spine }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.text }} numberOfLines={1}>
+                          {book.title}
+                        </Text>
+                        {!!book.author && (
+                          <Text style={{ fontSize: 11, color: Colors.muted }} numberOfLines={1}>
+                            {book.author}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+                <Text style={{ fontSize: 28, marginBottom: 8 }}>👆</Text>
+                <Text style={{ fontSize: 14, color: Colors.muted }}>Tap a shelf to see which books go there</Text>
+              </View>
+            )}
+          </ScrollView>
+        ) : activeTab === 'visual' ? (
           <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
             {shelves.map((shelf, si) => (
               <View key={si} style={styles.shelfContainer}>

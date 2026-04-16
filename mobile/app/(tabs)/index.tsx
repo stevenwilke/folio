@@ -51,6 +51,7 @@ interface CollectionEntry {
     series_name: string | null;
     series_position: number | null;
     pages: number | null;
+    format: string | null;
   };
 }
 
@@ -114,7 +115,8 @@ export default function LibraryScreen() {
           published_year,
           series_name,
           series_number,
-          pages
+          pages,
+          format
         )
       `)
       .eq('user_id', user.id)
@@ -392,17 +394,19 @@ export default function LibraryScreen() {
     </View>
   );
 
-  const shelfBooks: ShelfBook[] = entries.map((e) => ({
-    id: e.book_id,
-    title: e.books.title,
-    author: e.books.author,
-    genre: e.books.genre,
-    published_year: e.books.published_year,
-    series_name: e.books.series_name,
-    series_position: e.books.series_position,
-    read_status: e.read_status,
-    user_rating: e.user_rating,
-  }));
+  const shelfBooks: ShelfBook[] = entries
+    .filter((e) => e.books?.format !== 'eBook' && e.books?.format !== 'Audiobook')
+    .map((e) => ({
+      id: e.book_id,
+      title: e.books.title,
+      author: e.books.author,
+      genre: e.books.genre,
+      published_year: e.books.published_year,
+      series_name: e.books.series_name,
+      series_position: e.books.series_position,
+      read_status: e.read_status,
+      user_rating: e.user_rating,
+    }));
 
   return (
     <View style={styles.root}>

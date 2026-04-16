@@ -41,6 +41,7 @@ interface Book {
   isbn_10: string | null;
   series_name?: string | null;
   series_number?: number | null;
+  format?: string | null;
 }
 
 interface CollectionEntry {
@@ -1153,6 +1154,49 @@ export default function BookDetailScreen() {
           </View>
         ) : null}
 
+        {/* Book Format toggle — shown when book is in collection */}
+        {entry && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Format</Text>
+            <View style={styles.formatButtons}>
+              {([
+                { value: 'Hardcover',  label: '📖 Hardcover',  digital: false },
+                { value: 'Paperback',  label: '📕 Paperback',  digital: false },
+                { value: 'eBook',      label: '📱 eBook',      digital: true },
+                { value: 'Audiobook',  label: '🎧 Audiobook',  digital: true },
+              ] as const).map((opt) => {
+                const isActive = (book.format ?? null) === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[
+                      styles.formatBtn,
+                      isActive && (opt.digital ? styles.formatBtnActiveDigital : styles.formatBtnActivePhysical),
+                    ]}
+                    onPress={async () => {
+                      if (isActive) return;
+                      // Optimistic update
+                      setBook(prev => prev ? { ...prev, format: opt.value } : prev);
+                      await supabase.from('books').update({ format: opt.value }).eq('id', book.id);
+                    }}
+                    activeOpacity={0.7}
+                    disabled={saving}
+                  >
+                    <Text
+                      style={[
+                        styles.formatBtnText,
+                        isActive && (opt.digital ? styles.formatBtnTextActiveDigital : styles.formatBtnTextActivePhysical),
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {/* Series Tracking — shown above description when series_name is set */}
         {book.series_name && seriesBooks.length > 0 && (
           <View style={styles.seriesCard}>
@@ -1745,6 +1789,39 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700' as const,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  formatButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  formatBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.card,
+  },
+  formatBtnActivePhysical: {
+    backgroundColor: 'rgba(90,122,90,0.15)',
+    borderColor: Colors.sage,
+  },
+  formatBtnActiveDigital: {
+    backgroundColor: 'rgba(90,110,138,0.15)',
+    borderColor: '#5a6e8a',
+  },
+  formatBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  formatBtnTextActivePhysical: {
+    color: Colors.sage,
+  },
+  formatBtnTextActiveDigital: {
+    color: '#5a6e8a',
   },
   bookshopBtn: {
     borderWidth: 1.5,

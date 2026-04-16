@@ -39,6 +39,7 @@ interface CollectionEntry {
     title: string;
     author: string | null;
     cover_image_url: string | null;
+    format: string | null;
   };
 }
 
@@ -87,7 +88,8 @@ export default function ProfileScreen() {
             id,
             title,
             author,
-            cover_image_url
+            cover_image_url,
+            format
           )
         `)
         .eq('user_id', user.id)
@@ -199,6 +201,10 @@ export default function ProfileScreen() {
     want:    entries.filter((e) => e.read_status === 'want').length,
   };
 
+  const ebooks = entries.filter(
+    (e) => e.books?.format === 'eBook' || e.books?.format === 'Audiobook'
+  );
+
   const renderItem = ({ item, index }: { item: CollectionEntry; index: number }) => {
     const isLeft = index % 2 === 0;
     return (
@@ -303,6 +309,60 @@ export default function ProfileScreen() {
         <Text style={styles.menuBtnText}>💬  Book Clubs</Text>
         <Text style={styles.friendsBtnArrow}>›</Text>
       </TouchableOpacity>
+
+      {/* ── Get Physical ── */}
+      {ebooks.length > 0 && (
+        <View style={styles.getPhysicalSection}>
+          <Text style={styles.getPhysicalLabel}>GET PHYSICAL</Text>
+          <Text style={styles.getPhysicalSubtitle}>
+            You have digital copies of these books — grab a physical edition!
+          </Text>
+          {ebooks.map((entry) => {
+            const title = entry.books?.title ?? '';
+            const author = entry.books?.author ?? '';
+            const cover = entry.books?.cover_image_url;
+            const searchQuery = encodeURIComponent(`${title} ${author}`.trim());
+            return (
+              <View key={entry.id} style={styles.getPhysicalCard}>
+                {cover ? (
+                  <Image source={{ uri: cover }} style={styles.getPhysicalCover} />
+                ) : (
+                  <View style={[styles.getPhysicalCover, { backgroundColor: Colors.border }]} />
+                )}
+                <View style={styles.getPhysicalInfo}>
+                  <Text style={styles.getPhysicalTitle} numberOfLines={2}>{title}</Text>
+                  {author ? (
+                    <Text style={styles.getPhysicalAuthor} numberOfLines={1}>{author}</Text>
+                  ) : null}
+                  <View style={styles.getPhysicalLinks}>
+                    <TouchableOpacity
+                      style={[styles.purchasePill, { backgroundColor: '#2a7a2a' }]}
+                      onPress={() => Linking.openURL(`https://bookshop.org/search?keywords=${searchQuery}`)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.purchasePillText}>Bookshop.org</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.purchasePill, { backgroundColor: '#d97706' }]}
+                      onPress={() => Linking.openURL(`https://www.amazon.com/s?k=${searchQuery}`)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.purchasePillText}>Amazon</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.purchasePill, { backgroundColor: '#7c3aed' }]}
+                      onPress={() => Linking.openURL(`https://www.thriftbooks.com/browse/?b.search=${searchQuery}`)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.purchasePillText}>ThriftBooks</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
 
       {/* Legal */}
       <View style={styles.legalRow}>
@@ -637,6 +697,78 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: Colors.ink,
+  },
+
+  // ── Get Physical ──
+  getPhysicalSection: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: 16,
+  },
+  getPhysicalLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.muted,
+    letterSpacing: 1.2,
+    marginBottom: 4,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  getPhysicalSubtitle: {
+    fontSize: 13,
+    color: Colors.muted,
+    marginBottom: 14,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  getPhysicalCard: {
+    flexDirection: 'row' as const,
+    backgroundColor: Colors.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 10,
+    marginBottom: 10,
+    gap: 10,
+  },
+  getPhysicalCover: {
+    width: 44,
+    height: 66,
+    borderRadius: 4,
+  },
+  getPhysicalInfo: {
+    flex: 1,
+    justifyContent: 'center' as const,
+    gap: 2,
+  },
+  getPhysicalTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  getPhysicalAuthor: {
+    fontSize: 12,
+    color: Colors.muted,
+    marginBottom: 4,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  getPhysicalLinks: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: 6,
+    marginTop: 2,
+  },
+  purchasePill: {
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  purchasePillText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
 
   // ── Legal ──

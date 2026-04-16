@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -61,6 +62,45 @@ export default function SearchScreen() {
   const [searched, setSearched] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Recent searches + recently added books for empty state
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [recentBooks, setRecentBooks] = useState<{ id: string; title: string; author: string | null; cover_image_url: string | null }[]>([]);
+  const RECENT_SEARCHES_KEY = 'folio-recent-searches';
+
+  useEffect(() => {
+    // Load recent searches
+    AsyncStorage.getItem(RECENT_SEARCHES_KEY).then(val => {
+      if (val) try { setRecentSearches(JSON.parse(val)); } catch {}
+    });
+    // Load recently added books
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('collection_entries')
+        .select('book_id, books(id, title, author, cover_image_url)')
+        .eq('user_id', user.id)
+        .order('added_at', { ascending: false })
+        .limit(8);
+      if (data) {
+        setRecentBooks(data.map((e: any) => ({
+          id: e.books?.id || e.book_id,
+          title: e.books?.title || '',
+          author: e.books?.author || null,
+          cover_image_url: e.books?.cover_image_url || null,
+        })));
+      }
+    })();
+  }, []);
+
+  function saveRecentSearch(q: string) {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+    const updated = [trimmed, ...recentSearches.filter(s => s !== trimmed)].slice(0, 8);
+    setRecentSearches(updated);
+    AsyncStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated)).catch(() => {});
+  }
+
   async function doSearch(q: string) {
     if (!q.trim()) {
       setResults([]);
@@ -69,6 +109,7 @@ export default function SearchScreen() {
     }
     setLoading(true);
     setSearched(true);
+    saveRecentSearch(q);
     try {
       const stripped = q.replace(/[-\s]/g, '');
       const isIsbn   = /^\d{10,13}$/.test(stripped);
@@ -419,6 +460,83 @@ export default function SearchScreen() {
                 <Text style={styles.emptySubtitle}>
                   Find books to add to your library, track reading progress, or save for later.
                 </Text>
+
+                {/* Quick add buttons */}
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+                  <TouchableOpacity
+                    style={styles.manualBtn}
+                    onPress={() => router.push('/manual-add' as any)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.manualBtnText}>+ Add Manually</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.manualBtn, { backgroundColor: Colors.rust }]}
+                    onPress={() => router.push('/scan' as any)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.manualBtnText, { color: '#fff' }]}>📷 Scan Barcode</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Recent searches */}
+                {recentSearches.length > 0 && (
+                  <View style={styles.recentSection}>
+                    <View style={styles.recentHeader}>
+                      <Text style={styles.recentLabel}>Recent Searches</Text>
+                      <TouchableOpacity onPress={() => { setRecentSearches([]); AsyncStorage.removeItem(RECENT_SEARCHES_KEY); }}>
+                        <Text style={styles.recentClear}>Clear</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.recentChips}>
+                      {recentSearches.map((s, i) => (
+                        <TouchableOpacity
+                          key={i}
+                          style={styles.recentChip}
+                          onPress={() => { setQuery(s); doSearch(s); }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.recentChipText}>{s}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* Recently added books */}
+                {recentBooks.length > 0 && (
+                  <View style={styles.recentSection}>
+                    <Text style={styles.recentLabel}>Recently Added</Text>
+                    <FlatList
+                      data={recentBooks}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyExtractor={(item) => item.id}
+                      contentContainerStyle={{ gap: 10, paddingVertical: 8 }}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={styles.recentBookCard}
+                          onPress={() => router.push(`/book/${item.id}`)}
+                          activeOpacity={0.75}
+                        >
+                          {item.cover_image_url ? (
+                            <Image source={{ uri: item.cover_image_url }} style={styles.recentBookCover} />
+                          ) : (
+                            <View style={[styles.recentBookCover, { backgroundColor: Colors.border, alignItems: 'center', justifyContent: 'center' }]}>
+                              <Text style={{ fontSize: 9, color: Colors.muted, textAlign: 'center', padding: 2 }} numberOfLines={3}>
+                                {item.title}
+                              </Text>
+                            </View>
+                          )}
+                          <Text style={styles.recentBookTitle} numberOfLines={2}>{item.title}</Text>
+                          {item.author && (
+                            <Text style={styles.recentBookAuthor} numberOfLines={1}>{item.author}</Text>
+                          )}
+                        </TouchableOpacity>
+                      )}
+                    />
+                  </View>
+                )}
               </View>
             )
           }
@@ -628,6 +746,67 @@ const styles = StyleSheet.create({
     color: Colors.muted,
     textAlign: 'center',
     lineHeight: 20,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  recentSection: {
+    width: '100%',
+    marginTop: 24,
+  },
+  recentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  recentLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.ink,
+    letterSpacing: 0.5,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  recentClear: {
+    fontSize: 12,
+    color: Colors.rust,
+    fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  recentChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  recentChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  recentChipText: {
+    fontSize: 13,
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  recentBookCard: {
+    width: 80,
+  },
+  recentBookCover: {
+    width: 80,
+    height: 120,
+    borderRadius: 4,
+  },
+  recentBookTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.ink,
+    marginTop: 4,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  recentBookAuthor: {
+    fontSize: 10,
+    color: Colors.muted,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
 });

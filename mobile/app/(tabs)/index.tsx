@@ -499,8 +499,6 @@ export default function LibraryScreen() {
           </View>
         )}
 
-        <View style={{ flex: 1 }} />
-
         {/* Sort dropdown */}
         <TouchableOpacity
           style={styles.dropdownBtn}
@@ -1146,8 +1144,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingBottom: 10,
-    gap: 6,
-    justifyContent: 'flex-end',
+    gap: 8,
+    alignItems: 'center',
   },
   sizeBtn: {
     width: 32,
@@ -1235,8 +1233,10 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
   dropdownBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 6,

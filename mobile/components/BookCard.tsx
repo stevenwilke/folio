@@ -139,6 +139,7 @@ const styles = StyleSheet.create({
     padding: 8,
     paddingTop: 4,
     gap: 3,
+    height: 68,
   },
   title: {
     fontSize: 13,

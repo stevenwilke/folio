@@ -39,6 +39,7 @@ interface CollectionEntry {
   id: string;
   book_id: string;
   read_status: ReadStatus;
+  has_read: boolean;
   user_rating: number | null;
   current_page: number | null;
   books: {
@@ -104,6 +105,7 @@ export default function LibraryScreen() {
         id,
         book_id,
         read_status,
+        has_read,
         user_rating,
         current_page,
         books (
@@ -248,7 +250,8 @@ export default function LibraryScreen() {
   }
 
   const filtered =
-    filter === 'all' ? entries
+    filter === 'all' ? entries.filter((e) => e.read_status !== 'want')
+    : filter === 'read' ? entries.filter((e) => e.has_read === true)
     : filter === 'series' ? entries.filter(e => e.books?.series_name)
     : entries.filter((e) => e.read_status === filter);
 
@@ -274,16 +277,41 @@ export default function LibraryScreen() {
   })() : [];
 
   const stats: Stats = {
-    total: entries.length,
-    read: entries.filter((e) => e.read_status === 'read').length,
+    total: entries.filter((e) => e.read_status !== 'want').length,
+    read: entries.filter((e) => e.has_read === true).length,
     reading: entries.filter((e) => e.read_status === 'reading').length,
     want: entries.filter((e) => e.read_status === 'want').length,
   };
 
-  const renderItem = ({ item, index }: { item: CollectionEntry; index: number }) => {
+  // Pad filtered data so the last row has the right number of items (avoids stretching)
+  const paddedFiltered = (() => {
+    const remainder = filtered.length % COLUMNS;
+    if (remainder === 0 || filtered.length === 0) return filtered;
+    const placeholders = Array.from({ length: COLUMNS - remainder }, (_, i) => ({
+      id: `__placeholder_${i}`,
+      book_id: `__placeholder_${i}`,
+      read_status: 'owned' as ReadStatus,
+      has_read: false,
+      user_rating: null,
+      current_page: null,
+      books: { id: '', title: '', author: null, cover_image_url: null, genre: null, published_year: null, series_name: null, series_position: null, pages: null, format: null },
+      _placeholder: true,
+    }));
+    return [...filtered, ...placeholders] as (CollectionEntry & { _placeholder?: boolean })[];
+  })();
+
+  const renderItem = ({ item, index }: { item: CollectionEntry & { _placeholder?: boolean }; index: number }) => {
     const col = index % COLUMNS;
     const marginLeft  = col === 0 ? 0 : GAP / 2;
     const marginRight = col === COLUMNS - 1 ? 0 : GAP / 2;
+
+    // Invisible placeholder to fill last row
+    if ((item as any)._placeholder) {
+      return <View style={[styles.gridItem, { marginLeft, marginRight, opacity: 0 }]}>
+        <View style={{ width: cardWidth, height: 1 }} />
+      </View>;
+    }
+
     return (
       <View style={[styles.gridItem, { marginLeft, marginRight }]}>
         <BookCard
@@ -465,7 +493,7 @@ export default function LibraryScreen() {
         ) : (
           <FlatList
             key={COLUMNS}
-            data={filtered}
+            data={paddedFiltered}
             numColumns={COLUMNS}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}

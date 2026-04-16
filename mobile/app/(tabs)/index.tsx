@@ -14,7 +14,6 @@ import {
   Alert,
   Pressable,
   TextInput,
-  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -465,63 +464,7 @@ export default function LibraryScreen() {
         </View>
       )}
 
-      {/* Sort / Group / View controls */}
-      <View style={styles.controlsRow}>
-        {/* Sort */}
-        <View style={styles.controlGroup}>
-          <Text style={styles.controlLabel}>Sort</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: 'row', gap: 4 }}>
-              {[
-                { key: 'added',  label: 'Date' },
-                { key: 'title',  label: 'Title' },
-                { key: 'author', label: 'Author' },
-                { key: 'rating', label: 'Rating' },
-                { key: 'year',   label: 'Year' },
-              ].map(opt => (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[styles.controlPill, sort === opt.key && styles.controlPillActive]}
-                  onPress={() => setSort(opt.key)}
-                >
-                  <Text style={[styles.controlPillText, sort === opt.key && styles.controlPillTextActive]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-        </View>
-
-        {/* Group */}
-        <View style={styles.controlGroup}>
-          <Text style={styles.controlLabel}>Group</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: 'row', gap: 4 }}>
-              {[
-                { key: 'none',   label: 'None' },
-                { key: 'status', label: 'Status' },
-                { key: 'genre',  label: 'Genre' },
-                { key: 'author', label: 'Author' },
-                { key: 'series', label: 'Series' },
-                { key: 'decade', label: 'Decade' },
-              ].map(opt => (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[styles.controlPill, groupBy === opt.key && styles.controlPillActive]}
-                  onPress={() => setGroupBy(opt.key)}
-                >
-                  <Text style={[styles.controlPillText, groupBy === opt.key && styles.controlPillTextActive]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-        </View>
-      </View>
-
-      {/* View mode + Cover size + Shelf Planner */}
+      {/* View mode + Size + Sort + Group — single compact row */}
       <View style={styles.sizeRow}>
         {/* Grid / List toggle */}
         <View style={{ flexDirection: 'row', borderRadius: 8, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden' }}>
@@ -556,11 +499,44 @@ export default function LibraryScreen() {
           </View>
         )}
 
+        <View style={{ flex: 1 }} />
+
+        {/* Sort dropdown */}
         <TouchableOpacity
-          style={styles.shelfPlannerBtn}
-          onPress={() => setShowShelfPlanner(true)}
+          style={styles.dropdownBtn}
+          onPress={() => {
+            const options = ['Date Added', 'Title', 'Author', 'Rating', 'Year', 'Cancel'];
+            const keys = ['added', 'title', 'author', 'rating', 'year'];
+            Alert.alert('Sort by', undefined, options.map((label, i) => ({
+              text: label,
+              style: i === options.length - 1 ? 'cancel' as const : 'default' as const,
+              onPress: i < keys.length ? () => setSort(keys[i]) : undefined,
+            })));
+          }}
         >
-          <Text style={styles.shelfPlannerBtnText}>📚 Shelf Planner</Text>
+          <Text style={styles.dropdownBtnText}>
+            Sort: {({ added: 'Date', title: 'Title', author: 'Author', rating: 'Rating', year: 'Year' } as Record<string, string>)[sort] || 'Date'}
+          </Text>
+          <Text style={{ fontSize: 8, color: Colors.muted }}>▼</Text>
+        </TouchableOpacity>
+
+        {/* Group dropdown */}
+        <TouchableOpacity
+          style={styles.dropdownBtn}
+          onPress={() => {
+            const options = ['None', 'Status', 'Genre', 'Author', 'Series', 'Decade', 'Cancel'];
+            const keys = ['none', 'status', 'genre', 'author', 'series', 'decade'];
+            Alert.alert('Group by', undefined, options.map((label, i) => ({
+              text: label,
+              style: i === options.length - 1 ? 'cancel' as const : 'default' as const,
+              onPress: i < keys.length ? () => setGroupBy(keys[i]) : undefined,
+            })));
+          }}
+        >
+          <Text style={[styles.dropdownBtnText, groupBy !== 'none' && { color: Colors.rust }]}>
+            {groupBy === 'none' ? 'Group' : ({ status: 'Status', genre: 'Genre', author: 'Author', series: 'Series', decade: 'Decade' } as Record<string, string>)[groupBy] || 'Group'}
+          </Text>
+          <Text style={{ fontSize: 8, color: groupBy !== 'none' ? Colors.rust : Colors.muted }}>▼</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -1125,7 +1101,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   gridItem: {
-    flex: 1,
+    // No flex: 1 — let cardWidth control sizing to prevent overflow
   },
   empty: {
     flex: 1,
@@ -1211,45 +1187,6 @@ const styles = StyleSheet.create({
     color: Colors.rust,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
-  controlsRow: {
-    paddingHorizontal: 16,
-    gap: 8,
-    marginBottom: 8,
-  },
-  controlGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  controlLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.muted,
-    width: 38,
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
-  },
-  controlPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.card,
-  },
-  controlPillActive: {
-    backgroundColor: Colors.rust,
-    borderColor: Colors.rust,
-  },
-  controlPillText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.muted,
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
-  },
-  controlPillTextActive: {
-    color: '#fff',
-  },
   groupHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1294,6 +1231,23 @@ const styles = StyleSheet.create({
   },
   listAuthor: {
     fontSize: 12,
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  dropdownBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.card,
+  },
+  dropdownBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
     color: Colors.muted,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },

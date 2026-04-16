@@ -81,6 +81,9 @@ export default function LibraryScreen() {
   const [coverUploadTarget, setCoverUploadTarget] = useState<{ id: string; title: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [valuationStats, setValuationStats] = useState<{ retailTotal: number; retailCount: number; usedTotal: number; usedCount: number } | null>(null);
+  const [sort, setSort] = useState('added');
+  const [groupBy, setGroupBy] = useState('none');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const COLUMNS = SIZE_COLUMNS[coverSize];
   const HORIZONTAL_PADDING = 16;
@@ -274,11 +277,48 @@ export default function LibraryScreen() {
 
   // Apply search query
   const q = searchQuery.trim().toLowerCase();
-  const filtered = q
+  const searched = q
     ? filteredByStatus.filter(e =>
         e.books?.title?.toLowerCase().includes(q) ||
         e.books?.author?.toLowerCase().includes(q))
     : filteredByStatus;
+
+  // Apply sort
+  const sorted = (() => {
+    const arr = [...searched];
+    switch (sort) {
+      case 'title':  return arr.sort((a, b) => (a.books?.title || '').localeCompare(b.books?.title || ''));
+      case 'author': return arr.sort((a, b) => (a.books?.author || '').localeCompare(b.books?.author || ''));
+      case 'rating': return arr.sort((a, b) => (b.user_rating || 0) - (a.user_rating || 0));
+      case 'year':   return arr.sort((a, b) => (b.books?.published_year || 0) - (a.books?.published_year || 0));
+      default:       return arr; // 'added' — already sorted by added_at desc
+    }
+  })();
+
+  // Apply grouping
+  const STATUS_LABELS_MAP: Record<string, string> = { owned: 'In Library', read: 'Read', reading: 'Reading', want: 'Want to Read' };
+  const groups = (() => {
+    if (groupBy === 'none') return [{ label: null as string | null, entries: sorted }];
+    const map: Record<string, CollectionEntry[]> = {};
+    for (const entry of sorted) {
+      let key: string;
+      if (groupBy === 'status') key = STATUS_LABELS_MAP[entry.read_status] || 'Other';
+      else if (groupBy === 'genre') key = entry.books?.genre || 'Uncategorized';
+      else if (groupBy === 'author') key = entry.books?.author || 'Unknown Author';
+      else if (groupBy === 'series') key = entry.books?.series_name || 'No Series';
+      else if (groupBy === 'decade') {
+        const y = entry.books?.published_year;
+        key = y ? `${Math.floor(y / 10) * 10}s` : 'Unknown';
+      } else key = 'Other';
+      if (!map[key]) map[key] = [];
+      map[key].push(entry);
+    }
+    return Object.entries(map)
+      .map(([label, entries]) => ({ label, entries }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  })();
+
+  const filtered = sorted;
 
   // Series grouping when series filter is active
   const seriesGroups = filter === 'series' ? (() => {
@@ -424,38 +464,97 @@ export default function LibraryScreen() {
         </View>
       )}
 
-      {/* Filter chips */}
-      <FlatList
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        data={FILTER_OPTIONS}
-        keyExtractor={(item) => item.key}
-        contentContainerStyle={styles.filterList}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.chip, filter === item.key && styles.chipActive]}
-            onPress={() => setFilter(item.key)}
-          >
-            <Text style={[styles.chipText, filter === item.key && styles.chipTextActive]}>
-              {item.label}
-            </Text>
-          </TouchableOpacity>
-        )}
-      />
+      {/* Sort / Group / View controls */}
+      <View style={styles.controlsRow}>
+        {/* Sort */}
+        <View style={styles.controlGroup}>
+          <Text style={styles.controlLabel}>Sort</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ flexDirection: 'row', gap: 4 }}>
+              {[
+                { key: 'added',  label: 'Date' },
+                { key: 'title',  label: 'Title' },
+                { key: 'author', label: 'Author' },
+                { key: 'rating', label: 'Rating' },
+                { key: 'year',   label: 'Year' },
+              ].map(opt => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[styles.controlPill, sort === opt.key && styles.controlPillActive]}
+                  onPress={() => setSort(opt.key)}
+                >
+                  <Text style={[styles.controlPillText, sort === opt.key && styles.controlPillTextActive]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
 
-      {/* Grid size + Shelf Planner */}
+        {/* Group */}
+        <View style={styles.controlGroup}>
+          <Text style={styles.controlLabel}>Group</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ flexDirection: 'row', gap: 4 }}>
+              {[
+                { key: 'none',   label: 'None' },
+                { key: 'status', label: 'Status' },
+                { key: 'genre',  label: 'Genre' },
+                { key: 'author', label: 'Author' },
+                { key: 'series', label: 'Series' },
+                { key: 'decade', label: 'Decade' },
+              ].map(opt => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[styles.controlPill, groupBy === opt.key && styles.controlPillActive]}
+                  onPress={() => setGroupBy(opt.key)}
+                >
+                  <Text style={[styles.controlPillText, groupBy === opt.key && styles.controlPillTextActive]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+
+      {/* View mode + Cover size + Shelf Planner */}
       <View style={styles.sizeRow}>
-        {(['S', 'M', 'L'] as SizeKey[]).map((size) => (
+        {/* Grid / List toggle */}
+        <View style={{ flexDirection: 'row', borderRadius: 8, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden' }}>
           <TouchableOpacity
-            key={size}
-            style={[styles.sizeBtn, coverSize === size && styles.sizeBtnActive]}
-            onPress={() => handleSizeChange(size)}
+            onPress={() => setViewMode('grid')}
+            style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: viewMode === 'grid' ? Colors.rust : 'transparent' }}
           >
-            <Text style={[styles.sizeBtnText, coverSize === size && styles.sizeBtnTextActive]}>
-              {size}
-            </Text>
+            <Text style={{ fontSize: 14, color: viewMode === 'grid' ? '#fff' : Colors.muted }}>⊞</Text>
           </TouchableOpacity>
-        ))}
+          <TouchableOpacity
+            onPress={() => setViewMode('list')}
+            style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: viewMode === 'list' ? Colors.rust : 'transparent', borderLeftWidth: 1, borderLeftColor: Colors.border }}
+          >
+            <Text style={{ fontSize: 14, color: viewMode === 'list' ? '#fff' : Colors.muted }}>☰</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Cover size (grid only) */}
+        {viewMode === 'grid' && (
+          <View style={{ flexDirection: 'row', gap: 4 }}>
+            {(['S', 'M', 'L'] as SizeKey[]).map((size) => (
+              <TouchableOpacity
+                key={size}
+                style={[styles.sizeBtn, coverSize === size && styles.sizeBtnActive]}
+                onPress={() => handleSizeChange(size)}
+              >
+                <Text style={[styles.sizeBtnText, coverSize === size && styles.sizeBtnTextActive]}>
+                  {size}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         <TouchableOpacity
           style={styles.shelfPlannerBtn}
           onPress={() => setShowShelfPlanner(true)}
@@ -553,6 +652,87 @@ export default function LibraryScreen() {
             )}
             contentContainerStyle={[styles.gridContent, seriesGroups.length === 0 && styles.gridContentEmpty]}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.rust} />}
+          />
+        ) : viewMode === 'list' ? (
+          <FlatList
+            data={groupBy !== 'none'
+              ? groups.flatMap(g => [
+                  { _type: 'header' as const, label: g.label || '', count: g.entries.length, id: `__header_${g.label}` } as any,
+                  ...g.entries,
+                ])
+              : filtered}
+            keyExtractor={(item) => item.id}
+            ListHeaderComponent={ListHeader}
+            ListEmptyComponent={EmptyState}
+            contentContainerStyle={[styles.gridContent, filtered.length === 0 && styles.gridContentEmpty]}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.rust} />}
+            renderItem={({ item }) => {
+              if ((item as any)._type === 'header') {
+                return (
+                  <View style={styles.groupHeader}>
+                    <Text style={styles.groupHeaderText}>{(item as any).label}</Text>
+                    <Text style={styles.groupHeaderCount}>{(item as any).count}</Text>
+                  </View>
+                );
+              }
+              const entry = item as CollectionEntry;
+              return (
+                <TouchableOpacity
+                  style={styles.listRow}
+                  onPress={() => router.push(`/book/${entry.book_id}`)}
+                  activeOpacity={0.7}
+                >
+                  {entry.books?.cover_image_url ? (
+                    <Image source={{ uri: entry.books.cover_image_url }} style={styles.listCover} />
+                  ) : (
+                    <View style={[styles.listCover, { backgroundColor: Colors.border, alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={{ fontSize: 8, color: Colors.muted }}>{entry.books?.title?.charAt(0)}</Text>
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.listTitle} numberOfLines={1}>{entry.books?.title}</Text>
+                    {entry.books?.author && <Text style={styles.listAuthor} numberOfLines={1}>{entry.books.author}</Text>}
+                  </View>
+                  {entry.user_rating ? (
+                    <Text style={{ fontSize: 12, color: Colors.gold }}>{'★'.repeat(entry.user_rating)}</Text>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            }}
+          />
+        ) : groupBy !== 'none' ? (
+          <FlatList
+            data={groups}
+            keyExtractor={(item) => item.label || '__ungrouped'}
+            ListHeaderComponent={ListHeader}
+            ListEmptyComponent={EmptyState}
+            contentContainerStyle={[styles.gridContent, filtered.length === 0 && styles.gridContentEmpty]}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.rust} />}
+            renderItem={({ item: group }) => (
+              <View style={{ marginBottom: 20 }}>
+                <View style={styles.groupHeader}>
+                  <Text style={styles.groupHeaderText}>{group.label}</Text>
+                  <Text style={styles.groupHeaderCount}>{group.entries.length}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: GAP }}>
+                  {group.entries.map((entry, idx) => (
+                    <View key={entry.id} style={{ width: cardWidth }}>
+                      <BookCard
+                        id={entry.book_id}
+                        title={entry.books.title}
+                        author={entry.books.author}
+                        coverImageUrl={entry.books.cover_image_url}
+                        status={entry.read_status}
+                        cardWidth={cardWidth}
+                        hideText={coverSize === 'S'}
+                        onPress={() => router.push(`/book/${entry.book_id}`)}
+                        hasPendingCover={pendingCoverIds.has(entry.books.id)}
+                      />
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
           />
         ) : (
           <FlatList
@@ -1028,6 +1208,92 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: Colors.rust,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  controlsRow: {
+    paddingHorizontal: 16,
+    gap: 8,
+    marginBottom: 8,
+  },
+  controlGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  controlLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.muted,
+    width: 38,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  controlPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.card,
+  },
+  controlPillActive: {
+    backgroundColor: Colors.rust,
+    borderColor: Colors.rust,
+  },
+  controlPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.muted,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  controlPillTextActive: {
+    color: '#fff',
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  groupHeaderText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  groupHeaderCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.muted,
+    backgroundColor: Colors.border + '66',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  listRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border + '44',
+  },
+  listCover: {
+    width: 40,
+    height: 60,
+    borderRadius: 4,
+  },
+  listTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  listAuthor: {
+    fontSize: 12,
+    color: Colors.muted,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
   searchContainer: {

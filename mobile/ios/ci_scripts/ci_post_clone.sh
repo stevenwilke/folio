@@ -21,6 +21,9 @@ npm install --legacy-peer-deps --no-audit --no-fund
 
 echo "▶️  Installing CocoaPods"
 cd ios
+# CocoaPods 1.16.2 / xcodeproj 1.27.0 can't parse Xcode 26's objectVersion = 70.
+# Keep the pbxproj at 60 so `pod install` succeeds. (Xcode 26 reads 60 fine.)
+sed -i '' 's/objectVersion = 70;/objectVersion = 60;/' ExLibris.xcodeproj/project.pbxproj || true
 pod install --repo-update
 
 echo "✅  ci_post_clone complete"

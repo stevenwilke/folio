@@ -1005,7 +1005,7 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
               {/* Lightbox */}
               {selectedBook && (
                 <div
-                  onClick={() => setSelectedBook(null)}
+                  onClick={() => { setSelectedBook(null); setShowShelfPhoto(false) }}
                   style={{
                     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1023,7 +1023,7 @@ export default function ShelfPlannerModal({ books, session, onClose, onSaved }) 
                     }}
                   >
                     <button
-                      onClick={() => setSelectedBook(null)}
+                      onClick={() => { setSelectedBook(null); setShowShelfPhoto(false) }}
                       style={{
                         position: 'absolute', top: 12, right: 14,
                         background: 'none', border: 'none', fontSize: 18,

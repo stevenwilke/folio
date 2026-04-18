@@ -5,8 +5,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 
-const TEAL = '#2a9d8f';
-
 interface Props {
   onClose: () => void;
   onSuccess: () => void;
@@ -159,7 +157,7 @@ export default function AddLibraryModal({ onClose, onSuccess }: Props) {
                 <Text style={styles.label}>LOCATION</Text>
                 {locating ? (
                   <View style={styles.locatingRow}>
-                    <ActivityIndicator size="small" color={TEAL} />
+                    <ActivityIndicator size="small" color={Colors.teal} />
                     <Text style={styles.locatingText}>Getting your location...</Text>
                   </View>
                 ) : latitude ? (
@@ -251,7 +249,7 @@ const styles = StyleSheet.create({
   locatingRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   locatingText: { fontSize: 13, color: Colors.muted },
   coordText: { fontSize: 13, color: Colors.ink },
-  refreshText: { fontSize: 12, color: TEAL, fontWeight: '600' },
+  refreshText: { fontSize: 12, color: Colors.teal, fontWeight: '600' },
   locBtn: { backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
   locBtnText: { fontSize: 13, color: Colors.ink },
   photoRow: { flexDirection: 'row', gap: 10 },
@@ -259,6 +257,6 @@ const styles = StyleSheet.create({
   photoBtnText: { fontSize: 13, color: Colors.ink },
   preview: { width: '100%', height: 150, borderRadius: 8, marginTop: 10 },
   error: { fontSize: 12, color: Colors.error, marginBottom: 10 },
-  submitBtn: { backgroundColor: TEAL, borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginTop: 4, marginBottom: 8 },
+  submitBtn: { backgroundColor: Colors.teal, borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginTop: 4, marginBottom: 8 },
   submitText: { fontSize: 15, fontWeight: '700', color: Colors.white },
 });

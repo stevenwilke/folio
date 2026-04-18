@@ -273,7 +273,6 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
         try { setGenreOverrides(JSON.parse(val)); } catch { /* ignore */ }
       }
     });
-    // Restore saved shelf photo and analysis
     AsyncStorage.getItem(SHELF_PHOTO_KEY).then((uri) => { if (uri) setPhotoUri(uri); });
     AsyncStorage.getItem(SHELF_ANALYSIS_KEY).then((val) => {
       if (val) {
@@ -321,7 +320,6 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
       return;
     }
 
-    // Save photo URI for persistence
     if (asset.uri) {
       setPhotoUri(asset.uri);
       AsyncStorage.setItem(SHELF_PHOTO_KEY, asset.uri).catch(() => {});

@@ -7,6 +7,7 @@ export const Colors = {
   rust: '#c0521e',
   sage: '#5a7a5a',
   gold: '#b8860b',
+  teal: '#2a9d8f',
 
   // Text
   ink: '#1a1208',

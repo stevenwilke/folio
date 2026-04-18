@@ -1,5 +1,5 @@
 import { Tabs, useRouter, usePathname } from 'expo-router';
-import { Platform, TouchableOpacity, Image, View, Text, DeviceEventEmitter } from 'react-native';
+import { Platform, TouchableOpacity, Image, View, Text, DeviceEventEmitter, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 export const SHELF_PLANNER_EVENT = 'folio:open-shelf-planner';
@@ -36,25 +36,29 @@ function NotificationBell() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !mounted) return;
 
-      // Count unread notifications
-      const { count: notifCount } = await supabase
-        .from('notifications')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('is_read', false);
+      const [notifRes, friendRes] = await Promise.all([
+        supabase.from('notifications')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id).eq('is_read', false),
+        supabase.from('friendships')
+          .select('id', { count: 'exact', head: true })
+          .eq('friend_id', user.id).eq('status', 'pending'),
+      ]);
 
-      // Count pending friend requests
-      const { count: friendCount } = await supabase
-        .from('friendships')
-        .select('id', { count: 'exact', head: true })
-        .eq('friend_id', user.id)
-        .eq('status', 'pending');
-
-      if (mounted) setUnreadCount((notifCount || 0) + (friendCount || 0));
+      if (!mounted) return;
+      const next = (notifRes.count || 0) + (friendRes.count || 0);
+      setUnreadCount(prev => prev === next ? prev : next);
     }
     fetchCount();
-    const interval = setInterval(fetchCount, 60000);
-    return () => { mounted = false; clearInterval(interval); };
+    let interval = setInterval(fetchCount, 60000);
+    const sub = AppState.addEventListener('change', (state) => {
+      clearInterval(interval);
+      if (state === 'active') {
+        fetchCount();
+        interval = setInterval(fetchCount, 60000);
+      }
+    });
+    return () => { mounted = false; clearInterval(interval); sub.remove(); };
   }, []);
 
   return (

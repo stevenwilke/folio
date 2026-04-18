@@ -4,41 +4,33 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 
-const TEAL = '#2a9d8f';
+interface LittleLibrary {
+  id: string;
+  name?: string | null;
+  location_name?: string | null;
+}
 
 interface Props {
-  library: any;
+  library: LittleLibrary;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-/** Resize image and return base64 string (no data: prefix) */
-async function resizeAndBase64(uri: string, maxDim = 800): Promise<string> {
-  // On React Native we read the file as base64 via fetch + FileReader equivalent
-  // For simplicity, we fetch the image and convert via a canvas-like approach
-  // In RN, we can just read the file and let the edge function handle sizing
-  const response = await fetch(uri);
-  const blob = await response.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string;
-      // Strip the data:image/...;base64, prefix
-      const base64 = dataUrl.split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
 export default function ScanLibraryModal({ library, onClose, onSuccess }: Props) {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function handleAsset(asset: ImagePicker.ImagePickerAsset) {
+    setPhotoUri(asset.uri);
+    setPhotoBase64(asset.base64 ?? null);
+    setScanResult(null);
+    setError(null);
+  }
 
   async function pickPhoto() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -49,12 +41,9 @@ export default function ScanLibraryModal({ library, onClose, onSuccess }: Props)
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.6,
+      base64: true,
     });
-    if (!result.canceled && result.assets[0]) {
-      setPhotoUri(result.assets[0].uri);
-      setScanResult(null);
-      setError(null);
-    }
+    if (!result.canceled && result.assets[0]) handleAsset(result.assets[0]);
   }
 
   async function takePhoto() {
@@ -65,16 +54,13 @@ export default function ScanLibraryModal({ library, onClose, onSuccess }: Props)
     }
     const result = await ImagePicker.launchCameraAsync({
       quality: 0.6,
+      base64: true,
     });
-    if (!result.canceled && result.assets[0]) {
-      setPhotoUri(result.assets[0].uri);
-      setScanResult(null);
-      setError(null);
-    }
+    if (!result.canceled && result.assets[0]) handleAsset(result.assets[0]);
   }
 
   async function handleScan() {
-    if (!photoUri) {
+    if (!photoBase64) {
       setError('Please choose a photo first');
       return;
     }
@@ -82,9 +68,8 @@ export default function ScanLibraryModal({ library, onClose, onSuccess }: Props)
     setError(null);
 
     try {
-      const base64 = await resizeAndBase64(photoUri);
       const { data, error: fnErr } = await supabase.functions.invoke('scan-little-library', {
-        body: { imageBase64: base64, mimeType: 'image/jpeg' },
+        body: { imageBase64: photoBase64, mimeType: 'image/jpeg' },
       });
 
       if (fnErr || data?.error) {
@@ -193,7 +178,7 @@ export default function ScanLibraryModal({ library, onClose, onSuccess }: Props)
               {/* Scanning indicator */}
               {scanning && (
                 <View style={styles.scanningRow}>
-                  <ActivityIndicator color={TEAL} />
+                  <ActivityIndicator color={Colors.teal} />
                   <Text style={styles.scanningText}>Scanning books with AI...</Text>
                 </View>
               )}
@@ -270,7 +255,7 @@ const styles = StyleSheet.create({
   photoRow: { flexDirection: 'row', gap: 10, marginBottom: 12, flexWrap: 'wrap' },
   photoBtn: { backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14 },
   photoBtnText: { fontSize: 13, color: Colors.ink },
-  identifyBtn: { backgroundColor: TEAL, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14 },
+  identifyBtn: { backgroundColor: Colors.teal, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14 },
   identifyText: { fontSize: 13, fontWeight: '600', color: Colors.white },
   preview: { width: '100%', height: 200, borderRadius: 8, marginBottom: 12 },
   scanningRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', paddingVertical: 12 },
@@ -285,6 +270,6 @@ const styles = StyleSheet.create({
   field: { marginBottom: 14 },
   input: { backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, fontSize: 14, color: Colors.ink, textAlignVertical: 'top' },
   error: { fontSize: 12, color: Colors.error, marginBottom: 10 },
-  saveBtn: { backgroundColor: TEAL, borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
+  saveBtn: { backgroundColor: Colors.teal, borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
   saveText: { fontSize: 15, fontWeight: '700', color: Colors.white },
 });

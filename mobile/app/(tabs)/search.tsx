@@ -20,7 +20,6 @@ import { FakeCover } from '../../components/FakeCover';
 import { ReadStatus } from '../../components/BookCard';
 import SwipeTabNav from '../../components/SwipeTabNav';
 
-// Unified result shape for both sources
 interface SearchResult {
   key: string;
   type?: 'result';
@@ -71,15 +70,16 @@ export default function SearchScreen() {
   const RECENT_SEARCHED_BOOKS_KEY = 'folio-recently-searched-books';
 
   useEffect(() => {
-    // Load recent searches
-    AsyncStorage.getItem(RECENT_SEARCHES_KEY).then(val => {
-      if (val) try { setRecentSearches(JSON.parse(val)); } catch {}
+    AsyncStorage.multiGet([RECENT_SEARCHES_KEY, RECENT_SEARCHED_BOOKS_KEY]).then(pairs => {
+      for (const [key, val] of pairs) {
+        if (!val) continue;
+        try {
+          const parsed = JSON.parse(val);
+          if (key === RECENT_SEARCHES_KEY) setRecentSearches(parsed);
+          else setRecentSearchedBooks(parsed);
+        } catch {}
+      }
     });
-    // Load recently searched books
-    AsyncStorage.getItem(RECENT_SEARCHED_BOOKS_KEY).then(val => {
-      if (val) try { setRecentSearchedBooks(JSON.parse(val)); } catch {}
-    });
-    // Load recently added books
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;

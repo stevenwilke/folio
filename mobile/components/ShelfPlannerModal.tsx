@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   View,
@@ -12,9 +12,12 @@ import {
   Platform,
   Image,
   Dimensions,
+  Pressable,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { captureRef } from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 
@@ -50,9 +53,9 @@ function getGenreColor(genre: string | null) {
   return DEFAULT_COLOR;
 }
 
-function getSpineWidth(pages: number | null) {
+function getSpineWidth(pages: number | null | undefined) {
   if (!pages) return 22;
-  return Math.max(16, Math.min(36, Math.round(pages / 18)));
+  return Math.max(22, Math.min(36, Math.round(pages / 18)));
 }
 
 // ── Sort methods ──────────────────────────────────────────────────────────────
@@ -81,9 +84,11 @@ export interface ShelfBook {
   genre: string | null;
   published_year: number | null;
   series_name?: string | null;
-  series_position?: number | null;
+  series_number?: number | null;
   read_status: string;
   user_rating?: number | null;
+  cover_image_url?: string | null;
+  pages?: number | null;
   // Set internally by ShelfPlannerModal — do not pass from outside
   _originalGenre?: string | null;
   _hasOverride?: boolean;
@@ -215,6 +220,39 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
   // Arrange
   const [sortMethod, setSortMethod] = useState('genre-alpha');
   const [activeTab, setActiveTab] = useState<'visual' | 'photo' | 'guide'>('visual');
+
+  // Book detail lightbox
+  const [selectedBook, setSelectedBook] = useState<ShelfBook | null>(null);
+  const [selectedBookPos, setSelectedBookPos] = useState<{ shelf: number; index: number; total: number } | null>(null);
+  const [bookCoverError, setBookCoverError] = useState(false);
+
+  // Share as image
+  const shareViewRef = useRef<View>(null);
+  const [sharing, setSharing] = useState(false);
+
+  async function shareAsImage() {
+    if (sharing) return;
+    setSharing(true);
+    try {
+      // Give the offscreen layout a frame to render before capture
+      await new Promise((r) => setTimeout(r, 80));
+      const uri = await captureRef(shareViewRef, {
+        format: 'png',
+        quality: 1,
+        result: 'tmpfile',
+      });
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share your shelf' });
+      } else {
+        await Share.share({ url: uri, message: 'My Folio shelf' });
+      }
+    } catch (e: any) {
+      Alert.alert('Could not share', e?.message ?? 'Please try again.');
+    } finally {
+      setSharing(false);
+    }
+  }
 
   function savePlannerConfig(overrides: Record<string, any> = {}) {
     const config = { shelfCount, booksPerShelf, sortMethod, ...overrides };
@@ -629,6 +667,18 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
           </ScrollView>
         ) : activeTab === 'visual' ? (
           <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
+            <TouchableOpacity
+              style={[styles.btn, { marginBottom: 16 }]}
+              onPress={shareAsImage}
+              disabled={sharing}
+              activeOpacity={0.8}
+            >
+              {sharing ? (
+                <ActivityIndicator color={Colors.white} size="small" />
+              ) : (
+                <Text style={styles.btnText}>📤  Share as Image</Text>
+              )}
+            </TouchableOpacity>
             {shelves.map((shelf, si) => (
               <View key={si} style={styles.shelfContainer}>
                 <Text style={styles.shelfLabel}>
@@ -646,8 +696,14 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
                       const spineW = getSpineWidth(book.pages);
                       const spineH = 100 + ((book.title?.charCodeAt(0) || 0) % 5) * 8;
                       return (
-                        <View
+                        <TouchableOpacity
                           key={book.id || bi}
+                          activeOpacity={0.7}
+                          onPress={() => {
+                            setSelectedBook(book);
+                            setSelectedBookPos({ shelf: si + 1, index: bi, total: shelf.length });
+                            setBookCoverError(false);
+                          }}
                           style={[styles.spine, { backgroundColor: colors.spine, width: spineW, height: spineH }]}
                         >
                           <Text
@@ -656,7 +712,7 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
                           >
                             {book.title.length > 35 ? book.title.slice(0, 33) + '…' : book.title}
                           </Text>
-                        </View>
+                        </TouchableOpacity>
                       );
                     })}
                   </ScrollView>
@@ -841,6 +897,107 @@ export default function ShelfPlannerModal({ visible, books, onClose }: Props) {
             </View>
           </View>
         )}
+
+        {/* Offscreen capture layout — only mounted while actively capturing a share image.
+            Kept off-screen (left: -10000) so captureRef can rasterise it without flashing on-screen. */}
+        {sharing && (
+          <View
+            ref={shareViewRef}
+            collapsable={false}
+            style={styles.shareCanvas}
+          >
+            <View style={styles.shareHeader}>
+              <Text style={styles.shareTitle}>📚 My Shelf</Text>
+              <Text style={styles.shareSubtitle}>
+                {shelves.reduce((n, s) => n + s.length, 0)} books · {shelves.length} shelves · via Folio
+              </Text>
+            </View>
+            {shelves.map((shelf, si) => (
+              <View key={si} style={styles.shareShelf}>
+                <Text style={styles.shareShelfLabel}>
+                  Shelf {si + 1} · {shelf.length} books
+                </Text>
+                <View style={styles.shareShelfInner}>
+                  <View style={styles.shareSpinesWrap}>
+                    {shelf.map((book, bi) => {
+                      const colors = getGenreColor(book.genre);
+                      const spineW = getSpineWidth(book.pages);
+                      const spineH = 100 + ((book.title?.charCodeAt(0) || 0) % 5) * 8;
+                      return (
+                        <View
+                          key={book.id || bi}
+                          style={[styles.spine, { backgroundColor: colors.spine, width: spineW, height: spineH }]}
+                        >
+                          <Text
+                            style={[styles.spineText, { color: colors.text }]}
+                            numberOfLines={5}
+                          >
+                            {book.title.length > 35 ? book.title.slice(0, 33) + '…' : book.title}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                  <View style={styles.shelfBoard} />
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Book detail lightbox */}
+        {selectedBook && (() => {
+          const gc = getGenreColor(selectedBook.genre);
+          const pos = selectedBookPos;
+          let locationText = '';
+          if (pos) {
+            const fromLeft = pos.index + 1;
+            const fromRight = pos.total - pos.index;
+            const useRight = pos.index >= pos.total / 2;
+            const n = useRight ? fromRight : fromLeft;
+            const suffix = n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th';
+            locationText = `📍 Shelf ${pos.shelf}, ${n}${suffix} from the ${useRight ? 'right' : 'left'}`;
+          }
+          return (
+            <Pressable
+              style={styles.bookLightboxOverlay}
+              onPress={() => setSelectedBook(null)}
+            >
+              <Pressable style={styles.bookLightboxCard} onPress={(e) => e.stopPropagation()}>
+                <TouchableOpacity
+                  style={styles.bookLightboxClose}
+                  onPress={() => setSelectedBook(null)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.bookLightboxCloseText}>✕</Text>
+                </TouchableOpacity>
+                {selectedBook.cover_image_url && !bookCoverError ? (
+                  <Image
+                    source={{ uri: selectedBook.cover_image_url }}
+                    style={styles.bookLightboxCover}
+                    resizeMode="contain"
+                    onError={() => setBookCoverError(true)}
+                  />
+                ) : (
+                  <View style={[styles.bookLightboxCoverFallback, { backgroundColor: gc.spine }]}>
+                    <Text style={[styles.bookLightboxCoverFallbackText, { color: gc.text }]} numberOfLines={6}>
+                      {selectedBook.title}
+                    </Text>
+                  </View>
+                )}
+                <Text style={styles.bookLightboxTitle} numberOfLines={3}>{selectedBook.title}</Text>
+                {!!selectedBook.author && (
+                  <Text style={styles.bookLightboxAuthor} numberOfLines={2}>by {selectedBook.author}</Text>
+                )}
+                {!!locationText && (
+                  <View style={styles.bookLightboxLocation}>
+                    <Text style={styles.bookLightboxLocationText}>{locationText}</Text>
+                  </View>
+                )}
+              </Pressable>
+            </Pressable>
+          );
+        })()}
       </View>
     </Modal>
   );
@@ -1372,5 +1529,140 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Colors.border,
     backgroundColor: Colors.card,
+  },
+
+  // Share canvas (offscreen render for captureRef)
+  shareCanvas: {
+    position: 'absolute',
+    left: -10000,
+    top: 0,
+    width: 800,
+    backgroundColor: Colors.background,
+    padding: 20,
+  },
+  shareHeader: {
+    marginBottom: 16,
+  },
+  shareTitle: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: Colors.ink,
+    fontFamily: FONT_SERIF,
+  },
+  shareSubtitle: {
+    fontSize: 13,
+    color: Colors.muted,
+    marginTop: 2,
+    fontFamily: FONT_SANS,
+  },
+  shareShelf: {
+    marginBottom: 18,
+  },
+  shareShelfLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.muted,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+    fontFamily: FONT_SANS,
+  },
+  shareShelfInner: {
+    backgroundColor: '#f5efe6',
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  shareSpinesWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    gap: 3,
+    paddingHorizontal: 10,
+    paddingTop: 10,
+  },
+
+  // Book detail lightbox
+  bookLightboxOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    zIndex: 2000,
+  },
+  bookLightboxCard: {
+    backgroundColor: Colors.card,
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.3,
+    shadowRadius: 30,
+    elevation: 20,
+  },
+  bookLightboxClose: {
+    position: 'absolute',
+    top: 8,
+    right: 10,
+    padding: 6,
+    zIndex: 1,
+  },
+  bookLightboxCloseText: {
+    fontSize: 18,
+    color: Colors.muted,
+    fontWeight: '600',
+  },
+  bookLightboxCover: {
+    width: 180,
+    height: 270,
+    borderRadius: 6,
+    marginBottom: 16,
+    backgroundColor: Colors.border + '33',
+  },
+  bookLightboxCoverFallback: {
+    width: 180,
+    height: 270,
+    borderRadius: 6,
+    marginBottom: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  bookLightboxCoverFallbackText: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    fontFamily: FONT_SANS,
+  },
+  bookLightboxTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.ink,
+    textAlign: 'center',
+    fontFamily: FONT_SERIF,
+    marginBottom: 4,
+  },
+  bookLightboxAuthor: {
+    fontSize: 13,
+    color: Colors.muted,
+    textAlign: 'center',
+    fontFamily: FONT_SANS,
+  },
+  bookLightboxLocation: {
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: Colors.rust + '1A',
+  },
+  bookLightboxLocationText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.rust,
+    fontFamily: FONT_SANS,
   },
 });

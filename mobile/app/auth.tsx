@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -25,7 +25,7 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (Platform.OS === 'ios') {
       AppleAuthentication.isAvailableAsync().then(setAppleAvailable);
     }
@@ -192,25 +192,24 @@ export default function AuthScreen() {
         </View>
 
         {appleAvailable && (
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or</Text>
-            <View style={styles.dividerLine} />
-          </View>
-        )}
-
-        {appleAvailable && (
-          <AppleAuthentication.AppleAuthenticationButton
-            buttonType={
-              mode === 'signin'
-                ? AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
-                : AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP
-            }
-            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-            cornerRadius={8}
-            style={styles.appleButton}
-            onPress={handleAppleSignIn}
-          />
+          <>
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or</Text>
+              <View style={styles.dividerLine} />
+            </View>
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={
+                mode === 'signin'
+                  ? AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
+                  : AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP
+              }
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+              cornerRadius={8}
+              style={styles.appleButton}
+              onPress={handleAppleSignIn}
+            />
+          </>
         )}
 
         <Text style={styles.footerNote}>

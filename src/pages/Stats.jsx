@@ -190,10 +190,11 @@ export default function Stats({ session }) {
   const maxGenreValue = topGenresByValue[0]?.[1] || 1
   const topBooks = bookValues.sort((a, b) => b.price - a.price).slice(0, 5)
 
-  // ── BOOKS PER YEAR ── (exclude imports — their dates aren't real)
+  // Imports have no real finished-reading date, so exclude them from time-based charts.
+  const datedEntries = readEntries.filter(e => !e.from_import)
+
   const perYear = {}
-  for (const e of readEntries) {
-    if (e.from_import) continue
+  for (const e of datedEntries) {
     const year = new Date(e.added_at).getFullYear()
     perYear[year] = (perYear[year] || 0) + 1
   }
@@ -226,7 +227,7 @@ export default function Stats({ session }) {
 
   // Fastest month (most books finished in a calendar month)
   const monthMap = {}
-  for (const e of readEntries) {
+  for (const e of datedEntries) {
     const d   = new Date(e.added_at)
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
     monthMap[key] = (monthMap[key] || 0) + 1

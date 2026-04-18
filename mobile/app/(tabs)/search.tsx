@@ -18,6 +18,7 @@ import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { FakeCover } from '../../components/FakeCover';
 import { ReadStatus } from '../../components/BookCard';
+import SwipeTabNav from '../../components/SwipeTabNav';
 
 // Unified result shape for both sources
 interface SearchResult {
@@ -31,7 +32,7 @@ interface SearchResult {
   isbn13: string | null;
   isbn10: string | null;
   genre: string | null;
-  source: 'folio' | 'openlibrary';
+  source: 'folio' | 'openlibrary' | 'google';
   bookId: string | null;
   addedStatus?: ReadStatus | null;
   adding?: boolean;
@@ -65,12 +66,18 @@ export default function SearchScreen() {
   // Recent searches + recently added books for empty state
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [recentBooks, setRecentBooks] = useState<{ id: string; title: string; author: string | null; cover_image_url: string | null }[]>([]);
+  const [recentSearchedBooks, setRecentSearchedBooks] = useState<{ id: string | null; title: string; author: string | null; coverUrl: string | null }[]>([]);
   const RECENT_SEARCHES_KEY = 'folio-recent-searches';
+  const RECENT_SEARCHED_BOOKS_KEY = 'folio-recently-searched-books';
 
   useEffect(() => {
     // Load recent searches
     AsyncStorage.getItem(RECENT_SEARCHES_KEY).then(val => {
       if (val) try { setRecentSearches(JSON.parse(val)); } catch {}
+    });
+    // Load recently searched books
+    AsyncStorage.getItem(RECENT_SEARCHED_BOOKS_KEY).then(val => {
+      if (val) try { setRecentSearchedBooks(JSON.parse(val)); } catch {}
     });
     // Load recently added books
     (async () => {
@@ -118,17 +125,32 @@ export default function SearchScreen() {
       let folioQ = supabase
         .from('books')
         .select('id, title, author, isbn_13, isbn_10, cover_image_url, published_year, genre')
-        .limit(8);
+        .limit(30);
       if (isIsbn) {
         folioQ = folioQ.or(`isbn_13.eq.${stripped},isbn_10.eq.${stripped}`);
       } else {
         folioQ = folioQ.or(`title.ilike.%${q.trim()}%,author.ilike.%${q.trim()}%`);
       }
 
-      const [olJson, { data: folioBooks }] = await Promise.all([
-        fetch(
-          `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&fields=key,title,author_name,isbn,cover_i,first_publish_year&limit=16`
-        ).then(r => r.json()).catch(() => ({ docs: [] })),
+      // Per-request timeout so a slow/dead API can never stall the search
+      const fetchJson = async (url: string, ms = 8000): Promise<any> => {
+        const ctrl = new AbortController();
+        const id = setTimeout(() => ctrl.abort(), ms);
+        try {
+          const r = await fetch(url, { signal: ctrl.signal });
+          return await r.json();
+        } finally {
+          clearTimeout(id);
+        }
+      };
+
+      const [olJson, gbJson, { data: folioBooks }] = await Promise.all([
+        fetchJson(
+          `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&fields=key,title,author_name,isbn,cover_i,first_publish_year&limit=30`
+        ).catch((err: any) => { console.warn('[Search] OpenLibrary failed:', err?.message ?? err); return { docs: [] }; }),
+        fetchJson(
+          `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=30`
+        ).catch((err: any) => { console.warn('[Search] Google Books failed:', err?.message ?? err); return { items: [] }; }),
         folioQ,
       ]);
 
@@ -178,6 +200,51 @@ export default function SearchScreen() {
           adding:       false,
         }));
 
+      // Normalize Google Books results, skipping duplicates already seen in Folio or OL
+      const seenIsbn13 = new Set<string>([...folioIsbn13s, ...olResults.map((r) => r.isbn13).filter(Boolean) as string[]]);
+      const seenIsbn10 = new Set<string>([...folioIsbn10s, ...olResults.map((r) => r.isbn10).filter(Boolean) as string[]]);
+      const seenTitleKey = new Set<string>([
+        ...folioResults.map((r) => `${r.title.toLowerCase()}|${(r.author || '').toLowerCase()}`),
+        ...olResults.map((r) => `${r.title.toLowerCase()}|${(r.author || '').toLowerCase()}`),
+      ]);
+
+      const gbResults: SearchResult[] = (gbJson.items ?? [])
+        .map((item: any) => {
+          const info = item?.volumeInfo;
+          if (!info?.title) return null;
+          const ids: any[] = info.industryIdentifiers ?? [];
+          const isbn13 = ids.find((x) => x.type === 'ISBN_13')?.identifier ?? null;
+          const isbn10 = ids.find((x) => x.type === 'ISBN_10')?.identifier ?? null;
+          const year = info.publishedDate ? parseInt(info.publishedDate.slice(0, 4)) : null;
+          const coverUrl = (info.imageLinks?.thumbnail ?? info.imageLinks?.smallThumbnail ?? null)?.replace(/^http:/, 'https:') ?? null;
+          return {
+            key:          `gb-${item.id}`,
+            title:        info.title,
+            author:       info.authors?.[0] || 'Unknown author',
+            coverUrl,
+            saveCoverUrl: coverUrl,
+            year,
+            isbn13,
+            isbn10,
+            genre:        info.categories?.[0] ?? null,
+            source:       'google' as const,
+            bookId:       null,
+            addedStatus:  null,
+            adding:       false,
+          } as SearchResult;
+        })
+        .filter((r: SearchResult | null): r is SearchResult => {
+          if (!r) return false;
+          if (r.isbn13 && seenIsbn13.has(r.isbn13)) return false;
+          if (r.isbn10 && seenIsbn10.has(r.isbn10)) return false;
+          const key = `${r.title.toLowerCase()}|${(r.author || '').toLowerCase()}`;
+          if (seenTitleKey.has(key)) return false;
+          seenTitleKey.add(key);
+          if (r.isbn13) seenIsbn13.add(r.isbn13);
+          if (r.isbn10) seenIsbn10.add(r.isbn10);
+          return true;
+        });
+
       // Check which folio books are in the user's library
       const { data: { user } } = await supabase.auth.getUser();
       let libraryBookIds = new Set<string>();
@@ -202,7 +269,7 @@ export default function SearchScreen() {
         readStatus: r.bookId ? (libraryStatusMap[r.bookId] || null) : null,
       }));
 
-      const allResults: SearchResult[] = [...taggedFolio, ...olResults];
+      const allResults: SearchResult[] = [...taggedFolio, ...olResults, ...gbResults];
 
       // Build sectioned list with header items
       const libraryBooks = allResults.filter(r => r.inLibrary);
@@ -221,6 +288,27 @@ export default function SearchScreen() {
       }
 
       setResults(sectioned);
+
+      // Persist the top few result books so they show up under "Recently Searched"
+      const topBooks = allResults
+        .slice(0, 5)
+        .map((r) => ({
+          id: r.bookId ?? null,
+          title: r.title,
+          author: r.author ?? null,
+          coverUrl: r.coverUrl ?? null,
+        }));
+      if (topBooks.length) {
+        const dedupeKey = (b: { id: string | null; title: string }) => b.id ?? b.title.toLowerCase();
+        const merged = [
+          ...topBooks,
+          ...recentSearchedBooks.filter(
+            (b) => !topBooks.some((t) => dedupeKey(t) === dedupeKey(b)),
+          ),
+        ].slice(0, 10);
+        setRecentSearchedBooks(merged);
+        AsyncStorage.setItem(RECENT_SEARCHED_BOOKS_KEY, JSON.stringify(merged)).catch(() => {});
+      }
     } catch {
       Alert.alert('Error', 'Failed to search. Check your connection.');
     } finally {
@@ -328,7 +416,14 @@ export default function SearchScreen() {
     const libraryStatus = result.addedStatus || result.readStatus;
 
     return (
-      <View style={styles.resultCard}>
+      <TouchableOpacity
+        style={styles.resultCard}
+        activeOpacity={result.bookId ? 0.7 : 1}
+        onPress={() => {
+          Keyboard.dismiss();
+          if (result.bookId) router.push(`/book/${result.bookId}`);
+        }}
+      >
         <View style={styles.resultCover}>
           {result.coverUrl ? (
             <Image
@@ -381,11 +476,12 @@ export default function SearchScreen() {
             </View>
           )}
         </View>
-      </View>
+      </TouchableOpacity>
     );
   }
 
   return (
+    <SwipeTabNav current="search">
     <View style={styles.root}>
       {/* Search bar + scan button */}
       <View style={styles.searchRow}>
@@ -425,8 +521,10 @@ export default function SearchScreen() {
           contentContainerStyle={[
             styles.listContent,
             results.length === 0 && styles.listContentEmpty,
+            { paddingBottom: 120 },
           ]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           ListHeaderComponent={
             searched && results.length > 0 ? (
               <TouchableOpacity
@@ -455,6 +553,73 @@ export default function SearchScreen() {
               </View>
             ) : (
               <View style={styles.empty}>
+                {/* Recently searched books — horizontal cards in the top area */}
+                {recentSearchedBooks.length > 0 && (
+                  <View style={[styles.recentSection, { marginTop: 0, alignItems: 'stretch' }]}>
+                    <View style={styles.recentHeader}>
+                      <Text style={styles.recentLabel}>Recently Searched</Text>
+                      <TouchableOpacity onPress={() => { setRecentSearchedBooks([]); AsyncStorage.removeItem(RECENT_SEARCHED_BOOKS_KEY); }}>
+                        <Text style={styles.recentClear}>Clear</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <FlatList
+                      data={recentSearchedBooks}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyExtractor={(item, i) => (item.id ?? item.title) + ':' + i}
+                      contentContainerStyle={{ gap: 10, paddingVertical: 8 }}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={styles.recentBookCard}
+                          onPress={() => {
+                            if (item.id) router.push(`/book/${item.id}`);
+                            else { setQuery(item.title); doSearch(item.title); }
+                          }}
+                          activeOpacity={0.75}
+                        >
+                          {item.coverUrl ? (
+                            <Image source={{ uri: item.coverUrl }} style={styles.recentBookCover} />
+                          ) : (
+                            <View style={[styles.recentBookCover, { backgroundColor: Colors.border, alignItems: 'center', justifyContent: 'center' }]}>
+                              <Text style={{ fontSize: 9, color: Colors.muted, textAlign: 'center', padding: 2 }} numberOfLines={3}>
+                                {item.title}
+                              </Text>
+                            </View>
+                          )}
+                          <Text style={styles.recentBookTitle} numberOfLines={2}>{item.title}</Text>
+                          {item.author && (
+                            <Text style={styles.recentBookAuthor} numberOfLines={1}>{item.author}</Text>
+                          )}
+                        </TouchableOpacity>
+                      )}
+                    />
+                  </View>
+                )}
+
+                {/* Recent search queries — chips */}
+                {recentSearches.length > 0 && (
+                  <View style={styles.recentSection}>
+                    <View style={styles.recentHeader}>
+                      <Text style={styles.recentLabel}>Recent Searches</Text>
+                      <TouchableOpacity onPress={() => { setRecentSearches([]); AsyncStorage.removeItem(RECENT_SEARCHES_KEY); }}>
+                        <Text style={styles.recentClear}>Clear</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.recentChips}>
+                      {recentSearches.map((s, i) => (
+                        <TouchableOpacity
+                          key={i}
+                          style={styles.recentChip}
+                          onPress={() => { setQuery(s); doSearch(s); }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.recentChipText}>{s}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
                 <Text style={styles.emptyIcon}>🔍</Text>
                 <Text style={styles.emptyTitle}>Search for books</Text>
                 <Text style={styles.emptySubtitle}>
@@ -478,30 +643,6 @@ export default function SearchScreen() {
                     <Text style={[styles.manualBtnText, { color: '#fff' }]}>📷 Scan Barcode</Text>
                   </TouchableOpacity>
                 </View>
-
-                {/* Recent searches */}
-                {recentSearches.length > 0 && (
-                  <View style={styles.recentSection}>
-                    <View style={styles.recentHeader}>
-                      <Text style={styles.recentLabel}>Recent Searches</Text>
-                      <TouchableOpacity onPress={() => { setRecentSearches([]); AsyncStorage.removeItem(RECENT_SEARCHES_KEY); }}>
-                        <Text style={styles.recentClear}>Clear</Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.recentChips}>
-                      {recentSearches.map((s, i) => (
-                        <TouchableOpacity
-                          key={i}
-                          style={styles.recentChip}
-                          onPress={() => { setQuery(s); doSearch(s); }}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.recentChipText}>{s}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                )}
 
                 {/* Recently added books */}
                 {recentBooks.length > 0 && (
@@ -543,6 +684,7 @@ export default function SearchScreen() {
         />
       )}
     </View>
+    </SwipeTabNav>
   );
 }
 

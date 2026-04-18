@@ -60,6 +60,9 @@ export default function ScanScreen() {
   const [error, setError]       = useState<string | null>(null);
   const [addedAs, setAddedAs]   = useState<ReadStatus | null>(null);
   const [adding, setAdding]     = useState(false);
+  const [format, setFormat]     = useState<'Hardcover' | 'Paperback'>('Paperback');
+  const [selectedStatus, setSelectedStatus] = useState<ReadStatus>('owned');
+  const [scanValuation, setScanValuation] = useState<{ list_price?: number | null; avg_price?: number | null; paperback_avg?: number | null; hardcover_avg?: number | null; list_price_is_ebook?: boolean } | null>(null);
 
   // Animated scan line (barcode mode)
   const scanLine = useRef(new Animated.Value(0)).current;
@@ -80,6 +83,16 @@ export default function ScanScreen() {
     outputRange: [0, FRAME_SIZE - 4],
   });
 
+  // Pull cached valuation for the scanned book (if it already exists in the DB).
+  // Delayed + fire-and-forget so it can never interrupt the barcode lookup flow.
+  useEffect(() => {
+    if (!book || mode !== 'barcode' || addedAs) return;
+    const id = setTimeout(() => {
+      fetchValuationForBook(book).catch(() => {});
+    }, 150);
+    return () => clearTimeout(id);
+  }, [book?.isbn13, book?.isbn10, mode, addedAs]);
+
   // ── Barcode handler ──
   async function handleBarcode({ data }: { type: string; data: string }) {
     if (scanned || scanning) return;
@@ -92,35 +105,90 @@ export default function ScanScreen() {
     setBook(null);
     setAddedAs(null);
 
-    try {
-      const res  = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${data}&format=json&jscmd=data`);
-      const json = await res.json();
-      const entry = json[`ISBN:${data}`];
+    // fetch with a per-request timeout so no single API can hang the scan
+    const fetchWithTimeout = async (url: string, ms = 12000) => {
+      const ctrl = new AbortController();
+      const id = setTimeout(() => ctrl.abort(), ms);
+      try {
+        return await fetch(url, { signal: ctrl.signal });
+      } finally {
+        clearTimeout(id);
+      }
+    };
 
-      if (!entry) {
-        const sr   = await fetch(`https://openlibrary.org/search.json?isbn=${data}&fields=key,title,author_name,isbn,cover_i,first_publish_year&limit=1`);
-        const sj   = await sr.json();
-        const doc  = sj.docs?.[0];
-        if (!doc) { setError(`No book found for barcode:\n${data}`); setScanning(false); return; }
-        setBook({
+    // Try Open Library first (free, no key), fall back to Google Books.
+    async function tryOpenLibrary(): Promise<BookResult | null> {
+      try {
+        const res = await fetchWithTimeout(`https://openlibrary.org/api/books?bibkeys=ISBN:${data}&format=json&jscmd=data`);
+        const json = await res.json();
+        const entry = json[`ISBN:${data}`];
+        if (entry) {
+          return {
+            title: entry.title,
+            author: entry.authors?.[0]?.name ?? null,
+            isbn13: entry.identifiers?.isbn_13?.[0] ?? data,
+            isbn10: entry.identifiers?.isbn_10?.[0] ?? null,
+            coverUrl: entry.cover?.medium ?? entry.cover?.large ?? null,
+            year: entry.publish_date ? parseInt(entry.publish_date.slice(-4)) : null,
+          };
+        }
+        const sr = await fetchWithTimeout(`https://openlibrary.org/search.json?isbn=${data}&fields=key,title,author_name,isbn,cover_i,first_publish_year&limit=1`);
+        const sj = await sr.json();
+        const doc = sj.docs?.[0];
+        if (!doc) return null;
+        return {
           title: doc.title,
           author: doc.author_name?.[0] ?? null,
           isbn13: doc.isbn?.find((i: string) => i.length === 13) ?? data,
           isbn10: doc.isbn?.find((i: string) => i.length === 10) ?? null,
           coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : null,
           year: doc.first_publish_year ?? null,
-        });
-      } else {
-        setBook({
-          title: entry.title,
-          author: entry.authors?.[0]?.name ?? null,
-          isbn13: entry.identifiers?.isbn_13?.[0] ?? data,
-          isbn10: entry.identifiers?.isbn_10?.[0] ?? null,
-          coverUrl: entry.cover?.medium ?? entry.cover?.large ?? null,
-          year: entry.publish_date ? parseInt(entry.publish_date.slice(-4)) : null,
-        });
+        };
+      } catch (err: any) {
+        console.warn('[Scan] Open Library failed:', err?.message ?? err);
+        return null;
       }
-    } catch {
+    }
+
+    async function tryGoogleBooks(): Promise<BookResult | null> {
+      try {
+        console.log('[Scan] trying Google Books for', data);
+        const res = await fetchWithTimeout(`https://www.googleapis.com/books/v1/volumes?q=isbn:${data}&maxResults=1`);
+        const json = await res.json();
+        const item = json?.items?.[0];
+        const info = item?.volumeInfo;
+        if (!info) {
+          console.log('[Scan] Google Books: no results for', data, '(totalItems=' + (json?.totalItems ?? 0) + ')');
+          return null;
+        }
+        const ids: any[] = info.industryIdentifiers ?? [];
+        const isbn13 = ids.find((x) => x.type === 'ISBN_13')?.identifier ?? data;
+        const isbn10 = ids.find((x) => x.type === 'ISBN_10')?.identifier ?? null;
+        const year = info.publishedDate ? parseInt(info.publishedDate.slice(0, 4)) : null;
+        console.log('[Scan] Google Books found:', info.title);
+        return {
+          title: info.title,
+          author: info.authors?.[0] ?? null,
+          isbn13,
+          isbn10,
+          coverUrl: (info.imageLinks?.thumbnail ?? info.imageLinks?.smallThumbnail ?? null)?.replace(/^http:/, 'https:') ?? null,
+          year,
+        };
+      } catch (err: any) {
+        console.warn('[Scan] Google Books failed:', err?.message ?? err);
+        return null;
+      }
+    }
+
+    try {
+      const result = (await tryOpenLibrary()) ?? (await tryGoogleBooks());
+      if (!result) {
+        setError(`No book found for barcode:\n${data}`);
+        return;
+      }
+      setBook(result);
+    } catch (err: any) {
+      console.warn('[Scan] barcode lookup failed:', err?.message ?? err);
       setError('Could not look up this book. Check your connection.');
     } finally {
       setScanning(false);
@@ -260,7 +328,7 @@ export default function ScanScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not signed in');
 
-      const payload = { title: b.title, author: b.author, isbn_13: b.isbn13, isbn_10: b.isbn10, cover_image_url: b.coverUrl, published_year: b.year };
+      const payload = { title: b.title, author: b.author, isbn_13: b.isbn13, isbn_10: b.isbn10, cover_image_url: b.coverUrl, published_year: b.year, format };
       let bookId: string;
 
       const { data: existing } = await supabase.from('books').select('id')
@@ -295,6 +363,33 @@ export default function ScanScreen() {
     setAddedAs(null);
     setCoverResults([]);
     setCoverQuery('');
+    setFormat('Paperback');
+    setSelectedStatus('owned');
+    setScanValuation(null);
+  }
+
+  // Fetch any cached valuation for a scanned book so we can display prices inline.
+  async function fetchValuationForBook(b: BookResult) {
+    setScanValuation(null);
+    if (!b.isbn13 && !b.isbn10) return;
+    try {
+      const [byIsbn13, byIsbn10] = await Promise.all([
+        b.isbn13
+          ? supabase.from('books').select('id').eq('isbn_13', b.isbn13).maybeSingle()
+          : Promise.resolve({ data: null } as any),
+        b.isbn10
+          ? supabase.from('books').select('id').eq('isbn_10', b.isbn10).maybeSingle()
+          : Promise.resolve({ data: null } as any),
+      ]);
+      const bookRow = byIsbn13.data ?? byIsbn10.data;
+      if (!bookRow) return;
+      const { data: val } = await supabase
+        .from('valuations')
+        .select('list_price, avg_price, paperback_avg, hardcover_avg, list_price_is_ebook')
+        .eq('book_id', bookRow.id)
+        .maybeSingle();
+      if (val) setScanValuation(val);
+    } catch { /* ignore */ }
   }
 
   function switchMode(m: ScanMode) {
@@ -491,6 +586,36 @@ export default function ScanScreen() {
                 </View>
               </View>
 
+              {/* Valuation strip — shown if this book has cached prices */}
+              {scanValuation && (scanValuation.list_price != null || scanValuation.avg_price != null || scanValuation.paperback_avg != null || scanValuation.hardcover_avg != null) && (
+                <View style={styles.scanValueRow}>
+                  {scanValuation.list_price != null && (
+                    <View style={styles.scanValueCell}>
+                      <Text style={[styles.scanValueAmount, { color: Colors.sage }]}>${Number(scanValuation.list_price).toFixed(2)}</Text>
+                      <Text style={styles.scanValueLabel}>Retail{scanValuation.list_price_is_ebook ? ' (eBook)' : ''}</Text>
+                    </View>
+                  )}
+                  {scanValuation.paperback_avg != null && (
+                    <View style={styles.scanValueCell}>
+                      <Text style={[styles.scanValueAmount, { color: Colors.rust }]}>${Number(scanValuation.paperback_avg).toFixed(2)}</Text>
+                      <Text style={styles.scanValueLabel}>Used Paperback</Text>
+                    </View>
+                  )}
+                  {scanValuation.hardcover_avg != null && (
+                    <View style={styles.scanValueCell}>
+                      <Text style={[styles.scanValueAmount, { color: Colors.rust }]}>${Number(scanValuation.hardcover_avg).toFixed(2)}</Text>
+                      <Text style={styles.scanValueLabel}>Used Hardcover</Text>
+                    </View>
+                  )}
+                  {scanValuation.avg_price != null && !scanValuation.paperback_avg && !scanValuation.hardcover_avg && (
+                    <View style={styles.scanValueCell}>
+                      <Text style={[styles.scanValueAmount, { color: Colors.rust }]}>${Number(scanValuation.avg_price).toFixed(2)}</Text>
+                      <Text style={styles.scanValueLabel}>Used avg</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
               {addedAs ? (
                 <View style={styles.addedRow}>
                   <Text style={styles.addedText}>
@@ -502,21 +627,69 @@ export default function ScanScreen() {
                 </View>
               ) : (
                 <>
+                  <Text style={styles.addLabel}>Format:</Text>
+                  <View style={styles.formatRow}>
+                    {(['Hardcover', 'Paperback'] as const).map((f) => {
+                      const active = format === f;
+                      return (
+                        <TouchableOpacity
+                          key={f}
+                          style={[styles.formatPill, active && styles.formatPillActive]}
+                          onPress={() => setFormat(f)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.formatPillText, active && styles.formatPillTextActive]}>
+                            {f === 'Hardcover' ? '📖 Hardcover' : '📕 Paperback'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
                   <Text style={styles.addLabel}>Add to your library as:</Text>
                   <View style={styles.statusButtons}>
-                    {adding
-                      ? <ActivityIndicator color={Colors.rust} style={{ marginVertical: 8 }} />
-                      : STATUS_OPTIONS.map(opt => (
-                          <TouchableOpacity
-                            key={opt.key}
-                            style={[styles.statusBtn, { borderColor: opt.color }]}
-                            onPress={() => addToLibrary(book, opt.key)}
+                    {STATUS_OPTIONS.map(opt => {
+                      const active = selectedStatus === opt.key;
+                      return (
+                        <TouchableOpacity
+                          key={opt.key}
+                          style={[
+                            styles.statusBtn,
+                            { borderColor: opt.color, borderWidth: active ? 2 : 1 },
+                            active && { backgroundColor: opt.color },
+                          ]}
+                          onPress={() => setSelectedStatus(opt.key)}
+                          disabled={adding}
+                          activeOpacity={0.8}
+                        >
+                          <Text
+                            style={[
+                              styles.statusBtnText,
+                              { color: active ? '#fff' : opt.color, fontWeight: active ? '800' : '600' },
+                            ]}
                           >
-                            <Text style={[styles.statusBtnText, { color: opt.color }]}>{opt.label}</Text>
-                          </TouchableOpacity>
-                        ))
-                    }
+                            {active ? `✓  ${opt.label}` : opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
+
+                  <TouchableOpacity
+                    style={[styles.scanSaveBtn, adding && { opacity: 0.6 }]}
+                    onPress={() => addToLibrary(book, selectedStatus)}
+                    disabled={adding}
+                    activeOpacity={0.8}
+                  >
+                    {adding ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={styles.scanSaveBtnText}>
+                        Save as {STATUS_OPTIONS.find(s => s.key === selectedStatus)?.label}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+
                   <TouchableOpacity style={styles.scanAgainBtn} onPress={resetScan}>
                     <Text style={styles.scanAgainText}>Scan a Different Book</Text>
                   </TouchableOpacity>
@@ -653,6 +826,61 @@ const styles = StyleSheet.create({
   bookIsbn:   { fontSize: 11, color: Colors.muted, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
 
   statusButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  formatRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  formatPill: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.card,
+    alignItems: 'center',
+  },
+  formatPillActive: {
+    borderColor: Colors.rust,
+    backgroundColor: Colors.rust + '14',
+  },
+  formatPillText: { fontSize: 13, fontWeight: '600', color: Colors.muted, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  formatPillTextActive: { color: Colors.rust },
+  scanSaveBtn: {
+    backgroundColor: Colors.rust,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  scanSaveBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  scanValueRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 14,
+  },
+  scanValueCell: { flexShrink: 0 },
+  scanValueAmount: {
+    fontSize: 17,
+    fontWeight: '700',
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  scanValueLabel: {
+    fontSize: 10,
+    color: Colors.muted,
+    marginTop: 1,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
   statusBtn:     { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8, borderWidth: 1.5, backgroundColor: Colors.background },
   statusBtnText: { fontSize: 13, fontWeight: '600', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
 

@@ -3,6 +3,7 @@ import { Platform, Alert } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import * as Device from 'expo-device'
 import { useRouter } from 'expo-router'
+import Constants from 'expo-constants'
 import { supabase } from '../lib/supabase'
 import { Session } from '@supabase/supabase-js'
 
@@ -78,9 +79,14 @@ async function registerForPushNotifications(userId: string) {
   }
 
   try {
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: 'folio', // matches slug in app.json
-    })
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      (Constants as any).easConfig?.projectId
+    if (!projectId) {
+      console.warn('Push token registration skipped: no EAS projectId in app config')
+      return
+    }
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId })
     const token = tokenData.data
 
     // Save token to Supabase (upsert so re-installs update cleanly)

@@ -13,6 +13,8 @@ import {
   Image,
   Linking,
   Share,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -58,6 +60,7 @@ export default function ProfileScreen() {
   const [profile,       setProfile]       = useState<Profile | null>(null);
   const [entries,       setEntries]        = useState<CollectionEntry[]>([]);
   const [loading,       setLoading]        = useState(true);
+  const [zoomedImage,   setZoomedImage]    = useState<string | null>(null);
   const [refreshing,    setRefreshing]     = useState(false);
   const [showImport,    setShowImport]     = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
@@ -227,17 +230,25 @@ export default function ProfileScreen() {
       {/* ── Banner / Hero ── */}
       <View style={styles.heroContainer}>
         {profile?.banner_url ? (
-          <Image source={{ uri: profile.banner_url }} style={styles.bannerImage} resizeMode="cover" />
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => setZoomedImage(profile.banner_url!)}
+            style={StyleSheet.absoluteFill}
+          >
+            <Image source={{ uri: profile.banner_url }} style={styles.bannerImage} resizeMode="cover" />
+          </TouchableOpacity>
         ) : (
           <View style={styles.bannerPlaceholder} />
         )}
         {/* Dark overlay */}
-        <View style={styles.bannerOverlay} />
+        <View style={styles.bannerOverlay} pointerEvents="none" />
 
         {/* Avatar + name sit on top of banner */}
         <View style={styles.heroContent}>
           {profile?.avatar_url ? (
-            <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+            <TouchableOpacity activeOpacity={0.85} onPress={() => setZoomedImage(profile.avatar_url!)}>
+              <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
+            </TouchableOpacity>
           ) : (
             <View style={[styles.avatar, { backgroundColor: bgColor }]}>
               <Text style={styles.avatarText}>{initial}</Text>
@@ -515,6 +526,27 @@ export default function ProfileScreen() {
           router.replace('/(tabs)');
         }}
       />
+
+      {/* Image zoom lightbox */}
+      <Modal
+        visible={!!zoomedImage}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setZoomedImage(null)}
+      >
+        <Pressable style={styles.zoomOverlay} onPress={() => setZoomedImage(null)}>
+          {zoomedImage && (
+            <Image source={{ uri: zoomedImage }} style={styles.zoomImage} resizeMode="contain" />
+          )}
+          <TouchableOpacity
+            style={styles.zoomClose}
+            onPress={() => setZoomedImage(null)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.zoomCloseText}>✕</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Modal>
     </>
   );
 }
@@ -838,5 +870,31 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  zoomOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomImage: {
+    width: '100%',
+    height: '80%',
+  },
+  zoomClose: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 56 : 24,
+    right: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomCloseText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
   },
 });

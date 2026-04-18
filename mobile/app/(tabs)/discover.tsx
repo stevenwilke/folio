@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { FakeCover } from '../../components/FakeCover';
+import SwipeTabNav from '../../components/SwipeTabNav';
 
 type ReadStatus = 'owned' | 'read' | 'reading' | 'want';
 
@@ -614,6 +615,7 @@ export default function DiscoverScreen() {
   }
 
   return (
+    <SwipeTabNav current="discover">
     <ScrollView style={styles.root} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
       {/* NYT Best Sellers */}
@@ -825,6 +827,7 @@ export default function DiscoverScreen() {
       )}
 
     </ScrollView>
+    </SwipeTabNav>
   );
 }
 

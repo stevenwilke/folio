@@ -22,6 +22,7 @@ import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { ReadStatus } from '../../components/BookCard';
 import ActivityCard from '../../components/ActivityCard';
+import SwipeTabNav from '../../components/SwipeTabNav';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -275,18 +276,27 @@ export default function FeedScreen() {
   }
 
   async function pickImage() {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-      base64: true,
-    });
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      setPostImage({
-        uri: asset.uri,
-        base64: asset.base64 || '',
-        type: asset.mimeType || 'image/jpeg',
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== 'granted') {
+        Alert.alert('Photo access required', 'Enable photo library access in Settings to attach an image.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.7,
+        base64: true,
       });
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        setPostImage({
+          uri: asset.uri,
+          base64: asset.base64 || '',
+          type: asset.mimeType || 'image/jpeg',
+        });
+      }
+    } catch (err: any) {
+      Alert.alert('Could not pick image', err?.message ?? 'Please try again.');
     }
   }
 
@@ -295,38 +305,45 @@ export default function FeedScreen() {
     if (!currentUserId) return;
     setPosting(true);
 
-    let imageUrl: string | null = null;
+    try {
+      let imageUrl: string | null = null;
 
-    if (postImage?.base64) {
-      try {
+      if (postImage?.base64) {
         const ext  = postImage.type.includes('png') ? 'png' : 'jpg';
         const path = `${currentUserId}/${Date.now()}.${ext}`;
         const bytes = Uint8Array.from(atob(postImage.base64), c => c.charCodeAt(0));
-        const { error } = await supabase.storage
+        const { error: upErr } = await supabase.storage
           .from('post-images')
           .upload(path, bytes, { contentType: postImage.type, upsert: true });
-        if (!error) {
-          const { data } = supabase.storage.from('post-images').getPublicUrl(path);
-          imageUrl = data.publicUrl;
+        if (upErr) {
+          setPosting(false);
+          Alert.alert('Could not upload image', upErr.message);
+          return;
         }
-      } catch { /* silent */ }
-    }
+        const { data: urlData } = supabase.storage.from('post-images').getPublicUrl(path);
+        imageUrl = urlData.publicUrl;
+      }
 
-    const { data } = await supabase
-      .from('reading_posts')
-      .insert({
-        user_id:   currentUserId,
-        content:   postText.trim() || null,
-        image_url: imageUrl,
-      })
-      .select(`id, user_id, content, image_url, created_at, profiles!reading_posts_user_id_fkey(username)`)
-      .single();
+      const { data, error } = await supabase
+        .from('reading_posts')
+        .insert({
+          user_id:   currentUserId,
+          content:   postText.trim() || null,
+          image_url: imageUrl,
+        })
+        .select('id, user_id, content, image_url, created_at')
+        .single();
 
-    if (data) {
+      if (error || !data) {
+        setPosting(false);
+        Alert.alert('Could not post', error?.message ?? 'Please try again.');
+        return;
+      }
+
       const newPost: PostItem = {
         id:           (data as any).id,
         user_id:      (data as any).user_id,
-        username:     (data as any).profiles?.username ?? myUsername,
+        username:     myUsername,
         content:      (data as any).content,
         image_url:    (data as any).image_url,
         book:         null,
@@ -336,13 +353,16 @@ export default function FeedScreen() {
         type:         'post',
       };
       setItems(prev => [newPost, ...prev]);
-    }
 
-    setPostText('');
-    setPostImage(null);
-    setPosting(false);
-    setShowCompose(false);
-    setTab('posts');
+      setPostText('');
+      setPostImage(null);
+      setShowCompose(false);
+      setTab('posts');
+    } catch (err: any) {
+      Alert.alert('Could not post', err?.message ?? 'Please try again.');
+    } finally {
+      setPosting(false);
+    }
   }
 
   async function openComments(post: PostItem) {
@@ -406,6 +426,7 @@ export default function FeedScreen() {
   }
 
   return (
+    <SwipeTabNav current="feed">
     <View style={styles.root}>
       {/* ── Tab bar ── */}
       <View style={styles.tabBar}>
@@ -497,8 +518,8 @@ export default function FeedScreen() {
       </TouchableOpacity>
 
       {/* ── Compose Modal ── */}
-      <Modal visible={showCompose} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowCompose(false)}>
-        <KeyboardAvoidingView style={styles.composeModal} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <Modal visible={showCompose} animationType="slide" onRequestClose={() => setShowCompose(false)}>
+        <KeyboardAvoidingView style={styles.composeModal} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
           <View style={styles.composeHeader}>
             <TouchableOpacity onPress={() => { setShowCompose(false); setPostText(''); setPostImage(null); }}>
               <Text style={styles.cancelBtn}>Cancel</Text>
@@ -604,6 +625,7 @@ export default function FeedScreen() {
         </KeyboardAvoidingView>
       </Modal>
     </View>
+    </SwipeTabNav>
   );
 }
 
@@ -766,7 +788,7 @@ const styles = StyleSheet.create({
 
   // Compose modal
   composeModal:   { flex: 1, backgroundColor: Colors.background },
-  composeHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  composeHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingTop: Platform.OS === 'ios' ? 56 : 16, borderBottomWidth: 1, borderBottomColor: Colors.border },
   composeTitle:   { fontSize: 16, fontWeight: '700', color: Colors.ink, fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }) },
   cancelBtn:      { fontSize: 14, color: Colors.muted, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
   postBtn:        { backgroundColor: Colors.rust, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7 },

@@ -1,8 +1,9 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl, Platform, Alert, Image, Modal, ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
+import MapView, { Marker, PROVIDER_DEFAULT, PROVIDER_GOOGLE } from 'react-native-maps';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 import { haversineKm, formatDistance } from '../lib/geo';
@@ -39,7 +40,9 @@ export default function NearbyScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<'nearby' | 'libraries' | 'my'>('nearby');
+  const [view, setView] = useState<'map' | 'list'>('list');
   const [radius, setRadius] = useState<number | null>(25);
+  const mapRef = useRef<MapView | null>(null);
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLng, setUserLng] = useState<number | null>(null);
   const [claiming, setClaiming] = useState<string | null>(null);
@@ -179,7 +182,7 @@ export default function NearbyScreen() {
       {/* Nearby tab */}
       {tab === 'nearby' && (
         <>
-          {/* Radius filter */}
+          {/* Radius filter + view toggle */}
           <View style={styles.filterRow}>
             {RADIUS_OPTIONS.map(r => (
               <TouchableOpacity
@@ -190,31 +193,51 @@ export default function NearbyScreen() {
                 <Text style={[styles.pillText, radius === r && styles.pillTextActive]}>{RADIUS_LABELS[String(r)]}</Text>
               </TouchableOpacity>
             ))}
+            <ViewToggle view={view} onChange={setView} />
           </View>
 
-          <FlatList
-            data={filtered}
-            keyExtractor={item => item.id}
-            renderItem={({ item }) => (
-              <BookDropCard drop={item} distanceKm={item.distanceKm} onPress={() => setSelectedDrop(item)} />
-            )}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80 }}
-            ListEmptyComponent={
-              <View style={styles.empty}>
-                <Text style={styles.emptyIcon}>📍</Text>
-                <Text style={styles.emptyTitle}>No books nearby</Text>
-                <Text style={styles.emptyDesc}>Be the first to free a book in your area!</Text>
-              </View>
-            }
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.rust} />}
-          />
+          {view === 'map' ? (
+            <MapPanel
+              mapRef={mapRef}
+              userLat={userLat}
+              userLng={userLng}
+              markers={filtered
+                .filter(d => d.latitude != null && d.longitude != null)
+                .map(d => ({
+                  id: d.id,
+                  lat: d.latitude,
+                  lng: d.longitude,
+                  title: d.books?.title || 'Book drop',
+                  subtitle: d.location_name,
+                  color: Colors.rust,
+                  onPress: () => setSelectedDrop(d),
+                }))}
+            />
+          ) : (
+            <FlatList
+              data={filtered}
+              keyExtractor={item => item.id}
+              renderItem={({ item }) => (
+                <BookDropCard drop={item} distanceKm={item.distanceKm} onPress={() => setSelectedDrop(item)} />
+              )}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 80 }}
+              ListEmptyComponent={
+                <View style={styles.empty}>
+                  <Text style={styles.emptyIcon}>📍</Text>
+                  <Text style={styles.emptyTitle}>No books nearby</Text>
+                  <Text style={styles.emptyDesc}>Be the first to free a book in your area!</Text>
+                </View>
+              }
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.rust} />}
+            />
+          )}
         </>
       )}
 
       {/* Libraries tab */}
       {tab === 'libraries' && (
         <>
-          {/* Radius filter + Add button */}
+          {/* Radius filter + Add button + view toggle */}
           <View style={styles.filterRow}>
             {RADIUS_OPTIONS.map(r => (
               <TouchableOpacity
@@ -228,8 +251,27 @@ export default function NearbyScreen() {
             <TouchableOpacity onPress={() => setShowAddLibrary(true)} style={styles.addLibBtn}>
               <Text style={styles.addLibText}>+ Add</Text>
             </TouchableOpacity>
+            <ViewToggle view={view} onChange={setView} />
           </View>
 
+          {view === 'map' ? (
+            <MapPanel
+              mapRef={mapRef}
+              userLat={userLat}
+              userLng={userLng}
+              markers={filteredLibraries
+                .filter(l => l.latitude != null && l.longitude != null)
+                .map(l => ({
+                  id: l.id,
+                  lat: l.latitude,
+                  lng: l.longitude,
+                  title: l.name || 'Little Library',
+                  subtitle: l.location_name,
+                  color: TEAL,
+                  onPress: () => setSelectedLibrary(l),
+                }))}
+            />
+          ) : (
           <FlatList
             data={filteredLibraries}
             keyExtractor={item => item.id}
@@ -269,6 +311,7 @@ export default function NearbyScreen() {
             }
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TEAL} />}
           />
+          )}
         </>
       )}
 
@@ -422,6 +465,81 @@ export default function NearbyScreen() {
   );
 }
 
+// ── View toggle (Map / List) ─────────────────────────────────────────────────
+function ViewToggle({ view, onChange }: { view: 'map' | 'list'; onChange: (v: 'map' | 'list') => void }) {
+  return (
+    <View style={styles.viewToggle}>
+      <TouchableOpacity
+        onPress={() => onChange('map')}
+        style={[styles.viewToggleBtn, view === 'map' && styles.viewToggleBtnActive]}
+      >
+        <Text style={[styles.viewToggleText, view === 'map' && styles.viewToggleTextActive]}>🗺️</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => onChange('list')}
+        style={[styles.viewToggleBtn, view === 'list' && styles.viewToggleBtnActive]}
+      >
+        <Text style={[styles.viewToggleText, view === 'list' && styles.viewToggleTextActive]}>☰</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ── Map panel ────────────────────────────────────────────────────────────────
+interface MapMarker {
+  id: string;
+  lat: number;
+  lng: number;
+  title: string;
+  subtitle?: string;
+  color: string;
+  onPress: () => void;
+}
+function MapPanel({
+  mapRef, userLat, userLng, markers,
+}: {
+  mapRef: React.MutableRefObject<MapView | null>;
+  userLat: number | null;
+  userLng: number | null;
+  markers: MapMarker[];
+}) {
+  const initialRegion = {
+    latitude:  userLat ?? markers[0]?.lat ?? 39.5,
+    longitude: userLng ?? markers[0]?.lng ?? -98.35,
+    latitudeDelta:  userLat != null ? 0.2 : 30,
+    longitudeDelta: userLng != null ? 0.2 : 30,
+  };
+  return (
+    <View style={styles.mapWrap}>
+      <MapView
+        ref={(r) => { mapRef.current = r; }}
+        style={styles.map}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : PROVIDER_DEFAULT}
+        initialRegion={initialRegion}
+        showsUserLocation
+        showsMyLocationButton
+      >
+        {markers.map((m) => (
+          <Marker
+            key={m.id}
+            coordinate={{ latitude: m.lat, longitude: m.lng }}
+            title={m.title}
+            description={m.subtitle}
+            pinColor={m.color}
+            onCalloutPress={m.onPress}
+            onPress={Platform.OS === 'android' ? undefined : () => { /* tap callout on iOS */ }}
+          />
+        ))}
+      </MapView>
+      {markers.length === 0 && (
+        <View style={styles.mapEmpty} pointerEvents="none">
+          <Text style={styles.mapEmptyText}>No pins in this radius</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.background },
   loader: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background },
@@ -486,4 +604,17 @@ const styles = StyleSheet.create({
   noScans: { fontSize: 13, color: Colors.muted, fontStyle: 'italic', textAlign: 'center', marginBottom: 14 },
   scanBtn: { backgroundColor: TEAL, borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginTop: 8, marginBottom: 8 },
   scanBtnText: { fontSize: 15, fontWeight: '700', color: Colors.white },
+
+  // Map view
+  mapWrap: { flex: 1, marginHorizontal: 16, marginBottom: 80, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: Colors.border },
+  map: { flex: 1 },
+  mapEmpty: { position: 'absolute', top: 12, alignSelf: 'center', backgroundColor: Colors.card, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: Colors.border },
+  mapEmptyText: { fontSize: 12, color: Colors.muted },
+
+  // View toggle
+  viewToggle: { flexDirection: 'row', borderRadius: 8, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden' },
+  viewToggleBtn: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: Colors.card },
+  viewToggleBtnActive: { backgroundColor: Colors.rust },
+  viewToggleText: { fontSize: 14 },
+  viewToggleTextActive: { color: '#fff' },
 });

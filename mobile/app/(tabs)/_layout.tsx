@@ -1,6 +1,8 @@
 import { Tabs, useRouter, usePathname } from 'expo-router';
-import { Platform, TouchableOpacity, Image, View, Text } from 'react-native';
+import { Platform, TouchableOpacity, Image, View, Text, DeviceEventEmitter } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
+export const SHELF_PLANNER_EVENT = 'folio:open-shelf-planner';
 import { Colors } from '../../constants/colors';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
@@ -79,9 +81,30 @@ function NotificationBell() {
   );
 }
 
+function ShelfPlannerButton() {
+  const router = useRouter();
+  const pathname = usePathname();
+  return (
+    <TouchableOpacity
+      onPress={() => {
+        const onLibrary = pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/index';
+        if (!onLibrary) router.push('/(tabs)');
+        // Emit after navigation so the Library screen listener picks it up on mount/focus
+        setTimeout(() => DeviceEventEmitter.emit(SHELF_PLANNER_EVENT), onLibrary ? 0 : 150);
+      }}
+      style={{ marginRight: 8, padding: 6 }}
+      activeOpacity={0.7}
+      accessibilityLabel="Open shelf planner"
+    >
+      <Ionicons name="albums-outline" size={22} color={Colors.ink} />
+    </TouchableOpacity>
+  );
+}
+
 function HeaderRight() {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <ShelfPlannerButton />
       <NotificationBell />
       <AvatarButton />
     </View>
@@ -134,6 +157,8 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
+        animation: 'fade',
+        animationDuration: 150,
         tabBarActiveTintColor: Colors.rust,
         tabBarInactiveTintColor: Colors.tabInactive,
         tabBarStyle: {

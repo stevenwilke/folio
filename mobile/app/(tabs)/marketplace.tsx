@@ -20,6 +20,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import LoansScreen from './loans';
+import SwipeTabNav from '../../components/SwipeTabNav';
 
 // ---- Condition metadata ----
 
@@ -1373,6 +1374,7 @@ export default function MarketplaceScreen() {
   }
 
   return (
+    <SwipeTabNav current="marketplace">
     <View style={styles.root}>
       {/* Top-level Market / Loans toggle */}
       <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, gap: 0 }}>
@@ -1438,6 +1440,7 @@ export default function MarketplaceScreen() {
         />
       )}
     </View>
+    </SwipeTabNav>
   );
 }
 

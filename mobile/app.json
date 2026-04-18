@@ -13,14 +13,26 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.exlibris.app"
+      "bundleIdentifier": "com.exlibris.app",
+      "appleTeamId": "AA4H59JYYG",
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.exlibris.app"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#f5f0e8"
       },
-      "package": "com.exlibris.app"
+      "package": "com.exlibris.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -30,6 +42,7 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      "@bacons/apple-targets",
       [
         "expo-camera",
         {
@@ -54,6 +67,29 @@
     "scheme": "exlibris",
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "bundleIdentifier": "com.exlibris.app.widget",
+                  "targetName": "widget",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.exlibris.app"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "projectId": "6fce3e5d-16bd-4c16-8d70-9be0e077ff8b"
+      }
     }
   }
 }

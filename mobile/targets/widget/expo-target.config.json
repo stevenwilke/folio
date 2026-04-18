@@ -1,0 +1,13 @@
+{
+  "type": "widget",
+  "icon": "../../assets/icon.png",
+  "entitlements": {
+    "com.apple.security.application-groups": [
+      "group.com.exlibris.app"
+    ]
+  },
+  "colors": {
+    "AccentColor": "#c0521e",
+    "WidgetBackground": "#f5f0e8"
+  }
+}

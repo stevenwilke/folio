@@ -1,10 +1,13 @@
+import 'react-native-gesture-handler';
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 import { usePushNotifications } from '../hooks/usePushNotifications';
+import { syncCurrentlyReadingWidget } from '../lib/currentlyReadingWidget';
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -33,6 +36,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (session?.user?.id) {
+      syncCurrentlyReadingWidget(session.user.id).catch(() => {});
+    }
+  }, [session?.user?.id]);
+
+  useEffect(() => {
     if (loading) return;
 
     const inAuthGroup = segments[0] === 'auth';
@@ -59,6 +68,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <AuthGate>
       <Stack
         screenOptions={{
@@ -78,6 +88,7 @@ export default function RootLayout() {
         <Stack.Screen name="scan" options={{ headerShown: false }} />
         <Stack.Screen name="book/[id]" options={{ title: '' }} />
         <Stack.Screen name="stats" options={{ title: 'Reading Stats', headerShown: true }} />
+        <Stack.Screen name="valuation" options={{ title: 'Library Value', headerShown: true }} />
         <Stack.Screen name="friends" options={{ title: 'Friends', headerShown: true }} />
         <Stack.Screen name="edit-profile" options={{ title: 'Edit Profile', headerShown: true }} />
         <Stack.Screen name="manual-add" options={{ title: 'Add Book Manually', headerShown: true }} />
@@ -85,9 +96,14 @@ export default function RootLayout() {
         <Stack.Screen name="polls" options={{ title: 'Reading Polls', headerShown: true }} />
         <Stack.Screen name="clubs" options={{ title: 'Book Clubs', headerShown: true }} />
         <Stack.Screen name="author/[name]" options={{ title: 'Author', headerShown: true }} />
+        <Stack.Screen name="profile/[username]" options={{ title: 'Profile', headerShown: true }} />
+        <Stack.Screen name="badges" options={{ title: 'Badges', headerShown: true }} />
+        <Stack.Screen name="notifications" options={{ title: 'Notifications', headerShown: true }} />
+        <Stack.Screen name="nearby" options={{ title: 'Nearby', headerShown: true }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       </Stack>
     </AuthGate>
+    </GestureHandlerRootView>
   );
 }
 

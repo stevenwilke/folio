@@ -32,7 +32,70 @@ serve(async (req) => {
 
     let list_price: number | null = null
     let list_price_currency: string | null = null
+    let list_price_is_ebook = false
+    let list_price_source: 'bookshop' | 'google_print' | 'google_ebook' | null = null
     let saleability: string | null = null
+
+    // ── Bookshop.org scrape (preferred — publisher MSRP for print editions) ──
+    if (isbn) {
+      try {
+        const bsUrl = `https://bookshop.org/book/${encodeURIComponent(isbn)}`
+        const bsCtrl = new AbortController()
+        const bsTimeout = setTimeout(() => bsCtrl.abort(), 8000)
+        const bsRes = await fetch(bsUrl, {
+          headers: {
+            Accept: 'text/html',
+            'User-Agent': 'Mozilla/5.0 (compatible; Folio/1.0)',
+          },
+          redirect: 'follow',
+          signal: bsCtrl.signal,
+        }).finally(() => clearTimeout(bsTimeout))
+        if (bsRes.ok) {
+          const html = await bsRes.text()
+
+          // Prefer JSON-LD `offers.price` from a Book product
+          const ldBlocks = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g) || []
+          let bsPrice: number | null = null
+          for (const block of ldBlocks) {
+            try {
+              const json = block.replace(/<script[^>]*>/, '').replace(/<\/script>/, '')
+              const data = JSON.parse(json)
+              const nodes = Array.isArray(data) ? data : [data]
+              for (const node of nodes) {
+                if (node?.['@type'] !== 'Book' && node?.['@type'] !== 'Product') continue
+                const offers = node?.offers
+                const priceStr = Array.isArray(offers) ? offers[0]?.price : offers?.price
+                const p = priceStr != null ? Number(priceStr) : NaN
+                if (p > 0 && p < 10000) { bsPrice = Math.round(p * 100) / 100; break }
+              }
+              if (bsPrice) break
+            } catch { /* skip block */ }
+          }
+
+          // Fallback: first plausible "$X.XX" near a "price" attribute
+          if (bsPrice == null) {
+            const m = html.match(/"price"\s*:\s*"?([0-9]+\.[0-9]{2})/)
+            if (m) {
+              const p = parseFloat(m[1])
+              if (p > 0 && p < 10000) bsPrice = Math.round(p * 100) / 100
+            }
+          }
+
+          if (bsPrice != null) {
+            list_price = bsPrice
+            list_price_currency = 'USD'
+            list_price_source = 'bookshop'
+            console.log(`Found Bookshop price for ISBN ${isbn}: $${bsPrice}`)
+          } else {
+            console.log(`No Bookshop price parsed for ISBN ${isbn}`)
+          }
+        } else {
+          console.log(`Bookshop fetch ${bsRes.status} for ISBN ${isbn}`)
+        }
+      } catch (err) {
+        console.error('Bookshop fetch error:', err)
+      }
+    }
 
     for (const query of queries) {
       if (list_price !== null) break
@@ -75,6 +138,7 @@ serve(async (req) => {
                 // Print edition — use this immediately
                 list_price = Math.round(amount * 100) / 100
                 list_price_currency = currency
+                list_price_source = 'google_print'
                 console.log(`Found print price: ${currency} ${amount}`)
                 break
               }
@@ -86,6 +150,8 @@ serve(async (req) => {
         if (list_price === null && ebookPrice !== null) {
           list_price = ebookPrice
           list_price_currency = ebookCurrency
+          list_price_is_ebook = true
+          list_price_source = 'google_ebook'
           console.log(`Using ebook price as fallback: ${ebookCurrency} ${ebookPrice}`)
         }
       } catch (err) {
@@ -172,6 +238,8 @@ serve(async (req) => {
         found:               true,
         list_price,
         list_price_currency,
+        list_price_is_ebook,
+        list_price_source,
         avg_price,
         min_price,
         max_price,

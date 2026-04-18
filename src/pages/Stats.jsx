@@ -190,9 +190,10 @@ export default function Stats({ session }) {
   const maxGenreValue = topGenresByValue[0]?.[1] || 1
   const topBooks = bookValues.sort((a, b) => b.price - a.price).slice(0, 5)
 
-  // ── BOOKS PER YEAR ──
+  // ── BOOKS PER YEAR ── (exclude imports — their dates aren't real)
   const perYear = {}
   for (const e of readEntries) {
+    if (e.from_import) continue
     const year = new Date(e.updated_at).getFullYear()
     perYear[year] = (perYear[year] || 0) + 1
   }

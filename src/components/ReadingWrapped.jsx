@@ -4,6 +4,7 @@ export default function ReadingWrapped({ entries, sessions, year }) {
   const { theme } = useTheme()
 
   const readEntries = entries.filter(e => {
+    if (e.from_import) return false
     if (!e.has_read && e.read_status !== 'read') return false
     return new Date(e.updated_at).getFullYear() === year
   })

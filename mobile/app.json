@@ -15,6 +15,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.exlibris.app",
       "appleTeamId": "AA4H59JYYG",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "entitlements": {
         "com.apple.security.application-groups": [
           "group.com.exlibris.app"

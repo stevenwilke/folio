@@ -10,6 +10,7 @@ interface Entry {
   has_read?: boolean;
   read_status?: string;
   updated_at?: string;
+  from_import?: boolean;
   books?: { genre?: string | null; pages?: number | null } | null;
 }
 
@@ -33,6 +34,7 @@ export function computeChallengeProgress(
   switch (challenge.challenge_type) {
     case 'books_count': {
       const count = entries.filter(e => {
+        if (e.from_import) return false;
         if (!e.has_read && e.read_status !== 'read') return false;
         const d = new Date(e.updated_at || '');
         return d >= startDate && d <= endDate;
@@ -52,6 +54,7 @@ export function computeChallengeProgress(
     case 'genre_diversity': {
       const genres = new Set<string>();
       entries.forEach(e => {
+        if (e.from_import) return;
         if (!e.has_read && e.read_status !== 'read') return;
         const d = new Date(e.updated_at || '');
         if (d >= startDate && d <= endDate && e.books?.genre) genres.add(e.books.genre);

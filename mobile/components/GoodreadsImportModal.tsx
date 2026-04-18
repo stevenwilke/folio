@@ -228,6 +228,7 @@ export default function GoodreadsImportModal({ visible, onClose, onImported }: P
             read_status: b.status,
             user_rating: b.rating || null,
             review_text: b.review || null,
+            from_import: true,
           }, { onConflict: 'user_id,book_id' });
         }
       } catch { /* skip failed books */ }

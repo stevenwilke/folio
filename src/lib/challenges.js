@@ -16,6 +16,7 @@ export function computeChallengeProgress(challenge, entries, sessions) {
   switch (challenge.challenge_type) {
     case 'books_count': {
       const booksRead = entries.filter(e => {
+        if (e.from_import) return false
         if (!e.has_read && e.read_status !== 'read') return false
         const d = new Date(e.updated_at)
         return d >= startDate && d <= endDate
@@ -37,6 +38,7 @@ export function computeChallengeProgress(challenge, entries, sessions) {
     case 'genre_diversity': {
       const genres = new Set()
       entries.forEach(e => {
+        if (e.from_import) return
         if (!e.has_read && e.read_status !== 'read') return
         const d = new Date(e.updated_at)
         if (d >= startDate && d <= endDate && e.books?.genre) {

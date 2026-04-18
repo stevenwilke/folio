@@ -280,10 +280,10 @@ export default function StatsScreen() {
         ? { title: withPages[0].books.title, pages: withPages[0].books.pages }
         : null;
 
-    // Current year progress
+    // Current year progress — exclude imports since their dates aren't real.
     const currentYear = new Date().getFullYear();
     const currentYearCount = readEntries.filter(
-      (e) => new Date(e.added_at).getFullYear() === currentYear
+      (e) => !e.from_import && new Date(e.added_at).getFullYear() === currentYear
     ).length;
 
     // Reading sessions

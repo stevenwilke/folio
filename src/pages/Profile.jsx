@@ -180,10 +180,10 @@ export default function Profile({ session }) {
       .maybeSingle()
     setGoal(goalData || null)
 
-    // Count books read this year
+    // Count books read this year — exclude imports since their dates aren't real.
     const startOfYear = new Date(currentYear, 0, 1).toISOString()
     const readThisYear = (entriesData || []).filter(e =>
-      e.read_status === 'read' && e.updated_at >= startOfYear
+      e.read_status === 'read' && !e.from_import && e.updated_at >= startOfYear
     ).length
     setBooksReadThisYear(readThisYear)
   }

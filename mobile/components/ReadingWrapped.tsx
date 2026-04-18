@@ -6,6 +6,7 @@ interface Entry {
   has_read?: boolean;
   read_status?: string;
   updated_at?: string;
+  from_import?: boolean;
   books?: { title?: string; author?: string | null; genre?: string | null; pages?: number | null } | null;
 }
 
@@ -24,6 +25,7 @@ interface Props {
 
 export default function ReadingWrapped({ entries, sessions, year }: Props) {
   const readEntries = entries.filter(e => {
+    if (e.from_import) return false;
     if (!e.has_read && e.read_status !== 'read') return false;
     return new Date(e.updated_at || '').getFullYear() === year;
   });

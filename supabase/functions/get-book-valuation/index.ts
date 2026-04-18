@@ -225,7 +225,79 @@ serve(async (req) => {
       console.error('ThriftBooks fetch error:', err)
     }
 
-    const found = list_price !== null || avg_price !== null
+    // ── AbeBooks used prices (good for rare / antiquarian books) ──────────────
+    let abe_used_price: number | null = null
+    let abe_new_price: number | null = null
+    let abe_used_condition: string | null = null
+    let abe_used_results: number | null = null
+
+    try {
+      // Try ISBN first, then author+title
+      const abePayloads: Record<string, string>[] = []
+      if (isbn) {
+        abePayloads.push({
+          action: 'getPricingDataByISBN',
+          isbn,
+          container: `pricingService-${isbn}`,
+        })
+      }
+      if (title) {
+        abePayloads.push({
+          action: 'getPricingDataForAuthorTitleStandardAddToBasket',
+          an: author || '',
+          tn: title,
+          container: 'oe-search-all',
+        })
+      }
+
+      for (const payload of abePayloads) {
+        if (abe_used_price !== null) break
+        try {
+          const abeRes = await fetch('https://www.abebooks.com/servlet/DWRestService/pricingservice', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'User-Agent': 'Mozilla/5.0 (compatible; ExLibris/1.0)',
+            },
+            body: Object.entries(payload).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'),
+          })
+          if (abeRes.ok) {
+            const abeData = await abeRes.json()
+
+            // Parse best used price
+            const bestUsed = abeData?.pricingInfoForBestUsed
+            if (bestUsed?.bestPriceInPurchaseCurrencyValueOnly) {
+              const price = parseFloat(bestUsed.bestPriceInPurchaseCurrencyValueOnly)
+              if (price > 0) {
+                abe_used_price = Math.round(price * 100) / 100
+                abe_used_condition = bestUsed.bookCondition || null
+                abe_used_results = bestUsed.totalResults || null
+              }
+            }
+
+            // Parse best new price
+            const bestNew = abeData?.pricingInfoForBestNew
+            if (bestNew?.bestPriceInPurchaseCurrencyValueOnly) {
+              const price = parseFloat(bestNew.bestPriceInPurchaseCurrencyValueOnly)
+              if (price > 0) abe_new_price = Math.round(price * 100) / 100
+            }
+
+            console.log(`AbeBooks "${payload.isbn || payload.tn}": used=${abe_used_price}, new=${abe_new_price}, results=${abe_used_results}`)
+          }
+        } catch (abeErr) {
+          console.error('AbeBooks request error:', abeErr)
+        }
+      }
+    } catch (err) {
+      console.error('AbeBooks fetch error:', err)
+    }
+
+    // If ThriftBooks didn't find used prices but AbeBooks did, use AbeBooks as primary
+    if (avg_price === null && abe_used_price !== null) {
+      avg_price = abe_used_price
+    }
+
+    const found = list_price !== null || avg_price !== null || abe_used_price !== null
     if (!found) {
       return new Response(
         JSON.stringify({ found: false, saleability }),
@@ -246,6 +318,10 @@ serve(async (req) => {
         sample_count,
         paperback_avg,
         hardcover_avg,
+        abe_used_price,
+        abe_new_price,
+        abe_used_condition,
+        abe_used_results,
         currency:     list_price_currency || 'USD',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

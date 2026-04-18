@@ -24,3 +24,9 @@ dist-ssr
 *.sw?
 .env.local
 .env.local
+
+# Claude Code worktrees (local-only)
+.claude/worktrees/
+
+# Supabase CLI temp
+supabase/.temp/

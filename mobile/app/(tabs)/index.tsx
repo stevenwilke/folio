@@ -14,7 +14,9 @@ import {
   Alert,
   Pressable,
   TextInput,
+  DeviceEventEmitter,
 } from 'react-native';
+import { SHELF_PLANNER_EVENT } from './_layout';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -24,6 +26,7 @@ import { fetchUsedPrices } from '../../lib/fetchUsedPrices';
 import { Colors } from '../../constants/colors';
 import { BookCard, ReadStatus } from '../../components/BookCard';
 import ShelfPlannerModal, { ShelfBook } from '../../components/ShelfPlannerModal';
+import SwipeTabNav from '../../components/SwipeTabNav';
 
 type FilterKey = 'all' | ReadStatus | 'series';
 
@@ -51,7 +54,7 @@ interface CollectionEntry {
     genre: string | null;
     published_year: number | null;
     series_name: string | null;
-    series_position: number | null;
+    series_number: number | null;
     pages: number | null;
     format: string | null;
   };
@@ -77,6 +80,10 @@ export default function LibraryScreen() {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [coverSize, setCoverSize] = useState<SizeKey>('M');
   const [showShelfPlanner, setShowShelfPlanner] = useState(false);
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(SHELF_PLANNER_EVENT, () => setShowShelfPlanner(true));
+    return () => sub.remove();
+  }, []);
   const [pendingCoverIds, setPendingCoverIds] = useState<Set<string>>(new Set());
   const [coverUploadTarget, setCoverUploadTarget] = useState<{ id: string; title: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -339,8 +346,8 @@ export default function LibraryScreen() {
       .map(([name, books]) => ({
         name,
         books: books.sort((a, b) => {
-          const an = parseFloat(String(a.books?.series_position || '999'));
-          const bn = parseFloat(String(b.books?.series_position || '999'));
+          const an = parseFloat(String(a.books?.series_number || '999'));
+          const bn = parseFloat(String(b.books?.series_number || '999'));
           return an - bn;
         }),
         readCount: books.filter(b => b.read_status === 'read' || (b as any).has_read).length,
@@ -365,7 +372,7 @@ export default function LibraryScreen() {
       has_read: false,
       user_rating: null,
       current_page: null,
-      books: { id: '', title: '', author: null, cover_image_url: null, genre: null, published_year: null, series_name: null, series_position: null, pages: null, format: null },
+      books: { id: '', title: '', author: null, cover_image_url: null, genre: null, published_year: null, series_name: null, series_number: null, pages: null, format: null },
       _placeholder: true,
     }));
     return [...filtered, ...placeholders] as (CollectionEntry & { _placeholder?: boolean })[];
@@ -431,6 +438,40 @@ export default function LibraryScreen() {
         ))}
       </View>
 
+      {/* Library value boxes */}
+      {valuationStats && (valuationStats.retailTotal > 0 || valuationStats.usedTotal > 0) && (
+        <View style={styles.valueRow}>
+          <TouchableOpacity
+            style={styles.valueCard}
+            activeOpacity={0.7}
+            onPress={() => router.push('/valuation?mode=retail')}
+          >
+            <Text style={styles.valueIcon}>💰</Text>
+            <View>
+              <Text style={styles.valueAmount}>
+                ${valuationStats.retailTotal.toFixed(0)}
+              </Text>
+              <Text style={styles.valueLabel}>Retail Value</Text>
+              <Text style={styles.valueCount}>{valuationStats.retailCount} books priced</Text>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.valueCard, { borderColor: Colors.gold }]}
+            activeOpacity={0.7}
+            onPress={() => router.push('/valuation?mode=used')}
+          >
+            <Text style={styles.valueIcon}>📊</Text>
+            <View>
+              <Text style={[styles.valueAmount, { color: Colors.gold }]}>
+                ${valuationStats.usedTotal.toFixed(0)}
+              </Text>
+              <Text style={styles.valueLabel}>Used Value</Text>
+              <Text style={styles.valueCount}>{valuationStats.usedCount} books priced</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Search bar */}
       <View style={styles.searchContainer}>
         <TextInput
@@ -443,32 +484,6 @@ export default function LibraryScreen() {
           clearButtonMode="while-editing"
         />
       </View>
-
-      {/* Library value boxes */}
-      {valuationStats && (valuationStats.retailTotal > 0 || valuationStats.usedTotal > 0) && (
-        <View style={styles.valueRow}>
-          <View style={styles.valueCard}>
-            <Text style={styles.valueIcon}>💰</Text>
-            <View>
-              <Text style={styles.valueAmount}>
-                ${valuationStats.retailTotal.toFixed(0)}
-              </Text>
-              <Text style={styles.valueLabel}>Retail Value</Text>
-              <Text style={styles.valueCount}>{valuationStats.retailCount} books priced</Text>
-            </View>
-          </View>
-          <View style={[styles.valueCard, { borderColor: Colors.gold }]}>
-            <Text style={styles.valueIcon}>📊</Text>
-            <View>
-              <Text style={[styles.valueAmount, { color: Colors.gold }]}>
-                ${valuationStats.usedTotal.toFixed(0)}
-              </Text>
-              <Text style={styles.valueLabel}>Used Value</Text>
-              <Text style={styles.valueCount}>{valuationStats.usedCount} books priced</Text>
-            </View>
-          </View>
-        </View>
-      )}
 
       {/* View mode + Size + Sort + Group — single compact row */}
       <View style={styles.sizeRow}>
@@ -574,7 +589,7 @@ export default function LibraryScreen() {
   );
 
   const shelfBooks: ShelfBook[] = entries
-    .filter((e) => e.books?.format !== 'eBook' && e.books?.format !== 'Audiobook')
+    .filter((e) => e.read_status !== 'want' && e.books?.format !== 'eBook' && e.books?.format !== 'Audiobook')
     .map((e) => ({
       id: e.book_id,
       title: e.books.title,
@@ -582,12 +597,15 @@ export default function LibraryScreen() {
       genre: e.books.genre,
       published_year: e.books.published_year,
       series_name: e.books.series_name,
-      series_position: e.books.series_position,
+      series_number: e.books.series_number,
       read_status: e.read_status,
       user_rating: e.user_rating,
+      cover_image_url: e.books.cover_image_url,
+      pages: e.books.pages,
     }));
 
   return (
+    <SwipeTabNav current="index">
     <View style={styles.root}>
       {loading ? (
         <View style={styles.loader}>
@@ -631,7 +649,7 @@ export default function LibraryScreen() {
                         </View>
                       )}
                       <Text style={{ fontSize: 10, color: Colors.muted, marginTop: 2 }} numberOfLines={1}>
-                        #{item.books?.series_position || '?'}
+                        #{item.books?.series_number || '?'}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -808,6 +826,7 @@ export default function LibraryScreen() {
         </Modal>
       )}
     </View>
+    </SwipeTabNav>
   );
 }
 
@@ -1229,21 +1248,6 @@ const styles = StyleSheet.create({
   },
   sizeBtnTextActive: {
     color: Colors.white,
-  },
-  shelfPlannerBtn: {
-    marginLeft: 'auto',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.rust,
-    backgroundColor: Colors.card,
-  },
-  shelfPlannerBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.rust,
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
   groupHeader: {
     flexDirection: 'row',

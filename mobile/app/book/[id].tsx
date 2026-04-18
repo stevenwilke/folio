@@ -28,6 +28,7 @@ import AddQuoteModal from '../../components/AddQuoteModal';
 import BookJourney from '../../components/BookJourney';
 import { fetchUsedPrices } from '../../lib/fetchUsedPrices';
 import { isFiction, computeReadingSpeeds, estimateReadingTime, formatTimer, checkSessionIdle, ReadingSpeeds } from '../../lib/readingSpeed';
+import { syncCurrentlyReadingWidget } from '../../lib/currentlyReadingWidget';
 
 interface Book {
   id: string;
@@ -127,6 +128,11 @@ export default function BookDetailScreen() {
   const [savingReview, setSavingReview] = useState(false);
   const [reviewSaved, setReviewSaved] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
+  const [pageSaveState, setPageSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const pageSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (pageSaveTimeoutRef.current) clearTimeout(pageSaveTimeoutRef.current);
+  }, []);
 
   // Cover upload
   const [coverUploading, setCoverUploading] = useState(false);
@@ -308,8 +314,7 @@ export default function BookDetailScreen() {
     if (entryData?.review_text) setReviewText(entryData.review_text);
     if (entryData?.current_page) setCurrentPage(entryData.current_page);
 
-    // Friend stats
-    setFriendStats(null);
+    // Friend stats — only reset on first load; background refetches keep prior data until new arrives
     const { data: fs } = await supabase.from('friendships').select('requester_id, addressee_id')
       .eq('status', 'accepted').or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
     const friendIds = (fs || []).map((f: any) => f.requester_id === user.id ? f.addressee_id : f.requester_id);
@@ -402,6 +407,8 @@ export default function BookDetailScreen() {
           currency: data?.currency || 'USD',
           list_price: data?.list_price ?? used?.new_price ?? null,
           list_price_currency: data?.list_price_currency ?? (used?.new_price ? 'USD' : null),
+          list_price_is_ebook: data?.list_price_is_ebook ?? false,
+          list_price_source: data?.list_price_source ?? null,
           fetched_at: new Date().toISOString(),
         };
         await supabase.from('valuations').upsert(row, { onConflict: 'book_id' });
@@ -469,9 +476,12 @@ export default function BookDetailScreen() {
       setTimerDisplay(formatTimer(elapsed));
     };
     tick();
-    timerRef.current = setInterval(tick, 1000);
+    // Pause visual ticking while the stop-confirmation modal is open
+    if (!showStopModal) {
+      timerRef.current = setInterval(tick, 1000);
+    }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [activeSession, id]);
+  }, [activeSession, id, showStopModal]);
 
   async function startReadingTimer() {
     if (!book) return;
@@ -502,6 +512,7 @@ export default function BookDetailScreen() {
     if (endPage > 0 && entry) {
       await supabase.from('collection_entries').update({ current_page: endPage }).eq('id', entry.id);
       setCurrentPage(endPage);
+      syncCurrentlyReadingWidget().catch(() => {});
     }
     // Auto-post reading session to feed (if significant)
     if (pagesRead >= 5 && book) {
@@ -509,20 +520,22 @@ export default function BookDetailScreen() {
       const speedPpm = durationMin > 0 ? Math.round((pagesRead / durationMin) * 100) / 100 : null;
       const { data: { user: u } } = await supabase.auth.getUser();
       if (u) {
-        await supabase.from('reading_posts').insert({
-          user_id: u.id,
-          book_id: book.id,
-          post_type: 'activity',
-          content: null,
-          session_data: {
-            pages_read: pagesRead,
-            duration_min: durationMin,
-            start_page: activeSession.start_page || 0,
-            end_page: endPage,
-            total_pages: (book as any).pages || null,
-            speed_ppm: speedPpm,
-          },
-        }).catch(() => {});
+        try {
+          await supabase.from('reading_posts').insert({
+            user_id: u.id,
+            book_id: book.id,
+            post_type: 'activity',
+            content: null,
+            session_data: {
+              pages_read: pagesRead,
+              duration_min: durationMin,
+              start_page: activeSession.start_page || 0,
+              end_page: endPage,
+              total_pages: (book as any).pages || null,
+              speed_ppm: speedPpm,
+            },
+          });
+        } catch { /* ignore post failure */ }
       }
     }
 
@@ -539,10 +552,15 @@ export default function BookDetailScreen() {
     setShowStopModal(false);
   }
 
+  const loadedIdRef = useRef<string | null>(null);
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
-      fetchBook().finally(() => setLoading(false));
+      const isInitial = loadedIdRef.current !== id;
+      if (isInitial) setLoading(true);
+      fetchBook().finally(() => {
+        loadedIdRef.current = id ?? null;
+        if (isInitial) setLoading(false);
+      });
     }, [id])
   );
 
@@ -588,6 +606,7 @@ export default function BookDetailScreen() {
       Alert.alert('Error', err.message ?? 'Could not save status.');
     } finally {
       setSaving(false);
+      syncCurrentlyReadingWidget().catch(() => {});
     }
   }
 
@@ -667,20 +686,32 @@ export default function BookDetailScreen() {
     setCurrentPage(page);
     if (!entry) return;
 
-    const totalPages = (book as any)?.pages;
-    if (totalPages && page >= totalPages) {
-      // Auto-mark as finished when page count reaches total pages
-      const { data } = await supabase.from('collection_entries')
-        .update({ current_page: totalPages, read_status: 'read' })
-        .eq('id', entry.id)
-        .select('id, read_status, user_rating, review_text, current_page')
-        .single();
-      if (data) setEntry(data);
-      setCurrentPage(totalPages);
-    } else {
-      await supabase.from('collection_entries')
-        .update({ current_page: page > 0 ? page : null })
-        .eq('id', entry.id);
+    setPageSaveState('saving');
+    try {
+      const totalPages = (book as any)?.pages;
+      if (totalPages && page >= totalPages) {
+        // Auto-mark as finished when page count reaches total pages
+        const { data, error } = await supabase.from('collection_entries')
+          .update({ current_page: totalPages, read_status: 'read' })
+          .eq('id', entry.id)
+          .select('id, read_status, user_rating, review_text, current_page')
+          .single();
+        if (error) throw error;
+        if (data) setEntry(data);
+        setCurrentPage(totalPages);
+      } else {
+        const { error } = await supabase.from('collection_entries')
+          .update({ current_page: page > 0 ? page : null })
+          .eq('id', entry.id);
+        if (error) throw error;
+      }
+      setPageSaveState('saved');
+      if (pageSaveTimeoutRef.current) clearTimeout(pageSaveTimeoutRef.current);
+      pageSaveTimeoutRef.current = setTimeout(() => setPageSaveState('idle'), 1800);
+      syncCurrentlyReadingWidget().catch(() => {});
+    } catch (err: any) {
+      setPageSaveState('idle');
+      Alert.alert('Could not save', err?.message ?? 'Network error — please try again.');
     }
   }
 
@@ -893,6 +924,50 @@ export default function BookDetailScreen() {
             <MobileFriendStats stats={friendStats} />
           </View>
         </View>
+
+        {/* Values */}
+        {(valuationLoading || valuation) && (
+          <View style={styles.section}>
+            <Text style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: Colors.muted, marginBottom: 8 }}>Values</Text>
+            {valuationLoading ? (
+              <Text style={{ fontSize: 13, color: Colors.muted, fontStyle: 'italic' }}>Fetching prices…</Text>
+            ) : valuation ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                {valuation.list_price != null && (
+                  <View>
+                    <Text style={{ fontSize: 20, fontWeight: '700', color: Colors.sage, fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }) }}>${Number(valuation.list_price).toFixed(2)}</Text>
+                    <Text style={{ fontSize: 11, color: Colors.muted }}>Retail</Text>
+                    {valuation.list_price_is_ebook && (
+                      <View style={{ marginTop: 4, alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: Colors.gold + '26' }}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: Colors.gold, letterSpacing: 0.3 }}>
+                          eBook price
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+                {valuation.paperback_avg != null && (
+                  <View>
+                    <Text style={{ fontSize: 20, fontWeight: '700', color: Colors.rust, fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }) }}>${Number(valuation.paperback_avg).toFixed(2)}</Text>
+                    <Text style={{ fontSize: 11, color: Colors.muted }}>Used Paperback</Text>
+                  </View>
+                )}
+                {valuation.hardcover_avg != null && (
+                  <View>
+                    <Text style={{ fontSize: 20, fontWeight: '700', color: Colors.rust, fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }) }}>${Number(valuation.hardcover_avg).toFixed(2)}</Text>
+                    <Text style={{ fontSize: 11, color: Colors.muted }}>Used Hardcover</Text>
+                  </View>
+                )}
+                {valuation.avg_price != null && !valuation.paperback_avg && !valuation.hardcover_avg && (
+                  <View>
+                    <Text style={{ fontSize: 20, fontWeight: '700', color: Colors.rust, fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }) }}>${Number(valuation.avg_price).toFixed(2)}</Text>
+                    <Text style={{ fontSize: 11, color: Colors.muted }}>Used avg</Text>
+                  </View>
+                )}
+              </View>
+            ) : null}
+          </View>
+        )}
 
         {/* Status buttons */}
         <View style={styles.section}>
@@ -1128,12 +1203,38 @@ export default function BookDetailScreen() {
               <TextInput
                 style={styles.pageInput}
                 value={currentPage > 0 ? String(currentPage) : ''}
-                onChangeText={saveProgress}
+                onChangeText={(t) => {
+                  setCurrentPage(Math.max(0, parseInt(t) || 0));
+                  if (pageSaveState !== 'idle') setPageSaveState('idle');
+                }}
+                onEndEditing={(e) => saveProgress(e.nativeEvent.text)}
                 keyboardType="numeric"
                 placeholder="0"
                 placeholderTextColor={Colors.muted}
+                returnKeyType="done"
+                onSubmitEditing={(e) => saveProgress(e.nativeEvent.text)}
               />
+              {pageSaveState === 'saved' && (
+                <Text style={styles.pageSavedCheck}>✓</Text>
+              )}
               <Text style={styles.pageOf}>of {(book as any).pages} pages</Text>
+              <TouchableOpacity
+                style={[
+                  styles.pageSaveBtn,
+                  pageSaveState === 'saved' && styles.pageSaveBtnSaved,
+                ]}
+                onPress={() => saveProgress(String(currentPage))}
+                disabled={pageSaveState === 'saving'}
+                activeOpacity={0.8}
+              >
+                {pageSaveState === 'saving' ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.pageSaveBtnText}>
+                    {pageSaveState === 'saved' ? '✓ Saved' : 'Save'}
+                  </Text>
+                )}
+              </TouchableOpacity>
             </View>
           </View>
         ) : null}
@@ -1309,43 +1410,6 @@ export default function BookDetailScreen() {
             </Text>
           </View>
         ) : null}
-
-        {/* Values */}
-        {(valuationLoading || valuation) && (
-          <View style={styles.section}>
-            <Text style={{ fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, color: Colors.muted, marginBottom: 8 }}>Values</Text>
-            {valuationLoading ? (
-              <Text style={{ fontSize: 13, color: Colors.muted, fontStyle: 'italic' }}>Fetching prices…</Text>
-            ) : valuation ? (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                {valuation.list_price != null && (
-                  <View>
-                    <Text style={{ fontSize: 20, fontWeight: '700', color: Colors.sage, fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }) }}>${Number(valuation.list_price).toFixed(2)}</Text>
-                    <Text style={{ fontSize: 11, color: Colors.muted }}>Retail</Text>
-                  </View>
-                )}
-                {valuation.paperback_avg != null && (
-                  <View>
-                    <Text style={{ fontSize: 20, fontWeight: '700', color: Colors.rust, fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }) }}>${Number(valuation.paperback_avg).toFixed(2)}</Text>
-                    <Text style={{ fontSize: 11, color: Colors.muted }}>Used Paperback</Text>
-                  </View>
-                )}
-                {valuation.hardcover_avg != null && (
-                  <View>
-                    <Text style={{ fontSize: 20, fontWeight: '700', color: Colors.rust, fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }) }}>${Number(valuation.hardcover_avg).toFixed(2)}</Text>
-                    <Text style={{ fontSize: 11, color: Colors.muted }}>Used Hardcover</Text>
-                  </View>
-                )}
-                {valuation.avg_price != null && !valuation.paperback_avg && !valuation.hardcover_avg && (
-                  <View>
-                    <Text style={{ fontSize: 20, fontWeight: '700', color: Colors.rust, fontFamily: Platform.select({ ios: 'Georgia', default: 'serif' }) }}>${Number(valuation.avg_price).toFixed(2)}</Text>
-                    <Text style={{ fontSize: 11, color: Colors.muted }}>Used avg</Text>
-                  </View>
-                )}
-              </View>
-            ) : null}
-          </View>
-        )}
 
         {/* Buy / Find */}
         <View style={styles.section}>
@@ -1777,7 +1841,11 @@ const styles = StyleSheet.create({
   progressPct: { fontSize: 13, fontWeight: '600', color: Colors.rust, minWidth: 36, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
   pageInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   pageInput: { width: 72, backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6, fontSize: 13, color: Colors.ink, textAlign: 'center', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
-  pageOf: { fontSize: 13, color: Colors.muted, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  pageOf: { fontSize: 13, color: Colors.muted, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }), flex: 1 },
+  pageSaveBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: Colors.rust, minWidth: 60, alignItems: 'center', justifyContent: 'center' },
+  pageSaveBtnSaved: { backgroundColor: Colors.sage },
+  pageSaveBtnText: { fontSize: 12, fontWeight: '700', color: '#fff', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  pageSavedCheck: { fontSize: 18, fontWeight: '700', color: Colors.sage, marginLeft: 4 },
   markFinishedBtn: {
     backgroundColor: Colors.sage,
     borderRadius: 8,

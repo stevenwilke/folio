@@ -147,6 +147,8 @@ export async function enrichBook(bookId, { isbn_13, isbn_10, title, author, cove
       book_id:             bookId,
       list_price:          valData?.list_price ?? used?.new_price ?? null,
       list_price_currency: valData?.list_price_currency ?? (used?.new_price ? 'USD' : null),
+      list_price_is_ebook: valData?.list_price_is_ebook ?? false,
+      list_price_source:   valData?.list_price_source   ?? null,
       avg_price:           used?.avg_price              ?? null,
       min_price:           used?.min_price              ?? null,
       max_price:           used?.max_price              ?? null,

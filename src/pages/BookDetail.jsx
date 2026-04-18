@@ -473,6 +473,8 @@ export default function BookDetail({ bookId, session, onBack }) {
           currency:            data?.currency        || 'USD',
           list_price:          data?.list_price ?? used?.new_price ?? null,
           list_price_currency: data?.list_price_currency ?? (used?.new_price ? 'USD' : null),
+          list_price_is_ebook: data?.list_price_is_ebook ?? false,
+          list_price_source:   data?.list_price_source ?? null,
           fetched_at:          new Date().toISOString(),
         }
         if (usedData?.avg_price != null) {
@@ -1067,6 +1069,18 @@ export default function BookDetail({ bookId, session, onBack }) {
                       <span style={s.valuationSub}>
                         Retail{valuation.list_price_currency && valuation.list_price_currency !== 'USD' ? ` (${valuation.list_price_currency})` : ''}
                       </span>
+                      {valuation.list_price_is_ebook && (
+                        <span
+                          title="This is an eBook price — print MSRP may differ"
+                          style={{
+                            fontSize: 10, fontWeight: 600, padding: '2px 6px',
+                            borderRadius: 4, background: 'rgba(184,134,11,0.15)',
+                            color: '#b8860b', letterSpacing: 0.2,
+                          }}
+                        >
+                          eBook price
+                        </span>
+                      )}
                     </span>
                   )}
                   {valuation?.paperback_avg != null && (

@@ -144,7 +144,7 @@ export default function Profile({ session }) {
 
     const { data: entries } = await supabase
       .from('collection_entries')
-      .select('id, read_status, user_rating, review_text, added_at, updated_at, books(id, title, author, cover_image_url, isbn_13, isbn_10, genre, published_year, pages, format)')
+      .select('id, read_status, user_rating, review_text, added_at, books(id, title, author, cover_image_url, isbn_13, isbn_10, genre, published_year, pages, format)')
       .eq('user_id', prof.id)
       .order('added_at', { ascending: false })
 
@@ -183,7 +183,7 @@ export default function Profile({ session }) {
     // Count books read this year — exclude imports since their dates aren't real.
     const startOfYear = new Date(currentYear, 0, 1).toISOString()
     const readThisYear = (entriesData || []).filter(e =>
-      e.read_status === 'read' && !e.from_import && e.updated_at >= startOfYear
+      e.read_status === 'read' && !e.from_import && e.added_at >= startOfYear
     ).length
     setBooksReadThisYear(readThisYear)
   }

@@ -6,7 +6,7 @@ export default function ReadingWrapped({ entries, sessions, year }) {
   const readEntries = entries.filter(e => {
     if (e.from_import) return false
     if (!e.has_read && e.read_status !== 'read') return false
-    return new Date(e.updated_at).getFullYear() === year
+    return new Date(e.added_at).getFullYear() === year
   })
 
   const yearSessions = (sessions || []).filter(s => {

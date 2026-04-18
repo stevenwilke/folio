@@ -194,7 +194,7 @@ export default function Stats({ session }) {
   const perYear = {}
   for (const e of readEntries) {
     if (e.from_import) continue
-    const year = new Date(e.updated_at).getFullYear()
+    const year = new Date(e.added_at).getFullYear()
     perYear[year] = (perYear[year] || 0) + 1
   }
   const yearKeys  = Object.keys(perYear).sort()
@@ -227,7 +227,7 @@ export default function Stats({ session }) {
   // Fastest month (most books finished in a calendar month)
   const monthMap = {}
   for (const e of readEntries) {
-    const d   = new Date(e.updated_at)
+    const d   = new Date(e.added_at)
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
     monthMap[key] = (monthMap[key] || 0) + 1
   }

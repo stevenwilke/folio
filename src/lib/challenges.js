@@ -18,7 +18,7 @@ export function computeChallengeProgress(challenge, entries, sessions) {
       const booksRead = entries.filter(e => {
         if (e.from_import) return false
         if (!e.has_read && e.read_status !== 'read') return false
-        const d = new Date(e.updated_at)
+        const d = new Date(e.added_at)
         return d >= startDate && d <= endDate
       }).length
       return { currentValue: booksRead, isComplete: booksRead >= challenge.target_value }
@@ -40,7 +40,7 @@ export function computeChallengeProgress(challenge, entries, sessions) {
       entries.forEach(e => {
         if (e.from_import) return
         if (!e.has_read && e.read_status !== 'read') return
-        const d = new Date(e.updated_at)
+        const d = new Date(e.added_at)
         if (d >= startDate && d <= endDate && e.books?.genre) {
           genres.add(e.books.genre)
         }
@@ -94,8 +94,9 @@ export function generateMonthlyChallenges(entries, sessions) {
   // Calculate past monthly averages for calibration
   const monthlyBooks = {}
   entries.forEach(e => {
+    if (e.from_import) return
     if (!e.has_read && e.read_status !== 'read') return
-    const d = new Date(e.updated_at)
+    const d = new Date(e.added_at)
     const key = `${d.getFullYear()}-${d.getMonth() + 1}`
     monthlyBooks[key] = (monthlyBooks[key] || 0) + 1
   })

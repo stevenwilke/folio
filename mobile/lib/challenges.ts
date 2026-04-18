@@ -9,7 +9,7 @@ interface Challenge {
 interface Entry {
   has_read?: boolean;
   read_status?: string;
-  updated_at?: string;
+  added_at?: string;
   from_import?: boolean;
   books?: { genre?: string | null; pages?: number | null } | null;
 }
@@ -36,7 +36,7 @@ export function computeChallengeProgress(
       const count = entries.filter(e => {
         if (e.from_import) return false;
         if (!e.has_read && e.read_status !== 'read') return false;
-        const d = new Date(e.updated_at || '');
+        const d = new Date(e.added_at || '');
         return d >= startDate && d <= endDate;
       }).length;
       return { currentValue: count, isComplete: count >= challenge.target_value };
@@ -56,7 +56,7 @@ export function computeChallengeProgress(
       entries.forEach(e => {
         if (e.from_import) return;
         if (!e.has_read && e.read_status !== 'read') return;
-        const d = new Date(e.updated_at || '');
+        const d = new Date(e.added_at || '');
         if (d >= startDate && d <= endDate && e.books?.genre) genres.add(e.books.genre);
       });
       return { currentValue: genres.size, isComplete: genres.size >= challenge.target_value };
@@ -102,8 +102,9 @@ export function generateMonthlyChallenges(entries: Entry[], sessions: Session[])
 
   const monthlyBooks: Record<string, number> = {};
   entries.forEach(e => {
+    if (e.from_import) return;
     if (!e.has_read && e.read_status !== 'read') return;
-    const d = new Date(e.updated_at || '');
+    const d = new Date(e.added_at || '');
     const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
     monthlyBooks[key] = (monthlyBooks[key] || 0) + 1;
   });

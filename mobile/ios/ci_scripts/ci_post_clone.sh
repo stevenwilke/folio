@@ -1,23 +1,23 @@
 #!/bin/sh
 
-# Xcode Cloud runs this after cloning the repo.
-# Installs Node deps (needed for Expo autolinking) and runs `pod install`
-# so the generated Pods/*.xcconfig files exist before Xcode builds.
+# Xcode Cloud runs this after cloning the repo and before the Xcode build.
+# Our ios/ directory is checked in, so we only need:
+#   1. Node (so `pod install` can run Expo autolinking)
+#   2. `npm install` for the JS deps that autolinking reads
+#   3. `pod install` to generate Pods/Target Support Files/*.xcconfig
 
 set -e
 
+export HOMEBREW_NO_AUTO_UPDATE=1
+export HOMEBREW_NO_INSTALL_CLEANUP=1
+export HOMEBREW_NO_ENV_HINTS=1
+
 echo "▶️  Installing Homebrew dependencies"
-# CocoaPods is usually preinstalled on Xcode Cloud, but install via brew as a safety net.
-brew install cocoapods node
+brew install node cocoapods
 
 echo "▶️  Installing Node dependencies"
 cd "$CI_PRIMARY_REPOSITORY_PATH/mobile"
 npm install --legacy-peer-deps --no-audit --no-fund
-
-echo "▶️  Generating ios/ with expo prebuild"
-# Our ios/ folder is checked in, but run prebuild --no-install to sync any
-# plugin/config changes into the native project before pod install.
-npx expo prebuild --platform ios --no-install
 
 echo "▶️  Installing CocoaPods"
 cd ios

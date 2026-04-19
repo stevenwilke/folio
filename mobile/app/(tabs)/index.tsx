@@ -97,6 +97,17 @@ export default function LibraryScreen() {
     selected: string;
     onSelect: (key: string) => void;
   } | null>(null);
+  const [searchBarY, setSearchBarY] = useState<number | null>(null);
+  const [isSearchSticky, setIsSearchSticky] = useState(false);
+
+  const handleScroll = useCallback(
+    (e: { nativeEvent: { contentOffset: { y: number } } }) => {
+      if (searchBarY === null) return;
+      const shouldStick = e.nativeEvent.contentOffset.y > searchBarY;
+      if (shouldStick !== isSearchSticky) setIsSearchSticky(shouldStick);
+    },
+    [searchBarY, isSearchSticky]
+  );
 
   const COLUMNS = SIZE_COLUMNS[coverSize];
   const HORIZONTAL_PADDING = 16;
@@ -472,19 +483,6 @@ export default function LibraryScreen() {
         </View>
       )}
 
-      {/* Search bar */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search your library…"
-          placeholderTextColor={Colors.muted}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-        />
-      </View>
-
       {/* View mode + Size + Sort + Group — single compact row */}
       <View style={styles.sizeRow}>
         {/* Grid / List toggle */}
@@ -565,6 +563,22 @@ export default function LibraryScreen() {
           <Text style={{ fontSize: 8, color: groupBy !== 'none' ? Colors.rust : Colors.muted }}>▼</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Search bar — sticks to top once scrolled past */}
+      <View
+        style={styles.searchContainer}
+        onLayout={(e) => setSearchBarY(e.nativeEvent.layout.y)}
+      >
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search your library…"
+          placeholderTextColor={Colors.muted}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+      </View>
     </View>
   );
 
@@ -607,6 +621,19 @@ export default function LibraryScreen() {
   return (
     <SwipeTabNav current="index">
     <View style={styles.root}>
+      {isSearchSticky && !loading && (
+        <View style={[styles.searchContainer, styles.stickySearch]}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search your library…"
+            placeholderTextColor={Colors.muted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+        </View>
+      )}
       {loading ? (
         <View style={styles.loader}>
           <ActivityIndicator size="large" color={Colors.rust} />
@@ -658,6 +685,8 @@ export default function LibraryScreen() {
             )}
             contentContainerStyle={[styles.gridContent, seriesGroups.length === 0 && styles.gridContentEmpty]}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.rust} />}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
           />
         ) : viewMode === 'list' ? (
           <FlatList
@@ -757,6 +786,8 @@ export default function LibraryScreen() {
                 tintColor={Colors.rust}
               />
             }
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
           />
         )}
 
@@ -1375,6 +1406,17 @@ const styles = StyleSheet.create({
   searchContainer: {
     paddingHorizontal: 16,
     paddingBottom: 8,
+  },
+  stickySearch: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    backgroundColor: Colors.background,
+    paddingTop: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
   searchInput: {
     backgroundColor: Colors.card,

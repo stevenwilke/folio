@@ -675,13 +675,9 @@ export default function DiscoverScreen() {
                 activeOpacity={0.75}
                 onPress={() => router.push(`/nyt-list?list=${nytList}` as any)}
               >
-                <View style={styles.seeMoreCover}>
-                  <Text style={styles.seeMoreArrow}>→</Text>
-                </View>
-                <View style={styles.seeMoreMeta}>
-                  <Text style={styles.seeMoreLabel}>See all</Text>
-                  <Text style={styles.seeMoreSub}>{nytBooks.length} books</Text>
-                </View>
+                <Text style={styles.seeMoreArrow}>→</Text>
+                <Text style={styles.seeMoreLabel}>See all</Text>
+                <Text style={styles.seeMoreSub}>{nytBooks.length} books</Text>
               </TouchableOpacity>
             }
             showsHorizontalScrollIndicator={false}
@@ -919,22 +915,19 @@ const styles = StyleSheet.create({
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
   seeMoreTile: {
-    width: 120, flexShrink: 0,
+    width: 120, minHeight: 228, flexShrink: 0,
     backgroundColor: Colors.card, borderRadius: 8,
-    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
-  },
-  seeMoreCover: {
-    width: 120, height: 170, backgroundColor: Colors.border,
+    borderWidth: 1, borderColor: Colors.border,
     alignItems: 'center', justifyContent: 'center',
+    padding: 8, gap: 6,
   },
-  seeMoreArrow: { fontSize: 48, color: Colors.rust, fontWeight: '300' },
-  seeMoreMeta: { padding: 8, gap: 2 },
+  seeMoreArrow: { fontSize: 42, color: Colors.rust, fontWeight: '300' },
   seeMoreLabel: {
-    fontSize: 11, fontWeight: '700', color: Colors.ink, lineHeight: 14,
+    fontSize: 14, fontWeight: '700', color: Colors.ink,
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
   },
   seeMoreSub: {
-    fontSize: 10, color: Colors.muted,
+    fontSize: 11, color: Colors.muted,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
 

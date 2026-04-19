@@ -10,10 +10,10 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 
@@ -230,11 +230,11 @@ export default function AuthScreen() {
 
         <Text style={styles.legalNote}>
           By {mode === 'signup' ? 'creating an account' : 'signing in'}, you agree to our{' '}
-          <Text style={styles.legalLink} onPress={() => WebBrowser.openBrowserAsync(TERMS_URL)}>
+          <Text style={styles.legalLink} onPress={() => Linking.openURL(TERMS_URL)}>
             Terms
           </Text>
           {' '}and{' '}
-          <Text style={styles.legalLink} onPress={() => WebBrowser.openBrowserAsync(PRIVACY_URL)}>
+          <Text style={styles.legalLink} onPress={() => Linking.openURL(PRIVACY_URL)}>
             Privacy Policy
           </Text>
           .

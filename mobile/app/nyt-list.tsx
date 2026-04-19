@@ -122,19 +122,25 @@ export default function NYTListScreen() {
         headerTintColor: Colors.ink,
       }} />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabRow}>
-        {NYT_LISTS.map(l => (
-          <TouchableOpacity
-            key={l.key}
-            style={[styles.tab, activeList === l.key && styles.tabActive]}
-            onPress={() => setActiveList(l.key)}
-          >
-            <Text style={[styles.tabText, activeList === l.key && styles.tabTextActive]}>
-              {l.emoji} {l.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={styles.tabRowWrap}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabRow}
+        >
+          {NYT_LISTS.map(l => (
+            <TouchableOpacity
+              key={l.key}
+              style={[styles.tab, activeList === l.key && styles.tabActive]}
+              onPress={() => setActiveList(l.key)}
+            >
+              <Text style={[styles.tabText, activeList === l.key && styles.tabTextActive]}>
+                {l.emoji} {l.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
       <Text style={styles.attribution}>
         {activeMeta?.emoji} {activeMeta?.label} · From The New York Times
@@ -183,14 +189,15 @@ export default function NYTListScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.background },
-  tabRow: { paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
+  tabRowWrap: { paddingVertical: 10 },
+  tabRow: { paddingHorizontal: 16, gap: 8, alignItems: 'center' },
   tab: {
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
     backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border,
   },
   tabActive: { backgroundColor: Colors.rust, borderColor: Colors.rust },
   tabText: {
-    fontSize: 12, fontWeight: '600', color: Colors.ink,
+    fontSize: 13, fontWeight: '600', color: Colors.ink, lineHeight: 18,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
   tabTextActive: { color: '#fff' },

@@ -16,7 +16,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '../constants/colors';
 import { supabase } from '../lib/supabase';
-import { fetchBlockedUserIds } from '../lib/moderation';
+import { fetchBlockedUserIds, ContentType } from '../lib/moderation';
 import ReportModal from '../components/ReportModal';
 
 // ---------------------------------------------------------------------------
@@ -468,7 +468,7 @@ function ClubDetail({
 
   // Discussion state
   const [posts, setPosts] = useState<Post[]>([]);
-  const [reportTarget, setReportTarget] = useState<{ contentType: any; contentId: string; reportedUserId: string } | null>(null);
+  const [reportTarget, setReportTarget] = useState<{ contentType: ContentType; contentId: string; reportedUserId: string } | null>(null);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [postText, setPostText] = useState('');
   const [posting, setPosting] = useState(false);

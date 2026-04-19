@@ -303,10 +303,14 @@ export default function Admin({ session }) {
     setReports(data || [])
   }
 
+  function resolveReport(reportId, { status, action_taken }) {
+    return supabase.from('content_reports')
+      .update({ status, action_taken, reviewed_by: session.user.id, reviewed_at: new Date().toISOString() })
+      .eq('id', reportId)
+  }
+
   async function dismissReport(report) {
-    await supabase.from('content_reports')
-      .update({ status: 'dismissed', action_taken: 'none', reviewed_by: session.user.id, reviewed_at: new Date().toISOString() })
-      .eq('id', report.id)
+    await resolveReport(report.id, { status: 'dismissed', action_taken: 'none' })
     loadReports()
   }
 
@@ -317,9 +321,7 @@ export default function Admin({ session }) {
     if (table) {
       await supabase.from(table).delete().eq('id', report.content_id)
     }
-    await supabase.from('content_reports')
-      .update({ status: 'actioned', action_taken: 'content_deleted', reviewed_by: session.user.id, reviewed_at: new Date().toISOString() })
-      .eq('id', report.id)
+    await resolveReport(report.id, { status: 'actioned', action_taken: 'content_deleted' })
     setActing(null)
     loadReports()
   }
@@ -329,9 +331,7 @@ export default function Admin({ session }) {
     if (!window.confirm(`Ban ${report.reported.username}? They will not be able to sign in.`)) return
     setActing(report.id)
     await supabase.from('profiles').update({ is_banned: true }).eq('id', report.reported.id)
-    await supabase.from('content_reports')
-      .update({ status: 'actioned', action_taken: 'user_banned', reviewed_by: session.user.id, reviewed_at: new Date().toISOString() })
-      .eq('id', report.id)
+    await resolveReport(report.id, { status: 'actioned', action_taken: 'user_banned' })
     setActing(null)
     loadReports()
     loadUsers()

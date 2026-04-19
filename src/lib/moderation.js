@@ -15,13 +15,12 @@ export const REPORT_REASONS = [
 // who has blocked the current user. Callers filter content out by user_id.
 export async function fetchBlockedUserIds(userId) {
   if (!userId) return []
-  const [outgoing, incoming] = await Promise.all([
-    supabase.from('user_blocks').select('blocked_id').eq('blocker_id', userId),
-    supabase.from('user_blocks').select('blocker_id').eq('blocked_id', userId),
-  ])
+  const { data } = await supabase
+    .from('user_blocks')
+    .select('blocker_id, blocked_id')
+    .or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`)
   const ids = new Set()
-  for (const r of outgoing.data || []) ids.add(r.blocked_id)
-  for (const r of incoming.data || []) ids.add(r.blocker_id)
+  for (const r of data || []) ids.add(r.blocker_id === userId ? r.blocked_id : r.blocker_id)
   return [...ids]
 }
 

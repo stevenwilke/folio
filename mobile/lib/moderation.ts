@@ -25,13 +25,15 @@ export type ContentType =
 
 export async function fetchBlockedUserIds(userId: string | null | undefined): Promise<string[]> {
   if (!userId) return []
-  const [outgoing, incoming] = await Promise.all([
-    supabase.from('user_blocks').select('blocked_id').eq('blocker_id', userId),
-    supabase.from('user_blocks').select('blocker_id').eq('blocked_id', userId),
-  ])
+  const { data } = await supabase
+    .from('user_blocks')
+    .select('blocker_id, blocked_id')
+    .or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`)
   const ids = new Set<string>()
-  for (const r of outgoing.data || []) ids.add((r as any).blocked_id)
-  for (const r of incoming.data || []) ids.add((r as any).blocker_id)
+  for (const r of data || []) {
+    const row = r as { blocker_id: string; blocked_id: string }
+    ids.add(row.blocker_id === userId ? row.blocked_id : row.blocker_id)
+  }
   return [...ids]
 }
 

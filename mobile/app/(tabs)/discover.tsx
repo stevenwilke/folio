@@ -6,6 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
+import { fetchBlockedUserIds } from '../../lib/moderation';
 import { FakeCover } from '../../components/FakeCover';
 import SwipeTabNav from '../../components/SwipeTabNav';
 
@@ -473,9 +474,15 @@ export default function DiscoverScreen() {
   async function buildFriends(userId: string, ownedKeys: Set<string>) {
     setFriendsLoad(true);
     try {
-      const { data: fs } = await supabase.from('friendships').select('requester_id,addressee_id')
-        .eq('status', 'accepted').or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
-      const ids = (fs ?? []).map((f: any) => f.requester_id === userId ? f.addressee_id : f.requester_id);
+      const [fsResult, blockedIds] = await Promise.all([
+        supabase.from('friendships').select('requester_id,addressee_id')
+          .eq('status', 'accepted').or(`requester_id.eq.${userId},addressee_id.eq.${userId}`),
+        fetchBlockedUserIds(userId),
+      ]);
+      const blockedSet = new Set(blockedIds);
+      const ids = (fsResult.data ?? [])
+        .map((f: any) => f.requester_id === userId ? f.addressee_id : f.requester_id)
+        .filter((id: string) => !blockedSet.has(id));
       if (!ids.length) { setHasFriends(false); setFriendsLoad(false); return; }
 
       const { data: entries } = await supabase.from('collection_entries')
@@ -500,9 +507,15 @@ export default function DiscoverScreen() {
   async function buildTrending(userId: string) {
     setTrendingLoad(true);
     try {
-      const { data: fs } = await supabase.from('friendships').select('requester_id,addressee_id')
-        .eq('status', 'accepted').or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
-      const ids = (fs ?? []).map((f: any) => f.requester_id === userId ? f.addressee_id : f.requester_id);
+      const [fsResult, blockedIds] = await Promise.all([
+        supabase.from('friendships').select('requester_id,addressee_id')
+          .eq('status', 'accepted').or(`requester_id.eq.${userId},addressee_id.eq.${userId}`),
+        fetchBlockedUserIds(userId),
+      ]);
+      const blockedSet = new Set(blockedIds);
+      const ids = (fsResult.data ?? [])
+        .map((f: any) => f.requester_id === userId ? f.addressee_id : f.requester_id)
+        .filter((id: string) => !blockedSet.has(id));
       if (!ids.length) { setTrendingLoad(false); return; }
 
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();

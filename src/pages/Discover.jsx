@@ -7,6 +7,7 @@ import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { getCoverUrl } from '../lib/coverUrl'
 import { enrichBook } from '../lib/enrichBook'
+import { fetchBlockedUserIds } from '../lib/moderation'
 
 const NYT_API_KEY = import.meta.env.VITE_NYT_API_KEY || '2vGCkSNIV0d51GG4sERlG9pwoYG7b8ktvPLFBNmbsCWtK2oO'
 
@@ -709,10 +710,16 @@ export default function Discover({ session }) {
   async function buildFriends() {
     setFriendsLoad(true)
     try {
-      const { data: fs } = await supabase.from('friendships').select('requester_id,addressee_id')
-        .eq('status','accepted')
-        .or(`requester_id.eq.${session.user.id},addressee_id.eq.${session.user.id}`)
-      const ids = (fs ?? []).map(f => f.requester_id === session.user.id ? f.addressee_id : f.requester_id)
+      const [fsResult, blockedIds] = await Promise.all([
+        supabase.from('friendships').select('requester_id,addressee_id')
+          .eq('status','accepted')
+          .or(`requester_id.eq.${session.user.id},addressee_id.eq.${session.user.id}`),
+        fetchBlockedUserIds(session.user.id),
+      ])
+      const blockedSet = new Set(blockedIds)
+      const ids = (fsResult.data ?? [])
+        .map(f => f.requester_id === session.user.id ? f.addressee_id : f.requester_id)
+        .filter(id => !blockedSet.has(id))
       if (!ids.length) { setHasFriends(false); setFriendsLoad(false); return }
 
       const { data: entries } = await supabase.from('collection_entries')

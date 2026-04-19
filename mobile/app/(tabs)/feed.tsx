@@ -23,6 +23,8 @@ import { Colors } from '../../constants/colors';
 import { ReadStatus } from '../../components/BookCard';
 import ActivityCard from '../../components/ActivityCard';
 import SwipeTabNav from '../../components/SwipeTabNav';
+import ReportModal from '../../components/ReportModal';
+import { fetchBlockedUserIds, ContentType } from '../../lib/moderation';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -109,6 +111,7 @@ export default function FeedScreen() {
   const [refreshing, setRefreshing]   = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [tab, setTab]                 = useState<'posts' | 'activity'>('posts');
+  const [reportTarget, setReportTarget] = useState<{ contentType: ContentType; contentId: string; reportedUserId: string } | null>(null);
 
   // Compose modal
   const [showCompose, setShowCompose]   = useState(false);
@@ -143,16 +146,20 @@ export default function FeedScreen() {
       .from('profiles').select('username').eq('id', user.id).maybeSingle();
     setMyUsername(profile?.username || '');
 
-    // Get friends
-    const { data: friendships } = await supabase
-      .from('friendships')
-      .select('requester_id, addressee_id')
-      .eq('status', 'accepted')
-      .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+    // Get friends + bidirectional block list
+    const [friendshipsResult, blockedIds] = await Promise.all([
+      supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .eq('status', 'accepted')
+        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`),
+      fetchBlockedUserIds(user.id),
+    ]);
+    const blockedSet = new Set(blockedIds);
 
-    const friendIds = (friendships || []).map((f: any) =>
-      f.requester_id === user.id ? f.addressee_id : f.requester_id
-    );
+    const friendIds = (friendshipsResult.data || [])
+      .map((f: any) => f.requester_id === user.id ? f.addressee_id : f.requester_id)
+      .filter((id: string) => !blockedSet.has(id));
 
     const allIds = [user.id, ...friendIds];
 
@@ -468,6 +475,11 @@ export default function FeedScreen() {
               onLike={() => toggleLike(item.id)}
               onComments={() => openComments(item as PostItem)}
               onBookPress={bookId => bookId && router.push(`/book/${bookId}`)}
+              onReport={() => setReportTarget({
+                contentType: 'feed_post',
+                contentId: (item as PostItem).id,
+                reportedUserId: (item as PostItem).user_id,
+              })}
             />
           )}
         />
@@ -624,6 +636,14 @@ export default function FeedScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <ReportModal
+        visible={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        contentType={reportTarget?.contentType ?? 'feed_post'}
+        contentId={reportTarget?.contentId ?? ''}
+        reportedUserId={reportTarget?.reportedUserId}
+      />
     </View>
     </SwipeTabNav>
   );
@@ -631,15 +651,17 @@ export default function FeedScreen() {
 
 // ─── Post Card Component ──────────────────────────────────────────────────────
 
-function PostCard({ post, currentUserId, onLike, onComments, onBookPress }: {
+function PostCard({ post, currentUserId, onLike, onComments, onBookPress, onReport }: {
   post: PostItem;
   currentUserId: string | null;
   onLike: () => void;
   onComments: () => void;
   onBookPress: (bookId: string | null) => void;
+  onReport: () => void;
 }) {
   const [imgError, setImgError] = useState(false);
   const liked = currentUserId ? post.likes.includes(currentUserId) : false;
+  const isOwn = currentUserId === post.user_id;
 
   return (
     <View style={styles.postCard}>
@@ -652,6 +674,11 @@ function PostCard({ post, currentUserId, onLike, onComments, onBookPress }: {
           <Text style={styles.bold}>{post.username}</Text>
           <Text style={styles.timeText}>{timeAgo(post.created_at)}</Text>
         </View>
+        {!isOwn && (
+          <TouchableOpacity onPress={onReport} hitSlop={8}>
+            <Text style={styles.reportLink}>Report</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Tagged book */}
@@ -760,6 +787,7 @@ const styles = StyleSheet.create({
   // Post card
   postCard:    { backgroundColor: Colors.card, borderRadius: 14, borderWidth: 1, borderColor: Colors.border, marginBottom: 12, overflow: 'hidden' },
   postHeader:  { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
+  reportLink:  { fontSize: 12, color: Colors.muted, paddingHorizontal: 6, paddingVertical: 4 },
   postContent: { fontSize: 14, color: Colors.ink, lineHeight: 21, paddingHorizontal: 12, paddingBottom: 10, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
   postImage:   { width: '100%', height: 300 },
   postActions: { flexDirection: 'row', gap: 16, padding: 10, paddingHorizontal: 12, borderTopWidth: 1, borderTopColor: Colors.border },

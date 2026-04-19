@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
 import CreatePostModal from '../components/CreatePostModal'
+import ReportModal from '../components/ReportModal'
+import { fetchBlockedUserIds } from '../lib/moderation'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -48,6 +50,7 @@ export default function Feed({ session }) {
   const [userBooks, setUserBooks]         = useState([])
   const [userProfile, setUserProfile]     = useState(null)
   const [tab, setTab]                     = useState('posts')  // 'posts' | 'activity'
+  const [reportTarget, setReportTarget]   = useState(null)  // { contentType, contentId, reportedUserId }
 
   const s = makeStyles(theme, isMobile)
 
@@ -58,16 +61,21 @@ export default function Feed({ session }) {
 
     const userId = session.user.id
 
-    // Step 1: get accepted friend IDs
-    const { data: friendships } = await supabase
-      .from('friendships')
-      .select('requester_id, addressee_id')
-      .eq('status', 'accepted')
-      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
+    // Step 1: get accepted friend IDs + bidirectional block list
+    const [friendshipsResult, blockedIds] = await Promise.all([
+      supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .eq('status', 'accepted')
+        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`),
+      fetchBlockedUserIds(userId),
+    ])
+    const friendships = friendshipsResult.data
+    const blockedSet = new Set(blockedIds)
 
-    const friendIds = (friendships || []).map(f =>
-      f.requester_id === userId ? f.addressee_id : f.requester_id
-    )
+    const friendIds = (friendships || [])
+      .map(f => f.requester_id === userId ? f.addressee_id : f.requester_id)
+      .filter(id => !blockedSet.has(id))
 
     setHasFriends(friendIds.length > 0)
 
@@ -291,6 +299,11 @@ export default function Feed({ session }) {
                     onLike={() => toggleLike(post.id)}
                     onDelete={() => deletePost(post.id)}
                     onBookClick={() => post.books?.id && setSelectedBook(post.books.id)}
+                    onReport={() => setReportTarget({
+                      contentType: 'feed_post',
+                      contentId: post.id,
+                      reportedUserId: post.user_id,
+                    })}
                   />
                 ))}
               </div>
@@ -364,6 +377,15 @@ export default function Feed({ session }) {
           <BookDetail bookId={selectedBook} session={session} onBack={() => setSelectedBook(null)} />
         </div>
       )}
+
+      {reportTarget && (
+        <ReportModal
+          onClose={() => setReportTarget(null)}
+          contentType={reportTarget.contentType}
+          contentId={reportTarget.contentId}
+          reportedUserId={reportTarget.reportedUserId}
+        />
+      )}
     </div>
   )
 }
@@ -371,7 +393,7 @@ export default function Feed({ session }) {
 // ─────────────────────────────────────────────
 // POST CARD
 // ─────────────────────────────────────────────
-function PostCard({ post, theme, isDark, currentUserId, onLike, onDelete, onBookClick }) {
+function PostCard({ post, theme, isDark, currentUserId, onLike, onDelete, onBookClick, onReport }) {
   const isMobile = useIsMobile()
   const [showComments, setShowComments] = useState(false)
   const [comments, setComments]         = useState(null)  // null = not loaded
@@ -432,11 +454,17 @@ function PostCard({ post, theme, isDark, currentUserId, onLike, onDelete, onBook
             {timeAgo(post.created_at)}
           </div>
         </div>
-        {isOwn && (
+        {isOwn ? (
           <button onClick={onDelete}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, fontSize: 18, padding: 4, lineHeight: 1, opacity: 0.6 }}
             title="Delete post">
             ···
+          </button>
+        ) : (
+          <button onClick={onReport}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: muted, fontSize: 12, padding: 4, lineHeight: 1, opacity: 0.6 }}
+            title="Report post">
+            Report
           </button>
         )}
       </div>

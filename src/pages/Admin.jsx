@@ -7,6 +7,7 @@ import { getCoverUrl } from '../lib/coverUrl'
 
 const TABS = [
   { key: 'overview',  label: 'Overview',     emoji: '📊' },
+  { key: 'reports',   label: 'Reports',      emoji: '🚩' },
   { key: 'covers',    label: 'Covers',       emoji: '🖼️' },
   { key: 'claims',    label: 'Claims',       emoji: '📝' },
   { key: 'authors',   label: 'Authors',      emoji: '✍️' },
@@ -14,6 +15,16 @@ const TABS = [
   { key: 'users',     label: 'Users',        emoji: '👥' },
   { key: 'settings',  label: 'Settings',     emoji: '⚙️' },
 ]
+
+const REPORT_CONTENT_TABLES = {
+  review:               'collection_entries',
+  feed_post:            'reading_posts',
+  post_comment:         'post_comments',
+  club_post:            'book_club_posts',
+  book_recommendation:  'book_recommendations',
+  poll:                 'polls',
+  poll_comment:         'poll_comments',
+}
 
 export default function Admin({ session }) {
   const navigate   = useNavigate()
@@ -30,6 +41,8 @@ export default function Admin({ session }) {
   const [users,    setUsers]    = useState([])
   const [covers,   setCovers]   = useState([])
   const [books,    setBooks]    = useState([])
+  const [reports,  setReports]  = useState([])
+  const [reportFilter, setReportFilter] = useState('pending')
   const [stats,    setStats]    = useState(null)
   const [loading,  setLoading]  = useState(true)
   const [acting,   setActing]   = useState(null)
@@ -66,7 +79,7 @@ export default function Admin({ session }) {
 
   async function loadAll() {
     setLoading(true)
-    await Promise.all([loadClaims(), loadAuthors(), loadUsers(), loadCovers(), loadBooks(), loadStats(), loadCoverFiles(), loadSiteSettings()])
+    await Promise.all([loadClaims(), loadAuthors(), loadUsers(), loadCovers(), loadBooks(), loadStats(), loadCoverFiles(), loadSiteSettings(), loadReports()])
     setLoading(false)
   }
 
@@ -276,6 +289,54 @@ export default function Admin({ session }) {
     loadUsers()
   }
 
+  async function loadReports() {
+    const { data } = await supabase
+      .from('content_reports')
+      .select(`
+        id, content_type, content_id, reason, details, status, action_taken,
+        created_at, reviewed_at,
+        reporter:profiles!content_reports_reporter_id_fkey(id, username),
+        reported:profiles!content_reports_reported_user_id_fkey(id, username, is_banned)
+      `)
+      .order('created_at', { ascending: false })
+      .limit(200)
+    setReports(data || [])
+  }
+
+  async function dismissReport(report) {
+    await supabase.from('content_reports')
+      .update({ status: 'dismissed', action_taken: 'none', reviewed_by: session.user.id, reviewed_at: new Date().toISOString() })
+      .eq('id', report.id)
+    loadReports()
+  }
+
+  async function deleteReportedContent(report) {
+    if (!window.confirm(`Delete this ${report.content_type.replace('_', ' ')}? This cannot be undone.`)) return
+    setActing(report.id)
+    const table = REPORT_CONTENT_TABLES[report.content_type]
+    if (table) {
+      await supabase.from(table).delete().eq('id', report.content_id)
+    }
+    await supabase.from('content_reports')
+      .update({ status: 'actioned', action_taken: 'content_deleted', reviewed_by: session.user.id, reviewed_at: new Date().toISOString() })
+      .eq('id', report.id)
+    setActing(null)
+    loadReports()
+  }
+
+  async function banReportedUser(report) {
+    if (!report.reported?.id) return
+    if (!window.confirm(`Ban ${report.reported.username}? They will not be able to sign in.`)) return
+    setActing(report.id)
+    await supabase.from('profiles').update({ is_banned: true }).eq('id', report.reported.id)
+    await supabase.from('content_reports')
+      .update({ status: 'actioned', action_taken: 'user_banned', reviewed_by: session.user.id, reviewed_at: new Date().toISOString() })
+      .eq('id', report.id)
+    setActing(null)
+    loadReports()
+    loadUsers()
+  }
+
   async function toggleBan(user) {
     const banning = !user.is_banned
     const action = banning ? 'ban' : 'unban'
@@ -423,6 +484,9 @@ export default function Admin({ session }) {
               {t.key === 'covers' && covers.filter(c => c.status === 'pending').length > 0 && (
                 <span style={s.tabBadge}>{covers.filter(c => c.status === 'pending').length}</span>
               )}
+              {t.key === 'reports' && reports.filter(r => r.status === 'pending').length > 0 && (
+                <span style={s.tabBadge}>{reports.filter(r => r.status === 'pending').length}</span>
+              )}
             </button>
           ))}
         </div>
@@ -497,6 +561,96 @@ export default function Admin({ session }) {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ════════════ REPORTS ════════════ */}
+            {tab === 'reports' && (
+              <div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                  {['pending', 'actioned', 'dismissed', 'all'].map(f => (
+                    <button
+                      key={f}
+                      onClick={() => setReportFilter(f)}
+                      style={{
+                        padding: '6px 12px', borderRadius: 6,
+                        border: `1px solid ${theme.border}`,
+                        background: reportFilter === f ? theme.rust : 'transparent',
+                        color: reportFilter === f ? '#fff' : theme.text,
+                        cursor: 'pointer', fontSize: 13, textTransform: 'capitalize',
+                      }}
+                    >
+                      {f} ({f === 'all' ? reports.length : reports.filter(r => r.status === f).length})
+                    </button>
+                  ))}
+                </div>
+
+                {reports.filter(r => reportFilter === 'all' || r.status === reportFilter).length === 0 ? (
+                  <div style={{ color: theme.textSubtle, fontSize: 14, padding: 40, textAlign: 'center' }}>
+                    No {reportFilter === 'all' ? '' : reportFilter} reports.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {reports
+                      .filter(r => reportFilter === 'all' || r.status === reportFilter)
+                      .map(r => (
+                        <div key={r.id} style={{
+                          border: `1px solid ${theme.border}`, borderRadius: 10,
+                          background: theme.bgCard, padding: 14,
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 4 }}>
+                                {new Date(r.created_at).toLocaleString()} · {r.content_type.replace('_', ' ')} · <strong style={{ color: theme.rust }}>{r.reason}</strong>
+                              </div>
+                              <div style={{ fontSize: 14, color: theme.text }}>
+                                Reported by <strong>{r.reporter?.username || 'unknown'}</strong>
+                                {r.reported && <> against <strong>{r.reported.username}</strong>{r.reported.is_banned ? ' (banned)' : ''}</>}
+                              </div>
+                              {r.details && (
+                                <div style={{ fontSize: 13, color: theme.textSubtle, marginTop: 6, padding: 8, background: theme.bg, borderRadius: 6 }}>
+                                  "{r.details}"
+                                </div>
+                              )}
+                              <div style={{ fontSize: 11, color: theme.textSubtle, marginTop: 6 }}>
+                                content_id: <code>{r.content_id}</code>
+                                {r.status !== 'pending' && <> · {r.status}{r.action_taken !== 'none' ? ` (${r.action_taken.replace('_', ' ')})` : ''}</>}
+                              </div>
+                            </div>
+                            {r.status === 'pending' && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 140 }}>
+                                <button
+                                  onClick={() => dismissReport(r)}
+                                  disabled={acting === r.id}
+                                  style={{ padding: '6px 10px', fontSize: 12, borderRadius: 6, border: `1px solid ${theme.border}`, background: 'transparent', color: theme.text, cursor: 'pointer' }}
+                                >
+                                  Dismiss
+                                </button>
+                                {r.content_type !== 'profile' && REPORT_CONTENT_TABLES[r.content_type] && (
+                                  <button
+                                    onClick={() => deleteReportedContent(r)}
+                                    disabled={acting === r.id}
+                                    style={{ padding: '6px 10px', fontSize: 12, borderRadius: 6, border: 'none', background: theme.rust, color: '#fff', cursor: 'pointer' }}
+                                  >
+                                    Delete content
+                                  </button>
+                                )}
+                                {r.reported?.id && !r.reported.is_banned && (
+                                  <button
+                                    onClick={() => banReportedUser(r)}
+                                    disabled={acting === r.id}
+                                    style={{ padding: '6px 10px', fontSize: 12, borderRadius: 6, border: `1px solid #c0521e`, background: 'transparent', color: '#c0521e', cursor: 'pointer' }}
+                                  >
+                                    Ban user
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                   </div>
                 )}
               </div>

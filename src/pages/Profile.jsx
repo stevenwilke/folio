@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
 import EditProfileModal from '../components/EditProfileModal'
+import ReportModal from '../components/ReportModal'
+import { blockUser, unblockUser, isBlocked } from '../lib/moderation'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -50,6 +52,8 @@ export default function Profile({ session }) {
   const [showClearBooks,   setShowClearBooks]   = useState(false)
   const [showDeleteAcct,   setShowDeleteAcct]   = useState(false)
   const [refreshingValues, setRefreshingValues] = useState(false)
+  const [showReport, setShowReport] = useState(false)
+  const [blocked, setBlocked] = useState(false)
 
   // ── BADGES STATE ──
   const [badges, setBadges]               = useState([])
@@ -138,6 +142,7 @@ export default function Profile({ session }) {
         .eq('status', 'accepted')
         .maybeSingle()
         .then(({ data }) => setIsFriend(!!data))
+      isBlocked(prof.id).then(setBlocked)
     }
 
     if (!prof.is_public && !isOwn) { setLoading(false); return }
@@ -451,10 +456,63 @@ export default function Profile({ session }) {
               <button style={s.heroSignOutBtn} onClick={() => supabase.auth.signOut()}>Sign out</button>
             </div>
           ) : (
-            session && <div style={{ flexShrink: 0 }}><FriendButton session={session} profile={profile} theme={theme} /></div>
+            session && (
+              <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+                <FriendButton session={session} profile={profile} theme={theme} />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    onClick={() => setShowReport(true)}
+                    style={{
+                      padding: '6px 10px', fontSize: 12, borderRadius: 6,
+                      background: 'transparent', color: 'rgba(253,248,240,0.8)',
+                      border: '1px solid rgba(253,248,240,0.3)', cursor: 'pointer',
+                    }}
+                  >
+                    Report
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (blocked) {
+                        if (!window.confirm(`Unblock ${profile.username}?`)) return
+                        await unblockUser(profile.id)
+                        setBlocked(false)
+                      } else {
+                        if (!window.confirm(`Block ${profile.username}? You won't see their content and they won't see yours.`)) return
+                        await blockUser(profile.id)
+                        setBlocked(true)
+                        if (isFriend && session?.user?.id) {
+                          await supabase
+                            .from('friendships')
+                            .delete()
+                            .or(`and(requester_id.eq.${session.user.id},addressee_id.eq.${profile.id}),and(requester_id.eq.${profile.id},addressee_id.eq.${session.user.id})`)
+                          setIsFriend(false)
+                        }
+                      }
+                    }}
+                    style={{
+                      padding: '6px 10px', fontSize: 12, borderRadius: 6,
+                      background: 'transparent',
+                      color: blocked ? '#c0521e' : 'rgba(253,248,240,0.8)',
+                      border: '1px solid rgba(253,248,240,0.3)', cursor: 'pointer',
+                    }}
+                  >
+                    {blocked ? 'Unblock' : 'Block'}
+                  </button>
+                </div>
+              </div>
+            )
           )}
         </div>
       </div>
+
+      {showReport && profile && (
+        <ReportModal
+          onClose={() => setShowReport(false)}
+          contentType="profile"
+          contentId={profile.id}
+          reportedUserId={profile.id}
+        />
+      )}
 
       {/* ── BADGES ── */}
       {badges.length > 0 && (

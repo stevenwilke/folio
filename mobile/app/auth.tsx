@@ -13,8 +13,12 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
+
+const TERMS_URL = 'https://exlibrisomnium.com/terms';
+const PRIVACY_URL = 'https://exlibrisomnium.com/privacy';
 
 type Mode = 'signin' | 'signup';
 
@@ -223,6 +227,18 @@ export default function AuthScreen() {
             {mode === 'signin' ? 'Sign up' : 'Sign in'}
           </Text>
         </Text>
+
+        <Text style={styles.legalNote}>
+          By {mode === 'signup' ? 'creating an account' : 'signing in'}, you agree to our{' '}
+          <Text style={styles.legalLink} onPress={() => WebBrowser.openBrowserAsync(TERMS_URL)}>
+            Terms
+          </Text>
+          {' '}and{' '}
+          <Text style={styles.legalLink} onPress={() => WebBrowser.openBrowserAsync(PRIVACY_URL)}>
+            Privacy Policy
+          </Text>
+          .
+        </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -351,5 +367,17 @@ const styles = StyleSheet.create({
   footerLink: {
     color: Colors.rust,
     fontWeight: '600',
+  },
+  legalNote: {
+    textAlign: 'center',
+    color: Colors.muted,
+    fontSize: 11,
+    marginTop: 16,
+    paddingHorizontal: 20,
+    lineHeight: 16,
+  },
+  legalLink: {
+    color: Colors.rust,
+    textDecorationLine: 'underline',
   },
 });

@@ -7,6 +7,7 @@ import MapView, { Marker, PROVIDER_DEFAULT, PROVIDER_GOOGLE } from 'react-native
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 import { haversineKm, formatDistance } from '../lib/geo';
+import { fetchBlockedUserIds } from '../lib/moderation';
 import BookDropCard from '../components/BookDropCard';
 import AddLibraryModal from '../components/AddLibraryModal';
 import ScanLibraryModal from '../components/ScanLibraryModal';
@@ -65,6 +66,7 @@ export default function NearbyScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     setUserId(user.id);
+    const blockedIds = await fetchBlockedUserIds(user.id);
     const [{ data: available }, { data: mine }] = await Promise.all([
       supabase.from('book_drops')
         .select('*, books(id, title, author, cover_image_url, genre), profiles:user_id(username)')
@@ -75,7 +77,8 @@ export default function NearbyScreen() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false }),
     ]);
-    setDrops(available || []);
+    const blockedSet = new Set(blockedIds);
+    setDrops((available || []).filter((d: any) => !blockedSet.has(d.user_id)));
     setMyDrops(mine || []);
   }
 

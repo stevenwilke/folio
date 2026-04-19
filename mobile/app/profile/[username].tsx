@@ -19,6 +19,8 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { BookCard, ReadStatus } from '../../components/BookCard';
+import ReportModal from '../../components/ReportModal';
+import { blockUser, unblockUser, isBlocked } from '../../lib/moderation';
 
 interface Profile {
   id: string;
@@ -68,6 +70,8 @@ export default function UserProfileScreen() {
   const [notFound, setNotFound] = useState(false);
   const [acting, setActing] = useState(false);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
+  const [showReport, setShowReport] = useState(false);
+  const [blocked, setBlocked] = useState(false);
 
   const isOwnProfile = !!myUserId && !!profile && myUserId === profile.id;
 
@@ -102,13 +106,17 @@ export default function UserProfileScreen() {
       .order('added_at', { ascending: false });
     setEntries((coll ?? []) as unknown as CollectionEntry[]);
 
-    // Friendship status (if viewing someone else)
+    // Friendship status + block status (if viewing someone else)
     if (user && user.id !== prof.id) {
-      const { data: fs } = await supabase
-        .from('friendships')
-        .select('id, requester_id, addressee_id, status')
-        .or(`and(requester_id.eq.${user.id},addressee_id.eq.${prof.id}),and(requester_id.eq.${prof.id},addressee_id.eq.${user.id})`)
-        .maybeSingle();
+      const [fsResult, blockedStatus] = await Promise.all([
+        supabase
+          .from('friendships')
+          .select('id, requester_id, addressee_id, status')
+          .or(`and(requester_id.eq.${user.id},addressee_id.eq.${prof.id}),and(requester_id.eq.${prof.id},addressee_id.eq.${user.id})`)
+          .maybeSingle(),
+        isBlocked(prof.id),
+      ]);
+      const fs = fsResult.data;
       if (fs) {
         setFriendshipId(fs.id);
         if (fs.status === 'accepted') setFriendship('accepted');
@@ -118,10 +126,41 @@ export default function UserProfileScreen() {
         setFriendshipId(null);
         setFriendship('none');
       }
+      setBlocked(blockedStatus);
     }
 
     setLoading(false);
   }, [username]);
+
+  async function handleBlockToggle() {
+    if (!profile) return;
+    if (blocked) {
+      Alert.alert('Unblock user?', `You'll start seeing ${profile.username}'s content again.`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Unblock', onPress: async () => {
+          await unblockUser(profile.id);
+          setBlocked(false);
+        }},
+      ]);
+    } else {
+      Alert.alert(
+        'Block user?',
+        `${profile.username} won't be able to see your content and you won't see theirs. You can unblock later from this screen.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Block', style: 'destructive', onPress: async () => {
+            await blockUser(profile.id);
+            setBlocked(true);
+            if (friendship === 'accepted' && friendshipId) {
+              await supabase.from('friendships').delete().eq('id', friendshipId);
+              setFriendship('none');
+              setFriendshipId(null);
+            }
+          }},
+        ]
+      );
+    }
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -311,6 +350,29 @@ export default function UserProfileScreen() {
         </View>
       )}
 
+      {!isOwnProfile && profile && (
+        <View style={styles.modActionRow}>
+          <TouchableOpacity style={styles.modBtn} onPress={() => setShowReport(true)}>
+            <Text style={styles.modBtnText}>Report</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.modBtn} onPress={handleBlockToggle}>
+            <Text style={[styles.modBtnText, blocked && { color: Colors.rust }]}>
+              {blocked ? 'Unblock' : 'Block'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {profile && (
+        <ReportModal
+          visible={showReport}
+          onClose={() => setShowReport(false)}
+          contentType="profile"
+          contentId={profile.id}
+          reportedUserId={profile.id}
+        />
+      )}
+
       <Text style={styles.sectionLabel}>LIBRARY</Text>
     </View>
   );
@@ -426,6 +488,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12, alignItems: 'center',
   },
   secondaryBtnText: { color: Colors.ink, fontSize: 14, fontWeight: '600' },
+  modActionRow: {
+    flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 12,
+  },
+  modBtn: {
+    flex: 1, paddingVertical: 8, alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.border, borderRadius: 8,
+  },
+  modBtnText: { color: Colors.muted, fontSize: 13, fontWeight: '500' },
   sectionLabel: {
     fontSize: 11, fontWeight: '700', color: Colors.muted,
     letterSpacing: 1, textTransform: 'uppercase',

@@ -633,7 +633,16 @@ export default function DiscoverScreen() {
 
       {/* NYT Best Sellers */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>NYT Best Sellers</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>NYT Best Sellers</Text>
+          <TouchableOpacity
+            onPress={() => router.push(`/nyt-list?list=${nytList}` as any)}
+            hitSlop={8}
+            style={styles.seeAllBtn}
+          >
+            <Text style={styles.seeAllText}>See all →</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.nytAttribution}>From The New York Times</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.nytTabRow}>
           {NYT_LISTS.map(l => (
@@ -660,6 +669,17 @@ export default function DiscoverScreen() {
             data={nytBooks}
             keyExtractor={(b, i) => b.olKey ?? String(i)}
             renderItem={({ item }) => <BookCard book={item} myKeys={myKeys} onPreview={setPreviewBook} />}
+            ListFooterComponent={
+              <TouchableOpacity
+                style={styles.seeMoreTile}
+                activeOpacity={0.75}
+                onPress={() => router.push(`/nyt-list?list=${nytList}` as any)}
+              >
+                <Text style={styles.seeMoreArrow}>→</Text>
+                <Text style={styles.seeMoreLabel}>See all</Text>
+                <Text style={styles.seeMoreSub}>{nytBooks.length} books</Text>
+              </TouchableOpacity>
+            }
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.row}
           />
@@ -886,6 +906,28 @@ const styles = StyleSheet.create({
   nytTabText:      { fontSize: 12, fontWeight: '600', color: Colors.ink, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
   nytTabTextActive:{ color: '#fff' },
   nytAttribution:  { fontSize: 11, color: Colors.muted, marginBottom: 10, paddingHorizontal: 16, fontStyle: 'italic', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  sectionHeaderRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingRight: 16,
+  },
+  seeAllBtn: { paddingHorizontal: 8, paddingVertical: 4 },
+  seeAllText: {
+    fontSize: 13, color: Colors.rust, fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  seeMoreTile: {
+    width: 120, height: 214, flexShrink: 0,
+    backgroundColor: Colors.card, borderRadius: 8,
+    borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+    padding: 8, gap: 4,
+  },
+  seeMoreArrow: { fontSize: 36, color: Colors.rust, fontWeight: '300' },
+  seeMoreLabel: {
+    fontSize: 14, fontWeight: '700', color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+  },
+  seeMoreSub: { fontSize: 11, color: Colors.muted },
 
   genreGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, marginBottom: 16 },
   genreChip:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.border },

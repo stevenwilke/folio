@@ -22,6 +22,7 @@ import * as Contacts from 'expo-contacts';
 import * as Clipboard from 'expo-clipboard';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
+import { fetchBlockedUserIds } from '../lib/moderation';
 
 // ── Types ──────────────────────────────────────────────────
 interface FriendProfile {
@@ -295,14 +296,18 @@ export default function FriendsScreen() {
     setSearching(true);
     setSearched(true);
 
-    const { data } = await supabase
+    const blockedIds = await fetchBlockedUserIds(uid);
+    const blockedSet = new Set(blockedIds);
+
+    const { data: raw } = await supabase
       .from('profiles')
       .select('id, username, avatar_url')
       .ilike('username', `%${q}%`)
       .neq('id', uid)
-      .limit(20);
+      .limit(30);
 
-    const ids = (data || []).map((p: any) => p.id);
+    const data = (raw || []).filter((p: any) => !blockedSet.has(p.id)).slice(0, 20);
+    const ids = data.map((p: any) => p.id);
     let statusMap: Record<string, any> = {};
     if (ids.length) {
       const { data: fs } = await supabase

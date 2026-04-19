@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { fetchBlockedUserIds } from '../lib/moderation'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -471,8 +472,11 @@ export default function Friends({ session, initialTab }) {
     const q = search.trim()
     if (!q) return
     setSearching(true); setSearched(true)
-    const { data } = await supabase.from('profiles').select('id, username, avatar_url').ilike('username', `%${q}%`).neq('id', session.user.id).limit(20)
-    const ids = (data || []).map(p => p.id)
+    const blockedIds = await fetchBlockedUserIds(session.user.id)
+    const blockedSet = new Set(blockedIds)
+    const { data: raw } = await supabase.from('profiles').select('id, username, avatar_url').ilike('username', `%${q}%`).neq('id', session.user.id).limit(30)
+    const data = (raw || []).filter(p => !blockedSet.has(p.id)).slice(0, 20)
+    const ids = data.map(p => p.id)
     let statusMap = {}
     if (ids.length) {
       const { data: fs } = await supabase.from('friendships').select('id, requester_id, addressee_id, status').or(ids.map(id => `and(requester_id.eq.${session.user.id},addressee_id.eq.${id}),and(requester_id.eq.${id},addressee_id.eq.${session.user.id})`).join(','))
@@ -481,7 +485,7 @@ export default function Friends({ session, initialTab }) {
         statusMap[otherId] = { friendshipId: f.id, status: f.status, iAmRequester: f.requester_id === session.user.id }
       }
     }
-    setSearchResults((data || []).map(p => ({ ...p, friendship: statusMap[p.id] || null })))
+    setSearchResults(data.map(p => ({ ...p, friendship: statusMap[p.id] || null })))
     setSearching(false)
   }
 

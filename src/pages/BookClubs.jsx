@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
+import ReportModal from '../components/ReportModal'
+import { fetchBlockedUserIds } from '../lib/moderation'
 import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
 
@@ -229,6 +231,7 @@ function ClubDetail({ club, session, onBack, onClubUpdate, onClubDeleted }) {
   const { theme } = useTheme()
   const s = makeStyles(theme)
   const [posts, setPosts] = useState([])
+  const [reportTarget, setReportTarget] = useState(null)
   const [members, setMembers] = useState(club.book_club_members || [])
   const [myProgress, setMyProgress] = useState(null)
   const [memberProgress, setMemberProgress] = useState([])
@@ -296,12 +299,16 @@ function ClubDetail({ club, session, onBack, onClubUpdate, onClubDeleted }) {
 
   async function fetchPosts() {
     setLoadingPosts(true)
-    const { data } = await supabase
-      .from('book_club_posts')
-      .select('*, profiles(username, avatar_url)')
-      .eq('club_id', club.id)
-      .order('created_at', { ascending: true })
-    setPosts(data || [])
+    const [{ data }, blockedIds] = await Promise.all([
+      supabase
+        .from('book_club_posts')
+        .select('*, profiles(username, avatar_url)')
+        .eq('club_id', club.id)
+        .order('created_at', { ascending: true }),
+      fetchBlockedUserIds(session.user.id),
+    ])
+    const blockedSet = new Set(blockedIds)
+    setPosts((data || []).filter(p => !blockedSet.has(p.user_id)))
     setLoadingPosts(false)
   }
 
@@ -616,8 +623,16 @@ function ClubDetail({ club, session, onBack, onClubUpdate, onClubDeleted }) {
                       }}>
                         {post.content}
                       </div>
-                      <div style={{ fontSize: 10, color: theme.textSubtle, paddingLeft: 2, paddingRight: 2 }}>
-                        {timeAgo(post.created_at)}
+                      <div style={{ fontSize: 10, color: theme.textSubtle, paddingLeft: 2, paddingRight: 2, display: 'flex', gap: 8 }}>
+                        <span>{timeAgo(post.created_at)}</span>
+                        {!isMe && (
+                          <button
+                            onClick={() => setReportTarget({ contentType: 'club_post', contentId: post.id, reportedUserId: post.user_id })}
+                            style={{ background: 'none', border: 'none', color: theme.textSubtle, cursor: 'pointer', padding: 0, fontSize: 10, textDecoration: 'underline' }}
+                          >
+                            Report
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1025,6 +1040,15 @@ function ClubDetail({ club, session, onBack, onClubUpdate, onClubDeleted }) {
           )}
         </div>
       </div>
+
+      {reportTarget && (
+        <ReportModal
+          onClose={() => setReportTarget(null)}
+          contentType={reportTarget.contentType}
+          contentId={reportTarget.contentId}
+          reportedUserId={reportTarget.reportedUserId}
+        />
+      )}
     </div>
   )
 }

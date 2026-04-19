@@ -321,6 +321,11 @@ export default function ProfileScreen() {
         <Text style={styles.friendsBtnArrow}>›</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity style={styles.menuBtn} onPress={() => router.push('/blocked-users' as any)}>
+        <Text style={styles.menuBtnText}>🚫  Blocked Users</Text>
+        <Text style={styles.friendsBtnArrow}>›</Text>
+      </TouchableOpacity>
+
       {/* ── Get Physical ── */}
       {ebooks.length > 0 && (
         <View style={styles.getPhysicalSection}>

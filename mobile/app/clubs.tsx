@@ -16,6 +16,8 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '../constants/colors';
 import { supabase } from '../lib/supabase';
+import { fetchBlockedUserIds } from '../lib/moderation';
+import ReportModal from '../components/ReportModal';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -466,6 +468,7 @@ function ClubDetail({
 
   // Discussion state
   const [posts, setPosts] = useState<Post[]>([]);
+  const [reportTarget, setReportTarget] = useState<{ contentType: any; contentId: string; reportedUserId: string } | null>(null);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [postText, setPostText] = useState('');
   const [posting, setPosting] = useState(false);
@@ -552,12 +555,16 @@ function ClubDetail({
 
   async function fetchPosts() {
     setLoadingPosts(true);
-    const { data } = await supabase
-      .from('book_club_posts')
-      .select('id, content, created_at, user_id, profiles(username, avatar_url)')
-      .eq('club_id', club.id)
-      .order('created_at', { ascending: true });
-    setPosts(data || []);
+    const [{ data }, blockedIds] = await Promise.all([
+      supabase
+        .from('book_club_posts')
+        .select('id, content, created_at, user_id, profiles(username, avatar_url)')
+        .eq('club_id', club.id)
+        .order('created_at', { ascending: true }),
+      userId ? fetchBlockedUserIds(userId) : Promise.resolve([]),
+    ]);
+    const blockedSet = new Set(blockedIds);
+    setPosts((data || []).filter((p: any) => !blockedSet.has(p.user_id)));
     setLoadingPosts(false);
   }
 
@@ -694,7 +701,17 @@ function ClubDetail({
                           {post.content}
                         </Text>
                       </View>
-                      <Text style={styles.bubbleTime}>{timeAgo(post.created_at)}</Text>
+                      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                        <Text style={styles.bubbleTime}>{timeAgo(post.created_at)}</Text>
+                        {!isMe && (
+                          <TouchableOpacity
+                            onPress={() => setReportTarget({ contentType: 'club_post', contentId: post.id, reportedUserId: post.user_id })}
+                            hitSlop={8}
+                          >
+                            <Text style={[styles.bubbleTime, { textDecorationLine: 'underline' }]}>Report</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
                     {isMe && <View style={{ width: 28 }} />}
                   </View>
@@ -981,6 +998,14 @@ function ClubDetail({
       <View style={{ flex: 1 }}>
         {activeTab === 'discussion' ? renderDiscussion() : renderMembers()}
       </View>
+
+      <ReportModal
+        visible={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        contentType={reportTarget?.contentType ?? 'club_post'}
+        contentId={reportTarget?.contentId ?? ''}
+        reportedUserId={reportTarget?.reportedUserId}
+      />
     </View>
   );
 }

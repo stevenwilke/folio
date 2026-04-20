@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
@@ -8,6 +9,8 @@ import { getCoverUrl } from '../lib/coverUrl'
 export default function Shelves({ session }) {
   const { theme } = useTheme()
   const isMobile = useIsMobile()
+  const [searchParams] = useSearchParams()
+  const deepLinkedShelfId = searchParams.get('shelf')
   const [shelves, setShelves]         = useState([])
   const [loading, setLoading]         = useState(true)
   const [showCreate, setShowCreate]   = useState(false)
@@ -24,7 +27,12 @@ export default function Shelves({ session }) {
       .select('*, shelf_books(count)')
       .eq('user_id', session.user.id)
       .order('created_at', { ascending: false })
-    setShelves(data || [])
+    const list = data || []
+    setShelves(list)
+    if (deepLinkedShelfId && !activeShelf) {
+      const match = list.find(s => s.id === deepLinkedShelfId)
+      if (match) setActiveShelf(match)
+    }
     setLoading(false)
   }
 

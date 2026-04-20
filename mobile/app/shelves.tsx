@@ -17,7 +17,7 @@ import {
   Pressable,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 
@@ -984,6 +984,7 @@ function ShelfDetail({
 
 export default function ShelvesScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ shelf?: string }>();
   const [shelves, setShelves] = useState<Shelf[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -991,15 +992,17 @@ export default function ShelvesScreen() {
   const [activeShelf, setActiveShelf] = useState<Shelf | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
-  async function fetchShelves(uid?: string) {
+  async function fetchShelves(uid?: string): Promise<Shelf[]> {
     const id = uid ?? userId;
-    if (!id) return;
+    if (!id) return [];
     const { data } = await supabase
       .from('shelves')
       .select('id, name, description, created_at, shelf_books(count)')
       .eq('user_id', id)
       .order('created_at', { ascending: false });
-    setShelves((data as any[]) || []);
+    const list = (data as any[]) || [];
+    setShelves(list);
+    return list;
   }
 
   useFocusEffect(
@@ -1010,12 +1013,18 @@ export default function ShelvesScreen() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session || cancelled) { setLoading(false); return; }
         setUserId(session.user.id);
-        await fetchShelves(session.user.id);
-        if (!cancelled) setLoading(false);
+        const list = await fetchShelves(session.user.id);
+        if (!cancelled) {
+          if (params.shelf) {
+            const match = list.find(s => s.id === params.shelf);
+            if (match) setActiveShelf(match);
+          }
+          setLoading(false);
+        }
       }
       init();
       return () => { cancelled = true; };
-    }, [])
+    }, [params.shelf])
   );
 
   async function onRefresh() {

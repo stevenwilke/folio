@@ -107,6 +107,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [activeBookId, setActiveBookId] = useState(bookId)
   const [book, setBook]                 = useState(null)
   const [entry, setEntry]               = useState(null)
+  const [myShelves, setMyShelves]       = useState([])
   const [reviews, setReviews]           = useState([])
   const [communityRating, setCommunityRating] = useState(null)
   const [loading, setLoading]           = useState(true)
@@ -344,18 +345,26 @@ export default function BookDetail({ bookId, session, onBack }) {
   }
 
   async function fetchEntry() {
-    const { data } = await supabase
-      .from('collection_entries')
-      .select('*')
-      .eq('book_id', activeBookId)
-      .eq('user_id', session.user.id)
-      .maybeSingle()
+    const [{ data }, { data: shelfRows }] = await Promise.all([
+      supabase
+        .from('collection_entries')
+        .select('*')
+        .eq('book_id', activeBookId)
+        .eq('user_id', session.user.id)
+        .maybeSingle(),
+      supabase
+        .from('shelf_books')
+        .select('shelves!inner(id, name, user_id)')
+        .eq('book_id', activeBookId)
+        .eq('shelves.user_id', session.user.id),
+    ])
     if (data) {
       setEntry(data)
       setRating(data.user_rating || 0)
       setReviewText(data.review_text || '')
       setCurrentPage(data.current_page || 0)
     }
+    setMyShelves((shelfRows || []).map(r => r.shelves).filter(Boolean))
   }
 
   async function fetchReviews() {
@@ -1155,6 +1164,34 @@ export default function BookDetail({ bookId, session, onBack }) {
                 </>
               )}
             </div>
+
+            {/* Shelves containing this book — lets user find its physical location */}
+            {myShelves.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <div style={s.ratingLabel}>On your shelves</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {myShelves.map(shelf => (
+                    <button
+                      key={shelf.id}
+                      onClick={() => navigate(`/shelves?shelf=${shelf.id}`)}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: 20,
+                        border: `1px solid ${theme.border}`,
+                        background: theme.bgCard,
+                        color: theme.text,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: "'DM Sans', sans-serif",
+                      }}
+                    >
+                      📚 {shelf.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Hero star rating — saves immediately on click */}
             <div style={{ marginTop: 16 }}>

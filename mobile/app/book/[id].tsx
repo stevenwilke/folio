@@ -118,6 +118,7 @@ export default function BookDetailScreen() {
   const router = useRouter();
   const [book, setBook] = useState<Book | null>(null);
   const [entry, setEntry] = useState<CollectionEntry | null>(null);
+  const [myShelves, setMyShelves] = useState<{ id: string; name: string }[]>([]);
   const [communityRating, setCommunityRating] = useState<number | null>(null);
   const [ratingDist, setRatingDist] = useState<{stars_1:number,stars_2:number,stars_3:number,stars_4:number,stars_5:number}|null>(null);
   const [friendStats, setFriendStats] = useState<any[] | null>(null);
@@ -290,7 +291,7 @@ export default function BookDetailScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [{ data: bookData }, { data: entryData }, { data: ratingsData }] =
+    const [{ data: bookData }, { data: entryData }, { data: ratingsData }, { data: shelfRows }] =
       await Promise.all([
         supabase.from('books').select('*').eq('id', id).single(),
         supabase
@@ -304,7 +305,13 @@ export default function BookDetailScreen() {
           .select('user_rating')
           .eq('book_id', id)
           .not('user_rating', 'is', null),
+        supabase
+          .from('shelf_books')
+          .select('shelves!inner(id, name, user_id)')
+          .eq('book_id', id)
+          .eq('shelves.user_id', user.id),
       ]);
+    setMyShelves(((shelfRows as any[]) || []).map(r => r.shelves).filter(Boolean));
 
     if (bookData) {
       setBook(bookData);
@@ -1401,6 +1408,25 @@ export default function BookDetailScreen() {
           </View>
         ) : null}
 
+        {/* Physical location — which user shelves contain this book */}
+        {myShelves.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>On your shelves</Text>
+            <View style={styles.shelfChipRow}>
+              {myShelves.map(s => (
+                <TouchableOpacity
+                  key={s.id}
+                  style={styles.shelfChip}
+                  onPress={() => router.push(`/shelves?shelf=${s.id}` as any)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.shelfChipText}>📚 {s.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
         {/* Book metadata */}
         {book.isbn_13 ? (
           <View style={styles.section}>
@@ -1898,6 +1924,20 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center' as const,
     backgroundColor: 'transparent',
+  },
+  shelfChipRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 },
+  shelfChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.card,
+  },
+  shelfChipText: {
+    fontSize: 13,
+    color: Colors.ink,
+    fontWeight: '600' as const,
   },
   bookshopBtnText: {
     color: Colors.rust,

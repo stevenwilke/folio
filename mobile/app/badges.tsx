@@ -10,7 +10,8 @@ import { Stack } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
-import BadgesSection from '../components/BadgesSection';
+import BadgesSection, { computeMobileBadges } from '../components/BadgesSection';
+import { computeLevelFromBadges } from '../lib/level';
 
 export default function BadgesScreen() {
   const [entries, setEntries] = useState<any[]>([]);
@@ -22,7 +23,7 @@ export default function BadgesScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [{ data: entriesData }, { count: fc }] = await Promise.all([
+    const [{ data: entriesData }, { count: fc }, { data: prof }] = await Promise.all([
       supabase
         .from('collection_entries')
         .select('*, books(*)')
@@ -32,10 +33,21 @@ export default function BadgesScreen() {
         .select('id', { count: 'exact', head: true })
         .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
         .eq('status', 'accepted'),
+      supabase.from('profiles').select('level, level_points').eq('id', user.id).maybeSingle(),
     ]);
 
-    setEntries(entriesData || []);
+    const rows = entriesData || [];
+    setEntries(rows);
     setFriendCount(fc || 0);
+
+    const badges = computeMobileBadges(rows, fc || 0);
+    const info = computeLevelFromBadges(badges);
+    if (prof?.level !== info.level || prof?.level_points !== info.points) {
+      await supabase
+        .from('profiles')
+        .update({ level: info.level, level_points: info.points })
+        .eq('id', user.id);
+    }
   }
 
   useFocusEffect(

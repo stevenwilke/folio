@@ -23,8 +23,10 @@ import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import Contact from './pages/Contact'
 import BottomTabBar from './components/BottomTabBar'
+import AnalyticsConsent from './components/AnalyticsConsent'
 import { useIsMobile } from './hooks/useIsMobile'
 import { useTheme } from './contexts/ThemeContext'
+import { loadClarity } from './lib/clarity'
 
 function AppRoutes({ session }) {
   const isMobile = useIsMobile()
@@ -142,6 +144,8 @@ export default function App() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    loadClarity()
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setLoading(false)
@@ -160,6 +164,7 @@ export default function App() {
     <ThemeProvider>
       <BrowserRouter>
         <AppRoutes session={session} />
+        <AnalyticsConsent />
       </BrowserRouter>
     </ThemeProvider>
   )

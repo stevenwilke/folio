@@ -6,6 +6,7 @@ import GlobalSearchModal from './GlobalSearchModal'
 import GoodreadsImportModal from './GoodreadsImportModal'
 import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
+import LevelAvatar from './LevelAvatar'
 
 const NAV_ITEMS = [
   { label: 'Library',     path: '/' },
@@ -64,11 +65,17 @@ export default function NavBar({ session, extra }) {
   useEffect(() => {
     if (!session) return
     if (session.user.id === _cachedId && _cachedProfile) return
-    supabase.from('profiles').select('username, avatar_url, is_admin')
+    supabase.from('profiles').select('username, avatar_url, is_admin, level, level_points')
       .eq('id', session.user.id).maybeSingle()
       .then(({ data }) => {
         _cachedId      = session.user.id
-        _cachedProfile = data ? { username: data.username, avatar_url: data.avatar_url, is_admin: !!data.is_admin } : null
+        _cachedProfile = data ? {
+          username: data.username,
+          avatar_url: data.avatar_url,
+          is_admin: !!data.is_admin,
+          level: data.level ?? 1,
+          level_points: data.level_points ?? 0,
+        } : null
         setProfile(_cachedProfile)
       })
   }, [session?.user?.id])
@@ -282,14 +289,22 @@ export default function NavBar({ session, extra }) {
             {profile?.username && (
               <div style={{ position: 'relative' }} ref={avatarRef}>
                 <button
-                  style={{ ...s.avatarBtn, ...(showAvatar || path.startsWith('/profile') ? s.avatarBtnActive : {}) }}
+                  style={{
+                    background: 'transparent', border: 'none', padding: 0, marginLeft: 6,
+                    cursor: 'pointer', flexShrink: 0, borderRadius: '50%',
+                    outline: (showAvatar || path.startsWith('/profile')) ? '2px solid #c0521e' : 'none',
+                    outlineOffset: 2,
+                  }}
                   onClick={() => setShowAvatar(v => !v)}
                   title={profile.username}
                 >
-                  {profile.avatar_url
-                    ? <img src={profile.avatar_url} alt={profile.username} style={s.avatarImg} />
-                    : <span style={s.avatarInitial}>{profile.username.charAt(0).toUpperCase()}</span>
-                  }
+                  <LevelAvatar
+                    src={profile.avatar_url}
+                    name={profile.username}
+                    size={28}
+                    level={profile.level}
+                    points={profile.level_points}
+                  />
                 </button>
                 {showAvatar && (
                   <AvatarDropdown
@@ -541,25 +556,6 @@ const s = {
     position: 'absolute', top: -5, right: -5, background: '#c0521e', color: 'white',
     borderRadius: '50%', width: 16, height: 16, fontSize: 9, fontWeight: 700,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-  },
-
-  // Avatar button
-  avatarBtn: {
-    width: 32, height: 32, borderRadius: '50%', border: '2px solid transparent',
-    background: 'linear-gradient(135deg, #c0521e, #b8860b)', cursor: 'pointer',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden', padding: 0, marginLeft: 6, flexShrink: 0,
-    transition: 'border-color 0.15s',
-  },
-  avatarBtnActive: {
-    borderColor: '#c0521e',
-  },
-  avatarImg: {
-    width: '100%', height: '100%', objectFit: 'cover',
-  },
-  avatarInitial: {
-    fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 13, color: 'white',
-    lineHeight: 1,
   },
 
   // Dropdown

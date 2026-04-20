@@ -23,6 +23,7 @@ import { supabase } from '../../lib/supabase';
 import { Colors } from '../../constants/colors';
 import { BookCard, ReadStatus } from '../../components/BookCard';
 import GoodreadsImportModal from '../../components/GoodreadsImportModal';
+import LevelAvatar from '../../components/LevelAvatar';
 
 interface Profile {
   id: string;
@@ -30,6 +31,8 @@ interface Profile {
   bio: string | null;
   avatar_url: string | null;
   banner_url: string | null;
+  level?: number | null;
+  level_points?: number | null;
 }
 
 interface CollectionEntry {
@@ -78,7 +81,7 @@ export default function ProfileScreen() {
     const [{ data: profileData }, { data: entriesData }] = await Promise.all([
       supabase
         .from('profiles')
-        .select('id, username, bio, avatar_url, banner_url')
+        .select('id, username, bio, avatar_url, banner_url, level, level_points')
         .eq('id', user.id)
         .single(),
       supabase
@@ -245,15 +248,19 @@ export default function ProfileScreen() {
 
         {/* Avatar + name sit on top of banner */}
         <View style={styles.heroContent}>
-          {profile?.avatar_url ? (
-            <TouchableOpacity activeOpacity={0.85} onPress={() => setZoomedImage(profile.avatar_url!)}>
-              <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
-            </TouchableOpacity>
-          ) : (
-            <View style={[styles.avatar, { backgroundColor: bgColor }]}>
-              <Text style={styles.avatarText}>{initial}</Text>
-            </View>
-          )}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            disabled={!profile?.avatar_url}
+            onPress={() => profile?.avatar_url && setZoomedImage(profile.avatar_url)}
+          >
+            <LevelAvatar
+              src={profile?.avatar_url}
+              name={username || '?'}
+              size={80}
+              level={profile?.level ?? 1}
+              points={profile?.level_points ?? 0}
+            />
+          </TouchableOpacity>
           <View style={styles.profileInfo}>
             <Text style={styles.username}>{username}</Text>
             {profile?.bio ? (

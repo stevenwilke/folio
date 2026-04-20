@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Modal, ScrollView } from 'react-native';
 import { Colors } from '../constants/colors';
 
 // ─── Badge definitions (mirrors src/lib/badges.js) ────────────────────────────
@@ -130,16 +130,29 @@ interface Props {
   friendCount: number;
 }
 
+export type ComputedBadge = BadgeDef & {
+  earned: boolean;
+  prog: { value: number; max: number; label: string };
+  pct: number;
+};
+
+export function computeMobileBadges(entries: any[], friendCount: number): ComputedBadge[] {
+  const data: BadgeData = { entries, friendCount };
+  return BADGE_DEFS.map(b => {
+    const earned = b.check(data);
+    const prog   = b.progress(data);
+    const pct    = Math.min(100, Math.round((prog.value / prog.max) * 100));
+    return { ...b, earned, prog, pct };
+  });
+}
+
 export default function BadgesSection({ entries, friendCount }: Props) {
-  const badges = useMemo(() => {
-    const data: BadgeData = { entries, friendCount };
-    return BADGE_DEFS.map(b => {
-      const earned = b.check(data);
-      const prog   = b.progress(data);
-      const pct    = Math.min(100, Math.round((prog.value / prog.max) * 100));
-      return { ...b, earned, prog, pct };
-    });
-  }, [entries, friendCount]);
+  const [selected, setSelected] = useState<ComputedBadge | null>(null);
+
+  const badges = useMemo<ComputedBadge[]>(
+    () => computeMobileBadges(entries, friendCount),
+    [entries, friendCount],
+  );
 
   const earnedCount = badges.filter(b => b.earned).length;
 
@@ -153,6 +166,8 @@ export default function BadgesSection({ entries, friendCount }: Props) {
         </View>
       </View>
 
+      <BadgeDetailModal badge={selected} onClose={() => setSelected(null)} />
+
       {CATEGORIES.map(cat => {
         const catBadges = badges.filter(b => b.category === cat);
         if (!catBadges.length) return null;
@@ -163,14 +178,17 @@ export default function BadgesSection({ entries, friendCount }: Props) {
               {catBadges.map(b => {
                 const ts = TIER[b.tier];
                 return (
-                  <View
+                  <Pressable
                     key={b.id}
-                    style={[
+                    onPress={() => setSelected(b)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${b.name} details`}
+                    style={({ pressed }) => [
                       styles.card,
                       {
                         backgroundColor: b.earned ? ts.bg : 'rgba(240,236,230,0.5)',
                         borderColor:     b.earned ? ts.border : '#e0d8d0',
-                        opacity:         b.earned ? 1 : 0.72,
+                        opacity:         pressed ? 0.6 : (b.earned ? 1 : 0.72),
                       },
                     ]}
                   >
@@ -191,7 +209,7 @@ export default function BadgesSection({ entries, friendCount }: Props) {
                         </Text>
                       </View>
                     )}
-                  </View>
+                  </Pressable>
                 );
               })}
             </View>
@@ -201,6 +219,176 @@ export default function BadgesSection({ entries, friendCount }: Props) {
     </View>
   );
 }
+
+// ─── Badge detail modal ──────────────────────────────────────────────────────
+
+function BadgeDetailModal({ badge, onClose }: { badge: ComputedBadge | null; onClose: () => void }) {
+  const visible = !!badge;
+  const ts = badge ? TIER[badge.tier] : TIER.bronze;
+  const overflow = badge && badge.earned ? Math.max(0, badge.prog.value - badge.prog.max) : 0;
+  const remaining = badge && !badge.earned ? Math.max(0, badge.prog.max - badge.prog.value) : 0;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <Pressable style={detailStyles.backdrop} onPress={onClose}>
+        <Pressable style={detailStyles.sheet} onPress={() => {}}>
+          {badge && (
+            <ScrollView contentContainerStyle={detailStyles.scroll} showsVerticalScrollIndicator={false}>
+              <Pressable onPress={onClose} style={detailStyles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
+                <Text style={detailStyles.closeTxt}>×</Text>
+              </Pressable>
+
+              <View style={[
+                detailStyles.emojiCircle,
+                { backgroundColor: badge.earned ? ts.bg : '#f0ece6', borderColor: badge.earned ? ts.border : '#e0d8d0' },
+              ]}>
+                <Text style={detailStyles.bigEmoji}>{badge.earned ? badge.emoji : '🔒'}</Text>
+              </View>
+
+              <Text style={detailStyles.title}>{badge.name}</Text>
+
+              <View style={detailStyles.pillRow}>
+                <View style={[detailStyles.pill, { backgroundColor: ts.bg, borderColor: ts.border }]}>
+                  <Text style={[detailStyles.pillTxt, { color: ts.text }]}>{ts.label}</Text>
+                </View>
+                <View style={[detailStyles.pill, { backgroundColor: '#f0ece6', borderColor: '#e0d8d0' }]}>
+                  <Text style={[detailStyles.pillTxt, { color: '#8a7f72' }]}>{badge.category}</Text>
+                </View>
+              </View>
+
+              <Text style={detailStyles.desc}>{badge.desc}</Text>
+
+              <View style={detailStyles.progressBlock}>
+                <Text style={detailStyles.progressHead}>
+                  {badge.earned ? 'Earned' : 'Progress'}
+                </Text>
+                <View style={detailStyles.progressBarBg}>
+                  <View style={[detailStyles.progressBarFill, { width: `${badge.pct}%` as any, backgroundColor: ts.text }]} />
+                </View>
+                <Text style={detailStyles.progressNums}>
+                  <Text style={{ fontWeight: '700', color: '#2c1a0e' }}>{badge.prog.value.toLocaleString()}</Text>
+                  <Text style={{ color: '#8a7f72' }}> / {badge.prog.max.toLocaleString()} {badge.prog.label}</Text>
+                </Text>
+                {badge.earned && overflow > 0 && (
+                  <Text style={[detailStyles.progressNote, { color: ts.text }]}>
+                    {overflow.toLocaleString()} beyond the requirement — nice.
+                  </Text>
+                )}
+                {!badge.earned && remaining > 0 && (
+                  <Text style={detailStyles.progressNote}>
+                    {remaining.toLocaleString()} more {badge.prog.label} to unlock.
+                  </Text>
+                )}
+              </View>
+            </ScrollView>
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const detailStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  sheet: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '90%',
+    overflow: 'hidden',
+  },
+  scroll: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 12,
+    padding: 6,
+    zIndex: 2,
+  },
+  closeTxt: { fontSize: 26, lineHeight: 26, color: '#8a7f72' },
+  emojiCircle: {
+    width: 96, height: 96, borderRadius: 48,
+    borderWidth: 2,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 12,
+  },
+  bigEmoji: { fontSize: 48, lineHeight: 56 },
+  title: {
+    fontFamily: 'Georgia',
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#2c1a0e',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  pillRow: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  pill: {
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  pillTxt: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  desc: {
+    fontSize: 14,
+    color: '#2c1a0e',
+    lineHeight: 20,
+    marginBottom: 18,
+    textAlign: 'center',
+  },
+  progressBlock: {
+    alignSelf: 'stretch',
+    backgroundColor: '#f7f4ef',
+    borderWidth: 1,
+    borderColor: '#e0d8d0',
+    borderRadius: 10,
+    padding: 14,
+  },
+  progressHead: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    color: '#8a7f72',
+    marginBottom: 8,
+  },
+  progressBarBg: {
+    height: 6,
+    backgroundColor: '#e0d8d0',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressBarFill: { height: '100%', borderRadius: 3 },
+  progressNums: { fontSize: 13 },
+  progressNote: { fontSize: 12, color: '#8a7f72', marginTop: 6 },
+});
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 

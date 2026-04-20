@@ -4,6 +4,7 @@ import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { computeBadges, BADGE_CATEGORIES, TIER_STYLES } from '../lib/badges'
+import { computeLevelFromBadges } from '../lib/level'
 import { computeReadingSpeeds, formatDuration } from '../lib/readingSpeed'
 import { computeChallengeProgress, generateMonthlyChallenges } from '../lib/challenges'
 import ChallengeCard from '../components/ChallengeCard'
@@ -11,6 +12,7 @@ import NewChallengeModal from '../components/NewChallengeModal'
 import ReadingHeatmap from '../components/ReadingHeatmap'
 import SparklineChart from '../components/SparklineChart'
 import ReadingWrapped from '../components/ReadingWrapped'
+import BadgeDetailModal from '../components/BadgeDetailModal'
 
 const CHART_COLORS = ['#c0521e', '#5a7a5a', '#b8860b', '#4a6b8a', '#7b4f3a', '#8b5e83', '#3d6b6b']
 
@@ -60,6 +62,7 @@ export default function Stats({ session }) {
   const [challenges, setChallenges]     = useState([])
   const [allSessions, setAllSessions]   = useState([])
   const [showNewChallenge, setShowNewChallenge] = useState(false)
+  const [selectedBadge, setSelectedBadge] = useState(null)
 
   useEffect(() => { fetchData() }, [])
 
@@ -67,15 +70,26 @@ export default function Stats({ session }) {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
 
-    const [{ data }, { count: fc }] = await Promise.all([
+    const [{ data }, { count: fc }, { data: prof }] = await Promise.all([
       supabase.from('collection_entries').select('*, books(*)').eq('user_id', session.user.id),
       supabase.from('friendships').select('id', { count: 'exact', head: true })
         .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`).eq('status', 'accepted'),
+      supabase.from('profiles').select('level, level_points').eq('id', session.user.id).maybeSingle(),
     ])
     const rows = data || []
     setEntries(rows)
     setFriendCount(fc || 0)
-    setBadges(computeBadges(rows, fc || 0))
+    const newBadges = computeBadges(rows, fc || 0)
+    setBadges(newBadges)
+
+    // Sync level + points to profile so other surfaces (NavBar, friend lists) can render the ring.
+    const info = computeLevelFromBadges(newBadges)
+    if (prof?.level !== info.level || prof?.level_points !== info.points) {
+      await supabase
+        .from('profiles')
+        .update({ level: info.level, level_points: info.points })
+        .eq('id', session.user.id)
+    }
 
     // Fetch valuations for all books in collection
     const bookIds = rows.map(e => e.book_id).filter(Boolean)
@@ -782,13 +796,19 @@ export default function Stats({ session }) {
                       {catBadges.map(b => {
                         const ts = TIER_STYLES[b.tier]
                         return (
-                          <div
+                          <button
                             key={b.id}
+                            type="button"
+                            onClick={() => setSelectedBadge(b)}
+                            aria-label={`${b.name} details`}
                             style={{
                               ...s.badgeCard,
                               background:  b.earned ? ts.bg      : theme.bgSubtle,
                               borderColor: b.earned ? ts.border  : theme.borderLight,
                               opacity:     b.earned ? 1 : 0.7,
+                              cursor: 'pointer',
+                              font: 'inherit',
+                              color: 'inherit',
                             }}
                           >
                             <div style={s.badgeEmoji}>{b.earned ? b.emoji : '🔒'}</div>
@@ -808,7 +828,7 @@ export default function Stats({ session }) {
                                 </div>
                               </div>
                             )}
-                          </div>
+                          </button>
                         )
                       })}
                     </div>
@@ -827,6 +847,7 @@ export default function Stats({ session }) {
           </>
         )}
       </div>
+      <BadgeDetailModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
     </div>
   )
 }

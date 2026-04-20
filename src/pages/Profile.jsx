@@ -18,6 +18,8 @@ const STATUS_COLORS = {
 }
 
 import { computeBadges, BADGE_CATEGORIES, TIER_STYLES } from '../lib/badges'
+import LevelAvatar from '../components/LevelAvatar'
+import { getLevelInfo } from '../lib/level'
 
 export default function Profile({ session }) {
   const { username } = useParams()
@@ -123,7 +125,7 @@ export default function Profile({ session }) {
 
     const { data: prof } = await supabase
       .from('profiles')
-      .select('id, username, bio, is_public, created_at, avatar_url, banner_url, accent_color, featured_book_id, paypal_handle, venmo_handle, books!profiles_featured_book_id_fkey(id, title, author, cover_image_url)')
+      .select('id, username, bio, is_public, created_at, avatar_url, banner_url, accent_color, featured_book_id, paypal_handle, venmo_handle, level, level_points, books!profiles_featured_book_id_fkey(id, title, author, cover_image_url)')
       .eq('username', username)
       .maybeSingle()
 
@@ -255,6 +257,7 @@ export default function Profile({ session }) {
   )
 
   const isPrivate = !profile.is_public && !isOwnProfile
+  const lvlInfo = getLevelInfo(profile.level || 1, profile.level_points || 0)
 
   return (
     <div style={s.page}>
@@ -302,12 +305,15 @@ export default function Profile({ session }) {
         )}
         <div style={s.heroInner}>
 
-          {/* Avatar */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
-            {profile.avatar_url
-              ? <img src={profile.avatar_url} alt={profile.username} style={s.heroAvatar} />
-              : <div style={s.heroAvatarFallback}>{profile.username.charAt(0).toUpperCase()}</div>
-            }
+            <LevelAvatar
+              src={profile.avatar_url}
+              name={profile.username}
+              size={88}
+              level={profile.level}
+              points={profile.level_points}
+              title={`Level ${lvlInfo.level} · ${lvlInfo.title}`}
+            />
             {isOwnProfile && (
               <>
                 <button
@@ -1508,9 +1514,7 @@ function makeStyles(theme, accentColor = '#c0521e', isMobile = false) {
     // Hero — always dark, hero text stays light regardless of theme
     hero:        { background: theme.heroBg, borderBottom: '1px solid rgba(255,255,255,0.06)', position: 'relative', overflow: 'hidden' },
     heroInner:   { maxWidth: 960, margin: '0 auto', padding: isMobile ? '24px 16px' : '36px 32px', display: 'flex', alignItems: isMobile ? 'center' : 'flex-start', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 16 : 24, textAlign: isMobile ? 'center' : 'left' },
-    heroAvatar:  { width: 88, height: 88, borderRadius: '50%', objectFit: 'cover', display: 'block', border: '3px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' },
-    heroAvatarFallback: { width: 88, height: 88, borderRadius: '50%', background: `linear-gradient(135deg, ${accentColor}, #b8860b)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Georgia, serif', fontSize: 34, color: 'white', fontWeight: 700, border: '3px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)', flexShrink: 0 },
-    avatarEditBtn: { position: 'absolute', bottom: 2, right: 2, width: 24, height: 24, borderRadius: '50%', background: accentColor, border: '2px solid #1e140a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', padding: 0 },
+    avatarEditBtn: { position: 'absolute', top: 2, right: 2, width: 24, height: 24, borderRadius: '50%', background: accentColor, border: '2px solid #1e140a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', padding: 0, zIndex: 2 },
     heroInfo:    { flex: 1, paddingTop: 4 },
     heroName:    { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, color: '#fdf8f0', marginBottom: 6, letterSpacing: '-0.3px' },
     heroBio:     { fontSize: 14, color: 'rgba(253,248,240,0.65)', lineHeight: 1.55, marginBottom: 10, maxWidth: 480 },

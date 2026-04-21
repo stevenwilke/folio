@@ -47,6 +47,7 @@
       "expo-secure-store",
       "expo-apple-authentication",
       "@bacons/apple-targets",
+      "./plugins/withWatchBridge",
       [
         "expo-camera",
         {

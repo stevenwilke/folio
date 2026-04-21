@@ -1,0 +1,14 @@
+{
+  "type": "watch",
+  "name": "Ex Libris Watch",
+  "icon": "../../assets/icon.png",
+  "deploymentTarget": "10.0",
+  "entitlements": {
+    "com.apple.security.application-groups": [
+      "group.com.exlibris.app"
+    ]
+  },
+  "colors": {
+    "AccentColor": "#c0521e"
+  }
+}

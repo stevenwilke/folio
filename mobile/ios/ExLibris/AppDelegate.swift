@@ -21,6 +21,10 @@ public class AppDelegate: ExpoAppDelegate {
     reactNativeFactory = factory
     bindReactNativeFactory(factory)
 
+    // Apple Watch reading-timer bridge — listens for completed sessions from
+    // the watch and pushes the current reading list back. See WatchBridge.swift.
+    WatchBridge.shared.activate()
+
 #if os(iOS) || os(tvOS)
     window = UIWindow(frame: UIScreen.main.bounds)
     factory.startReactNative(

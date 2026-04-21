@@ -14,6 +14,7 @@
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		D5F280A001AFF3510DB7A57F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 81EEB4B95FC505412D7D1087 /* PrivacyInfo.xcprivacy */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
+		F11748452D0E000000000001 /* WatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748462D0E000000000002 /* WatchBridge.swift */; };
 		XX09E725E164C2787243F7XX /* widget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = XXD26DB380DB6D7349BA89XX /* widget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		XX12B55A1EDABF083C3B51XX /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = XX470101BAEB8E0BBC8B0DXX /* WidgetKit.framework */; };
 		XX1A6800511A685AB346D2XX /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = XXA12889081EB894481655XX /* AppIntents.framework */; };
@@ -58,6 +59,7 @@
 		C279F38A2C51C95AA2184710 /* Pods-ExLibris.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ExLibris.release.xcconfig"; path = "Target Support Files/Pods-ExLibris/Pods-ExLibris.release.xcconfig"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = undefined; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = ExLibris/AppDelegate.swift; sourceTree = "<group>"; };
+		F11748462D0E000000000002 /* WatchBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = WatchBridge.swift; path = ExLibris/WatchBridge.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* ExLibris-Bridging-Header.h */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.h; name = "ExLibris-Bridging-Header.h"; path = "ExLibris/ExLibris-Bridging-Header.h"; sourceTree = "<group>"; };
 		XX470101BAEB8E0BBC8B0DXX /* WidgetKit.framework */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = undefined; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		XX4DFF38D47332D6BF0183XX /* SwiftUI.framework */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = undefined; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
@@ -119,6 +121,7 @@
 			isa = PBXGroup;
 			children = (
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
+				F11748462D0E000000000002 /* WatchBridge.swift */,
 				F11748442D0722820044C1D9 /* ExLibris-Bridging-Header.h */,
 				BB2F792B24A3F905000567C9 /* Supporting */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
@@ -463,6 +466,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
+				F11748452D0E000000000001 /* WatchBridge.swift in Sources */,
 				49C9BA7E8F200AA9A3347278 /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

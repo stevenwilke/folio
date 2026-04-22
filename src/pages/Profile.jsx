@@ -267,7 +267,9 @@ export default function Profile({ session }) {
       <div style={{
         ...s.hero,
         backgroundImage: bannerUrl
-          ? `linear-gradient(160deg, rgba(10,6,2,0.72) 0%, rgba(26,16,6,0.60) 55%, ${accentColor}44 100%), url(${bannerUrl})`
+          // Stronger top→bottom darkening behind the text so name/bio/stats
+          // stay readable on busy banner photos.
+          ? `linear-gradient(180deg, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.85) 100%), url(${bannerUrl})`
           : `linear-gradient(160deg, #1e140a 0%, #2e1f10 60%, ${accentColor}22 100%)`,
         backgroundSize: bannerUrl ? 'cover' : undefined,
         backgroundPosition: bannerUrl ? 'center 30%' : undefined,
@@ -1165,23 +1167,57 @@ const TIER_CARD = {
 
 function BadgesSection({ badges, theme, isMobile }) {
   const [showLocked, setShowLocked] = useState(false)
+  // On mobile, collapse the earned badges into a compact emoji strip by
+  // default — the full grid eats too much vertical space on a phone.
+  const [expandEarned, setExpandEarned] = useState(!isMobile)
   const earned = badges.filter(b => b.earned)
   const locked = badges.filter(b => !b.earned)
 
   return (
     <div style={{ background: theme.bg, borderTop: `1px solid ${theme.border}`, borderBottom: `1px solid ${theme.border}` }}>
-      <div style={{ maxWidth: 960, margin: '0 auto', padding: isMobile ? '24px 16px' : '32px 32px' }}>
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: isMobile ? '20px 16px' : '32px 32px' }}>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: isMobile ? 14 : 24, flexWrap: 'wrap' }}>
           <span style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: theme.text }}>🏅 Badges</span>
           <span style={{ fontSize: 12, color: theme.textSubtle, background: theme.bgSubtle, border: `1px solid ${theme.border}`, padding: '2px 10px', borderRadius: 20 }}>
             {earned.length} / {badges.length} earned
           </span>
+          {isMobile && earned.length > 0 && (
+            <button
+              onClick={() => setExpandEarned(v => !v)}
+              style={{ marginLeft: 'auto', background: 'none', border: `1px solid ${theme.border}`, borderRadius: 8, padding: '4px 10px', fontSize: 11, color: theme.textSubtle, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+            >
+              {expandEarned ? 'Compact' : 'Expand'}
+            </button>
+          )}
         </div>
 
+        {/* Compact mode (mobile default): emoji-only chips in a wrap row */}
+        {isMobile && !expandEarned && earned.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {earned.map(b => {
+              const t = TIER_CARD[b.tier] || TIER_CARD.bronze
+              return (
+                <div
+                  key={b.id}
+                  title={`${b.name} — ${b.desc}`}
+                  style={{
+                    width: 38, height: 38, borderRadius: '50%',
+                    background: t.ringBg, border: `1.5px solid ${t.ringBorder}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 18, lineHeight: 1,
+                  }}
+                >
+                  {b.emoji}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
         {/* Earned — prominent grid */}
-        {earned.length === 0 ? (
+        {(!isMobile || expandEarned) && (earned.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '20px 0 28px', color: theme.textSubtle, fontSize: 14 }}>
             No badges yet — keep reading to earn your first one!
           </div>
@@ -1216,7 +1252,7 @@ function BadgesSection({ badges, theme, isMobile }) {
               )
             })}
           </div>
-        )}
+        ))}
 
         {/* Locked — collapsed by default */}
         {locked.length > 0 && (
@@ -1519,10 +1555,10 @@ function makeStyles(theme, accentColor = '#c0521e', isMobile = false) {
     heroInner:   { maxWidth: 960, margin: '0 auto', padding: isMobile ? '24px 16px' : '36px 32px', display: 'flex', alignItems: isMobile ? 'center' : 'flex-start', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 16 : 24, textAlign: isMobile ? 'center' : 'left' },
     avatarEditBtn: { position: 'absolute', top: 2, right: 2, width: 24, height: 24, borderRadius: '50%', background: accentColor, border: '2px solid #1e140a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', padding: 0, zIndex: 2 },
     heroInfo:    { flex: 1, paddingTop: 4 },
-    heroName:    { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, color: '#fdf8f0', marginBottom: 6, letterSpacing: '-0.3px' },
-    heroBio:     { fontSize: 14, color: 'rgba(253,248,240,0.65)', lineHeight: 1.55, marginBottom: 10, maxWidth: 480 },
+    heroName:    { fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 700, color: '#fdf8f0', marginBottom: 6, letterSpacing: '-0.3px', textShadow: '0 2px 8px rgba(0,0,0,0.6)' },
+    heroBio:     { fontSize: 14, color: 'rgba(253,248,240,0.92)', lineHeight: 1.55, marginBottom: 10, maxWidth: 480, textShadow: '0 1px 4px rgba(0,0,0,0.6)' },
     heroStatRow: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginBottom: 8, justifyContent: isMobile ? 'center' : 'flex-start' },
-    heroStat:    { fontSize: 13, color: 'rgba(253,248,240,0.75)' },
+    heroStat:    { fontSize: 13, color: 'rgba(253,248,240,0.92)', textShadow: '0 1px 4px rgba(0,0,0,0.55)' },
     heroDot:     { fontSize: 13, color: 'rgba(253,248,240,0.3)' },
     heroMeta:        { fontSize: 12, color: 'rgba(253,248,240,0.35)' },
     heroFriendsLink: { fontSize: 12, color: 'rgba(253,248,240,0.5)', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
@@ -1551,11 +1587,17 @@ function makeStyles(theme, accentColor = '#c0521e', isMobile = false) {
     section:     { marginBottom: 40 },
     emptyShelf:  { color: theme.textSubtle, fontSize: 14, padding: '60px 0', textAlign: 'center' },
 
-    // Shelf
-    shelf:       { display: 'flex', gap: 18, overflowX: 'auto', paddingBottom: 12, scrollbarWidth: 'thin', scrollbarColor: `${theme.border} transparent` },
-    shelfCard:   { flexShrink: 0, width: 120, transition: 'transform 0.15s' },
+    // Shelf — desktop is a horizontal scroll row; mobile wraps to a grid so
+    // visitors don't have to figure out that they need to swipe to see more
+    // than the first few books.
+    shelf: isMobile
+      ? { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, paddingBottom: 12 }
+      : { display: 'flex', gap: 18, overflowX: 'auto', paddingBottom: 12, scrollbarWidth: 'thin', scrollbarColor: `${theme.border} transparent` },
+    shelfCard:   { flexShrink: 0, width: isMobile ? '100%' : 120, transition: 'transform 0.15s' },
     shelfCardHover: { transform: 'translateY(-3px)' },
-    shelfCoverWrap: { width: 120, height: 180, borderRadius: 6, overflow: 'hidden', boxShadow: theme.shadowCard },
+    shelfCoverWrap: isMobile
+      ? { width: '100%', aspectRatio: '2/3', borderRadius: 6, overflow: 'hidden', boxShadow: theme.shadowCard }
+      : { width: 120, height: 180, borderRadius: 6, overflow: 'hidden', boxShadow: theme.shadowCard },
     shelfCoverImg:  { width: '100%', height: '100%', objectFit: 'cover' },
     shelfTitle:  { fontSize: 12, fontWeight: 600, color: theme.text, lineHeight: 1.3, marginTop: 2 },
     shelfAuthor: { fontSize: 11, color: theme.textSubtle, marginTop: 2 },

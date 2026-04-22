@@ -436,7 +436,7 @@ export default function ProfileScreen() {
       {entries.some(e => (e as any).read_status === 'want') && (
         <TouchableOpacity
           style={{ marginHorizontal: 16, marginBottom: 12, paddingVertical: 8, paddingHorizontal: 14, borderWidth: 1, borderColor: Colors.gold, borderRadius: 8, alignSelf: 'flex-start' }}
-          onPress={() => Share.share({ message: `Check out my reading wishlist on Ex Libris! https://exlibrisomnium.com/profile/${profile?.username}#wishlist` })}
+          onPress={() => Share.share({ message: `Check out my reading wishlist on Ex Libris! https://exlibrisomnium.com/share/${profile?.username}/wishlist` })}
           activeOpacity={0.7}
         >
           <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.gold }}>🔗 Share Wishlist</Text>

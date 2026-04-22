@@ -12,6 +12,7 @@ import Discover from './pages/Discover'
 import Friends from './pages/Friends'
 import Stats from './pages/Stats'
 import WrappedList from './pages/WrappedList'
+import SharedWishlist from './pages/SharedWishlist'
 import Shelves from './pages/Shelves'
 import BookClubs from './pages/BookClubs'
 import Author from './pages/Author'
@@ -43,6 +44,10 @@ function AppRoutes({ session }) {
           <Route
             path="/profile/:username"
             element={<Profile session={session} />}
+          />
+          <Route
+            path="/share/:username/wishlist"
+            element={<SharedWishlist session={session} />}
           />
           <Route
             path="/feed"
@@ -112,7 +117,10 @@ function AppRoutes({ session }) {
         </Routes>
       </div>
       {session && <BottomTabBar session={session} />}
-      {!isMobile && session && <SiteFooter />}
+      {/* Show footer everywhere except where the BottomTabBar is in the way
+          (mobile + signed in). That covers logged-out mobile visitors landing
+          on share pages and any desktop visitor. */}
+      {!(isMobile && session) && <SiteFooter />}
     </>
   )
 }

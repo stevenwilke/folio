@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 // BadgesSection moved to dedicated /badges screen
@@ -31,7 +32,7 @@ interface StatsData {
   booksByYear: { year: number; count: number }[];
   topGenres: { genre: string; count: number }[];
   mostReadAuthor: { name: string; count: number } | null;
-  longestBookRead: { title: string; pages: number } | null;
+  longestBookRead: { id: string; title: string; pages: number } | null;
   currentYearCount: number;
   readingSpeeds: ReadingSpeeds | null;
   totalReadingMinutes: number;
@@ -156,18 +157,28 @@ const sec = StyleSheet.create({
 
 // ---- Bar chart row ----
 
-function BarRow({ year, count, maxCount }: { year: number; count: number; maxCount: number }) {
+function BarRow({
+  year, count, maxCount, onPress,
+}: { year: number; count: number; maxCount: number; onPress?: () => void }) {
   const pct = maxCount > 0 ? count / maxCount : 0;
-  return (
-    <View style={bar.row}>
+  const inner = (
+    <>
       <Text style={bar.yearLabel}>{year}</Text>
       <View style={bar.track}>
         <View style={[bar.fill, { flex: pct }]} />
         <View style={{ flex: 1 - pct }} />
       </View>
       <Text style={bar.count}>{count}</Text>
-    </View>
+    </>
   );
+  if (onPress) {
+    return (
+      <TouchableOpacity style={bar.row} onPress={onPress} activeOpacity={0.7} accessibilityRole="button">
+        {inner}
+      </TouchableOpacity>
+    );
+  }
+  return <View style={bar.row}>{inner}</View>;
 }
 const bar = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 10 },
@@ -192,16 +203,35 @@ const bar = StyleSheet.create({
 
 // ---- Highlight row ----
 
-function Highlight({ icon, label, value }: { icon: string; label: string; value: string }) {
-  return (
-    <View style={hl.row}>
+function Highlight({
+  icon,
+  label,
+  value,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  onPress?: () => void;
+}) {
+  const inner = (
+    <>
       <Text style={hl.icon}>{icon}</Text>
       <View style={hl.info}>
         <Text style={hl.label}>{label}</Text>
         <Text style={hl.value}>{value}</Text>
       </View>
-    </View>
+      {onPress && <Text style={hl.chev}>›</Text>}
+    </>
   );
+  if (onPress) {
+    return (
+      <TouchableOpacity style={hl.row} onPress={onPress} activeOpacity={0.7} accessibilityRole="button">
+        {inner}
+      </TouchableOpacity>
+    );
+  }
+  return <View style={hl.row}>{inner}</View>;
 }
 const hl = StyleSheet.create({
   row: {
@@ -230,11 +260,17 @@ const hl = StyleSheet.create({
     color: Colors.ink,
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
   },
+  chev: {
+    fontSize: 22,
+    color: Colors.muted,
+    paddingLeft: 4,
+  },
 });
 
 // ---- Main screen ----
 
 export default function StatsScreen() {
+  const router = useRouter();
   const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -321,7 +357,7 @@ export default function StatsScreen() {
     withPages.sort((a, b) => (b.books?.pages ?? 0) - (a.books?.pages ?? 0));
     const longestBookRead =
       withPages.length > 0
-        ? { title: withPages[0].books.title, pages: withPages[0].books.pages }
+        ? { id: withPages[0].books.id, title: withPages[0].books.title, pages: withPages[0].books.pages }
         : null;
 
     // Current year progress — exclude imports since their dates aren't real.
@@ -505,7 +541,13 @@ export default function StatsScreen() {
       {stats.booksByYear.length > 0 && (
         <Section title="Books Read Per Year">
           {stats.booksByYear.map((b) => (
-            <BarRow key={b.year} year={b.year} count={b.count} maxCount={maxBarCount} />
+            <BarRow
+              key={b.year}
+              year={b.year}
+              count={b.count}
+              maxCount={maxBarCount}
+              onPress={() => router.push({ pathname: '/wrapped-list', params: { type: 'year', value: String(b.year), title: `Books read in ${b.year}` } } as any)}
+            />
           ))}
         </Section>
       )}
@@ -515,12 +557,18 @@ export default function StatsScreen() {
         <Section title="Top Genres">
           <View style={styles.genreRow}>
             {stats.topGenres.map((g) => (
-              <View key={g.genre} style={styles.genreChip}>
+              <TouchableOpacity
+                key={g.genre}
+                style={styles.genreChip}
+                onPress={() => router.push({ pathname: '/wrapped-list', params: { type: 'genre', value: g.genre, title: `${g.genre} books` } } as any)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+              >
                 <Text style={styles.genreText}>
                   {g.genre}
                   <Text style={styles.genreCount}>  {g.count}</Text>
                 </Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </Section>
@@ -645,12 +693,17 @@ export default function StatsScreen() {
           icon="📅"
           label={`${currentYear} Progress`}
           value={`${stats.currentYearCount} book${stats.currentYearCount !== 1 ? 's' : ''} read`}
+          onPress={stats.currentYearCount > 0
+            ? () => router.push({ pathname: '/wrapped-list', params: { type: 'year', value: String(currentYear), title: `Books read in ${currentYear}` } } as any)
+            : undefined
+          }
         />
         {stats.mostReadAuthor && (
           <Highlight
             icon="✍️"
             label="Most-read Author"
             value={`${stats.mostReadAuthor.name} (${stats.mostReadAuthor.count} book${stats.mostReadAuthor.count !== 1 ? 's' : ''})`}
+            onPress={() => router.push({ pathname: '/wrapped-list', params: { type: 'author', value: stats.mostReadAuthor!.name, title: `By ${stats.mostReadAuthor!.name}` } } as any)}
           />
         )}
         {stats.longestBookRead && (
@@ -658,6 +711,7 @@ export default function StatsScreen() {
             icon="📖"
             label="Longest Book Read"
             value={`${stats.longestBookRead.title} — ${stats.longestBookRead.pages.toLocaleString()} pages`}
+            onPress={() => router.push(`/book/${stats.longestBookRead!.id}` as any)}
           />
         )}
       </Section>

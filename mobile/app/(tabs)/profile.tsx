@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -125,6 +125,20 @@ export default function ProfileScreen() {
       fetchProfile().finally(() => { setLoading(false); initialLoadDone.current = true; });
     }, [])
   );
+
+  // If the screen mounts before Supabase has finished restoring the auth
+  // session from secure storage, the initial fetchProfile() bails on the
+  // null user and the screen sits blank — useFocusEffect won't re-run while
+  // we stay on the same tab. Subscribe to auth state changes so we refetch
+  // the moment the user becomes available.
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        fetchProfile().finally(() => { setLoading(false); initialLoadDone.current = true; });
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   async function onRefresh() {
     setRefreshing(true);

@@ -1,5 +1,6 @@
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import { Colors } from '../constants/colors';
 
 interface Entry {
@@ -24,6 +25,8 @@ interface Props {
 }
 
 export default function ReadingWrapped({ entries, sessions, year }: Props) {
+  const router = useRouter();
+
   const readEntries = entries.filter(e => {
     if (e.from_import) return false;
     if (!e.has_read && e.read_status !== 'read') return false;
@@ -83,18 +86,28 @@ export default function ReadingWrapped({ entries, sessions, year }: Props) {
 
       <View style={styles.detailRow}>
         {favGenre && (
-          <View style={styles.detailCard}>
+          <Pressable
+            style={({ pressed }) => [styles.detailCard, pressed && { opacity: 0.6 }]}
+            onPress={() => router.push({ pathname: '/wrapped-list', params: { type: 'genre', value: favGenre[0], year: String(year) } } as any)}
+            accessibilityRole="button"
+            accessibilityLabel={`See all ${favGenre[1]} ${favGenre[0]} books`}
+          >
             <Text style={styles.detailLabel}>Top Genre</Text>
             <Text style={styles.detailValue}>{favGenre[0]}</Text>
-            <Text style={styles.detailSub}>{favGenre[1]} books</Text>
-          </View>
+            <Text style={styles.detailSub}>{favGenre[1]} books ›</Text>
+          </Pressable>
         )}
         {favAuthor && (
-          <View style={styles.detailCard}>
+          <Pressable
+            style={({ pressed }) => [styles.detailCard, pressed && { opacity: 0.6 }]}
+            onPress={() => router.push({ pathname: '/wrapped-list', params: { type: 'author', value: favAuthor[0], year: String(year) } } as any)}
+            accessibilityRole="button"
+            accessibilityLabel={`See all ${favAuthor[1]} books by ${favAuthor[0]}`}
+          >
             <Text style={styles.detailLabel}>Top Author</Text>
             <Text style={styles.detailValue} numberOfLines={1}>{favAuthor[0]}</Text>
-            <Text style={styles.detailSub}>{favAuthor[1]} books</Text>
-          </View>
+            <Text style={styles.detailSub}>{favAuthor[1]} books ›</Text>
+          </Pressable>
         )}
       </View>
     </View>

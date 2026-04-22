@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
@@ -52,6 +53,7 @@ function computeStreaks(input) {
 export default function Stats({ session }) {
   const { theme } = useTheme()
   const isMobile = useIsMobile()
+  const navigate = useNavigate()
   const [entries,      setEntries]      = useState([])
   const [valuations,   setValuations]   = useState([])
   const [loading,      setLoading]      = useState(true)
@@ -253,7 +255,7 @@ export default function Stats({ session }) {
     const [y, m] = ym.split('-')
     const label = new Date(Number(y), Number(m) - 1, 1)
       .toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-    topMonthLabel = { label, count }
+    topMonthLabel = { label, count, key: ym }
   }
 
   // Reading streak (consecutive months with ≥1 book finished, counting backwards from now)
@@ -663,7 +665,14 @@ export default function Stats({ session }) {
                       const count = perYear[year]
                       const pct   = Math.round((count / maxPerYear) * 100)
                       return (
-                        <div key={year} style={s.barRow}>
+                        <div
+                          key={year}
+                          style={{ ...s.barRow, cursor: 'pointer' }}
+                          onClick={() => navigate(`/wrapped-list?type=year&value=${year}&title=${encodeURIComponent('Books read in ' + year)}`)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={e => { if (e.key === 'Enter') navigate(`/wrapped-list?type=year&value=${year}&title=${encodeURIComponent('Books read in ' + year)}`) }}
+                        >
                           <div style={s.barLabel}>{year}</div>
                           <div style={s.barTrack}>
                             <div style={{ ...s.barFill, width: `${pct}%` }} />
@@ -686,7 +695,14 @@ export default function Stats({ session }) {
                     <DonutChart slices={genreSlices} theme={theme} />
                     <div style={s.legendList}>
                       {genreSlices.map(([genre, count], i) => (
-                        <div key={genre} style={s.legendRow}>
+                        <div
+                          key={genre}
+                          style={{ ...s.legendRow, cursor: 'pointer' }}
+                          onClick={() => navigate(`/wrapped-list?type=genre&value=${encodeURIComponent(genre)}&title=${encodeURIComponent(genre + ' books')}`)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={e => { if (e.key === 'Enter') navigate(`/wrapped-list?type=genre&value=${encodeURIComponent(genre)}`) }}
+                        >
                           <div style={{ ...s.legendDot, background: CHART_COLORS[i % CHART_COLORS.length] }} />
                           <span style={s.legendGenre}>{genre}</span>
                           <span style={s.legendCount}>{count}</span>
@@ -764,6 +780,7 @@ export default function Stats({ session }) {
                   sub={topAuthor ? `${topAuthor[1]} book${topAuthor[1] !== 1 ? 's' : ''}` : undefined}
                   theme={theme}
                   s={s}
+                  onClick={topAuthor ? () => navigate(`/author/${encodeURIComponent(topAuthor[0])}`) : undefined}
                 />
 
                 <HighlightTile
@@ -773,6 +790,10 @@ export default function Stats({ session }) {
                   sub={longestEntry?.books?.pages ? `${longestEntry.books.pages.toLocaleString()} pages` : undefined}
                   theme={theme}
                   s={s}
+                  onClick={longestEntry?.books?.author
+                    ? () => navigate(`/author/${encodeURIComponent(longestEntry.books.author)}`)
+                    : undefined
+                  }
                 />
 
                 <HighlightTile
@@ -782,6 +803,10 @@ export default function Stats({ session }) {
                   sub={topMonthLabel ? `${topMonthLabel.count} book${topMonthLabel.count !== 1 ? 's' : ''} finished` : undefined}
                   theme={theme}
                   s={s}
+                  onClick={topMonthLabel
+                    ? () => navigate(`/wrapped-list?type=month&value=${topMonthLabel.key}&title=${encodeURIComponent('Books read in ' + topMonthLabel.label)}`)
+                    : undefined
+                  }
                 />
 
                 <HighlightTile
@@ -966,9 +991,18 @@ function DonutChart({ slices, theme }) {
 }
 
 // ── HIGHLIGHT TILE ──
-function HighlightTile({ icon, label, value, sub, s }) {
+function HighlightTile({ icon, label, value, sub, s, onClick }) {
+  const baseStyle = onClick
+    ? { ...s.highlightTile, cursor: 'pointer', transition: 'transform 0.1s, box-shadow 0.1s' }
+    : s.highlightTile
   return (
-    <div style={s.highlightTile}>
+    <div
+      style={baseStyle}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } } : undefined}
+    >
       <div style={s.highlightIcon}>{icon}</div>
       <div style={s.highlightLabel}>{label}</div>
       <div style={s.highlightValue}>{value}</div>

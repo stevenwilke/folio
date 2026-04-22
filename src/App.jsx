@@ -11,6 +11,7 @@ import Marketplace from './pages/Marketplace'
 import Discover from './pages/Discover'
 import Friends from './pages/Friends'
 import Stats from './pages/Stats'
+import WrappedList from './pages/WrappedList'
 import Shelves from './pages/Shelves'
 import BookClubs from './pages/BookClubs'
 import Author from './pages/Author'
@@ -66,6 +67,10 @@ function AppRoutes({ session }) {
           <Route
             path="/stats"
             element={session ? <Stats session={session} /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/wrapped-list"
+            element={session ? <WrappedList session={session} /> : <Navigate to="/" replace />}
           />
           <Route
             path="/shelves"

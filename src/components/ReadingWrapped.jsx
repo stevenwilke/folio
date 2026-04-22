@@ -1,7 +1,10 @@
+import { useNavigate } from 'react-router-dom'
 import { useTheme } from '../contexts/ThemeContext'
 
 export default function ReadingWrapped({ entries, sessions, year }) {
   const { theme } = useTheme()
+  const navigate = useNavigate()
+  const cardClickStyle = { cursor: 'pointer', transition: 'transform 0.1s' }
 
   const readEntries = entries.filter(e => {
     if (e.from_import) return false
@@ -106,34 +109,43 @@ export default function ReadingWrapped({ entries, sessions, year }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         {favGenre && (
-          <div style={{
-            background: theme.bgCard, borderRadius: 10, padding: '12px 14px',
-            border: `1px solid ${theme.border}`,
-          }}>
+          <div
+            style={{
+              background: theme.bgCard, borderRadius: 10, padding: '12px 14px',
+              border: `1px solid ${theme.border}`, ...cardClickStyle,
+            }}
+            onClick={() => navigate(`/wrapped-list?type=genre&value=${encodeURIComponent(favGenre[0])}&year=${year}&title=${encodeURIComponent(favGenre[0] + ' books in ' + year)}`)}
+          >
             <div style={{ fontSize: 10, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>
               Top Genre
             </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>{favGenre[0]}</div>
-            <div style={{ fontSize: 12, color: theme.textSubtle }}>{favGenre[1]} books</div>
+            <div style={{ fontSize: 12, color: theme.textSubtle }}>{favGenre[1]} books ›</div>
           </div>
         )}
         {favAuthor && (
-          <div style={{
-            background: theme.bgCard, borderRadius: 10, padding: '12px 14px',
-            border: `1px solid ${theme.border}`,
-          }}>
+          <div
+            style={{
+              background: theme.bgCard, borderRadius: 10, padding: '12px 14px',
+              border: `1px solid ${theme.border}`, ...cardClickStyle,
+            }}
+            onClick={() => navigate(`/author/${encodeURIComponent(favAuthor[0])}`)}
+          >
             <div style={{ fontSize: 10, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>
               Top Author
             </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>{favAuthor[0]}</div>
-            <div style={{ fontSize: 12, color: theme.textSubtle }}>{favAuthor[1]} books</div>
+            <div style={{ fontSize: 12, color: theme.textSubtle }}>{favAuthor[1]} books ›</div>
           </div>
         )}
         {longestBook?.books && (
-          <div style={{
-            background: theme.bgCard, borderRadius: 10, padding: '12px 14px',
-            border: `1px solid ${theme.border}`,
-          }}>
+          <div
+            style={{
+              background: theme.bgCard, borderRadius: 10, padding: '12px 14px',
+              border: `1px solid ${theme.border}`, ...cardClickStyle,
+            }}
+            onClick={() => longestBook.books.author && navigate(`/author/${encodeURIComponent(longestBook.books.author)}`)}
+          >
             <div style={{ fontSize: 10, color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>
               Longest Book
             </div>

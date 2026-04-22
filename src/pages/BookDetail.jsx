@@ -1215,40 +1215,44 @@ export default function BookDetail({ bookId, session, onBack }) {
                       </span>
                     </>
                   )}
-                  {(valuation?.list_price != null || valuation?.avg_price != null || valuation?.paperback_avg != null) && <span style={s.valuationDivider}>·</span>}
-                  <a
-                    href={
-                      (book.isbn_13 || book.isbn_10)
-                        ? `https://bookshop.org/a/122832/${book.isbn_13 || book.isbn_10}`
-                        : `https://bookshop.org/search?keywords=${encodeURIComponent(book.title)}`
-                    }
-                    target="_blank" rel="noopener noreferrer"
-                    style={{ ...s.valuationSub, color: theme.rust, textDecoration: 'none', fontStyle: 'italic' }}
-                  >
-                    Buy new →
-                  </a>
-                  <span style={s.valuationDivider}>·</span>
-                  <a
-                    href={`https://www.thriftbooks.com/browse/?b.search=${encodeURIComponent(book.isbn_13 || book.isbn_10 || book.title)}`}
-                    target="_blank" rel="noopener noreferrer"
-                    style={{ ...s.valuationSub, color: theme.rust, textDecoration: 'none', fontStyle: 'italic' }}
-                  >
-                    Find used →
-                  </a>
-                  <span style={s.valuationDivider}>·</span>
-                  <a
-                    href={
-                      (book.isbn_13 || book.isbn_10)
-                        ? `https://www.abebooks.com/servlet/SearchResults?isbn=${book.isbn_13 || book.isbn_10}&cm_sp=snippet-_-srp1-_-isbn1`
-                        : `https://www.abebooks.com/servlet/SearchResults?tn=${encodeURIComponent(book.title)}&an=${encodeURIComponent(book.author || '')}`
-                    }
-                    target="_blank" rel="noopener noreferrer"
-                    style={{ ...s.valuationSub, color: theme.rust, textDecoration: 'none', fontStyle: 'italic' }}
-                  >
-                    Rare & collectible →
-                  </a>
                 </>
               )}
+            </div>
+
+            {/* Where-to-buy links — grouped on their own row so they don't
+                get mixed into the price list. */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginTop: 6, alignItems: 'baseline' }}>
+              <a
+                href={
+                  (book.isbn_13 || book.isbn_10)
+                    ? `https://bookshop.org/a/122832/${book.isbn_13 || book.isbn_10}`
+                    : `https://bookshop.org/search?keywords=${encodeURIComponent(book.title)}`
+                }
+                target="_blank" rel="noopener noreferrer"
+                style={{ ...s.valuationSub, color: theme.rust, textDecoration: 'none', fontStyle: 'italic' }}
+              >
+                Buy new →
+              </a>
+              <span style={s.valuationDivider}>·</span>
+              <a
+                href={`https://www.thriftbooks.com/browse/?b.search=${encodeURIComponent(book.isbn_13 || book.isbn_10 || book.title)}`}
+                target="_blank" rel="noopener noreferrer"
+                style={{ ...s.valuationSub, color: theme.rust, textDecoration: 'none', fontStyle: 'italic' }}
+              >
+                Find used →
+              </a>
+              <span style={s.valuationDivider}>·</span>
+              <a
+                href={
+                  (book.isbn_13 || book.isbn_10)
+                    ? `https://www.abebooks.com/servlet/SearchResults?isbn=${book.isbn_13 || book.isbn_10}&cm_sp=snippet-_-srp1-_-isbn1`
+                    : `https://www.abebooks.com/servlet/SearchResults?tn=${encodeURIComponent(book.title)}&an=${encodeURIComponent(book.author || '')}`
+                }
+                target="_blank" rel="noopener noreferrer"
+                style={{ ...s.valuationSub, color: theme.rust, textDecoration: 'none', fontStyle: 'italic' }}
+              >
+                Rare & collectible →
+              </a>
             </div>
 
 

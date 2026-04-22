@@ -59,9 +59,13 @@ final class WatchBridge: NSObject, WCSessionDelegate {
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return }
 
+        // updateApplicationContext rejects NSNull (which JSONSerialization
+        // produces from JS `null`). Strip nulls recursively before pushing —
+        // otherwise a single book with a missing author/cover would cause the
+        // whole push to throw and the watch never updates.
         let context: [String: Any] = [
-            "books":     json["books"] ?? [],
-            "updatedAt": json["updatedAt"] ?? "",
+            "books":     stripNulls(json["books"] ?? []),
+            "updatedAt": stripNulls(json["updatedAt"] ?? ""),
         ]
 
         do {
@@ -69,6 +73,21 @@ final class WatchBridge: NSObject, WCSessionDelegate {
         } catch {
             NSLog("[WatchBridge] updateApplicationContext failed: \(error)")
         }
+    }
+
+    private func stripNulls(_ value: Any) -> Any {
+        if value is NSNull { return "" }
+        if let dict = value as? [String: Any] {
+            var clean: [String: Any] = [:]
+            for (k, v) in dict where !(v is NSNull) {
+                clean[k] = stripNulls(v)
+            }
+            return clean
+        }
+        if let arr = value as? [Any] {
+            return arr.map { stripNulls($0) }
+        }
+        return value
     }
 
     // MARK: - Receiving completed sessions from the watch

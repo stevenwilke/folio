@@ -55,7 +55,10 @@ export async function syncCurrentlyReadingWidget(userId?: string): Promise<void>
       .eq('user_id', uid)
       .eq('read_status', 'reading')
       .order('added_at', { ascending: false })
-      .limit(5);
+      // Generous cap — the watch app scrolls through all of these. The widget
+      // only ever shows one at a time so it doesn't care; this just sets the
+      // ceiling for the watch's reading list.
+      .limit(30);
 
     const books: ReadingBook[] = (entries ?? [])
       .filter((e: any) => e.books)

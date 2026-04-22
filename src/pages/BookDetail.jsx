@@ -983,6 +983,58 @@ export default function BookDetail({ bookId, session, onBack }) {
     )
   }
 
+  /** Small share button next to the title. Uses the Web Share API on mobile
+   *  (native share sheet); falls back to copy-to-clipboard on desktop. */
+  function ShareBookButton({ book }) {
+    const [copied, setCopied] = useState(false)
+    const shareUrl = `${window.location.origin}/?book=${book.id}`
+    const onClick = async () => {
+      const shareData = {
+        title: book.title,
+        text: `${book.title}${book.author ? ` by ${book.author}` : ''} on Ex Libris`,
+        url: shareUrl,
+      }
+      if (navigator.share) {
+        try { await navigator.share(shareData); return } catch { /* user cancelled or unsupported */ }
+      }
+      try {
+        await navigator.clipboard.writeText(shareUrl)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1600)
+      } catch {}
+    }
+    return (
+      <button
+        onClick={onClick}
+        title={copied ? 'Link copied!' : 'Share this book'}
+        aria-label="Share this book"
+        style={{
+          background: copied ? `${theme.rust}22` : 'transparent',
+          border: `1px solid ${copied ? theme.rust : theme.border}`,
+          borderRadius: 8,
+          padding: '6px 8px',
+          cursor: 'pointer',
+          color: copied ? theme.rust : theme.textSubtle,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          fontFamily: "'DM Sans', sans-serif",
+          fontSize: 12,
+          fontWeight: 600,
+          flexShrink: 0,
+          transition: 'all 0.15s',
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+          <polyline points="16 6 12 2 8 6" />
+          <line x1="12" y1="2" x2="12" y2="15" />
+        </svg>
+        {copied ? 'Copied' : 'Share'}
+      </button>
+    )
+  }
+
   return (
     <div style={s.page}>
       <div style={s.topbar}>
@@ -1074,7 +1126,10 @@ export default function BookDetail({ bookId, session, onBack }) {
           </div>
 
           <div style={s.heroInfo}>
-            <div style={s.title}>{book.title}</div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ ...s.title, flex: '1 1 auto', minWidth: 0 }}>{book.title}</div>
+              <ShareBookButton book={book} theme={theme} />
+            </div>
             <div style={s.author}>
               {book.author
                 ? <span
@@ -1310,35 +1365,6 @@ export default function BookDetail({ bookId, session, onBack }) {
                     </button>
                   )
                 })}
-              </div>
-            )}
-
-            {/* For sale / lend row */}
-            {entry && (
-              <div style={{ ...s.forSaleRow, flexWrap: 'wrap', gap: 8 }}>
-                {listing ? (
-                  <>
-                    <span style={s.forSaleTag}>
-                      Listed for ${Number(listing.price).toFixed(2)}
-                    </span>
-                    <button style={s.removeListingBtn} onClick={removeListing}>
-                      Remove listing
-                    </button>
-                  </>
-                ) : (
-                  <button style={s.listForSaleBtn} onClick={() => setShowListingModal(true)}>
-                    🏷️ List for Sale
-                  </button>
-                )}
-                <button style={s.lendOutBtn} onClick={() => setShowLendModal(true)}>
-                  🤝 Lend Out
-                </button>
-                <button style={s.lendOutBtn} onClick={() => setShowRecommendModal(true)}>
-                  💌 Recommend
-                </button>
-                <button style={{ ...s.lendOutBtn, borderColor: theme.rust, color: theme.rust }} onClick={() => setShowFreeModal(true)}>
-                  📍 Free Book Drop
-                </button>
               </div>
             )}
 
@@ -1584,7 +1610,7 @@ export default function BookDetail({ bookId, session, onBack }) {
 
         {/* Tabs */}
         <div style={s.tabs}>
-          {['about', 'details', 'reviews', 'your review', 'quotes'].map(t => (
+          {['about', 'details', 'reviews', 'your review', 'quotes', ...(entry ? ['actions'] : [])].map(t => (
             <div
               key={t}
               style={{ ...s.tab, ...(tab === t ? s.tabActive : {}) }}
@@ -1929,6 +1955,41 @@ export default function BookDetail({ bookId, session, onBack }) {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Actions — secondary per-book actions (sell, lend, recommend,
+            free drop). Hidden from the main hero so the page reads cleaner. */}
+        {tab === 'actions' && entry && (
+          <div style={s.tabContent}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {listing ? (
+                <>
+                  <span style={s.forSaleTag}>
+                    Listed for ${Number(listing.price).toFixed(2)}
+                  </span>
+                  <button style={s.removeListingBtn} onClick={removeListing}>
+                    Remove listing
+                  </button>
+                </>
+              ) : (
+                <button style={s.listForSaleBtn} onClick={() => setShowListingModal(true)}>
+                  🏷️ List for Sale
+                </button>
+              )}
+              <button style={s.lendOutBtn} onClick={() => setShowLendModal(true)}>
+                🤝 Lend Out
+              </button>
+              <button style={s.lendOutBtn} onClick={() => setShowRecommendModal(true)}>
+                💌 Recommend to a friend
+              </button>
+              <button style={{ ...s.lendOutBtn, borderColor: theme.rust, color: theme.rust }} onClick={() => setShowFreeModal(true)}>
+                📍 Free Book Drop
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 14, fontStyle: 'italic' }}>
+              List your copy for sale, lend it to a friend, recommend the book, or drop it somewhere for a stranger to find.
+            </div>
           </div>
         )}
 

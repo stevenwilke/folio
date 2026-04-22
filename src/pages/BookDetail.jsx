@@ -989,26 +989,85 @@ export default function BookDetail({ bookId, session, onBack }) {
       <div style={s.content}>
         {/* Hero */}
         <div style={s.hero}>
-          {/* Cover with upload overlay */}
-          <div style={{ ...s.coverWrap, position: 'relative' }}
-            onMouseEnter={e => { const btn = e.currentTarget.querySelector('[data-upload-btn]'); if (btn) btn.style.opacity = '1' }}
-            onMouseLeave={e => { const btn = e.currentTarget.querySelector('[data-upload-btn]'); if (btn) btn.style.opacity = '0' }}>
-            {(() => {
-              const url = getCoverUrl(book)
-              return (url && !coverImgError)
-                ? <img src={url} alt={book.title} style={{ ...s.coverImg, cursor: 'zoom-in' }} onClick={() => setShowCoverLightbox(true)} onError={() => setCoverImgError(true)} />
-                : <FakeCover title={book.title} />
-            })()}
-            {/* Upload button overlay */}
-            <input ref={coverFileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCoverUpload} />
-            <button
-              data-upload-btn
-              onClick={() => coverFileInputRef.current?.click()}
-              disabled={coverUploading}
-              title="Upload a custom cover"
-              style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.65)', border: 'none', borderRadius: 8, padding: '5px 9px', cursor: 'pointer', color: 'white', fontSize: 15, opacity: 0, transition: 'opacity 0.2s', lineHeight: 1, backdropFilter: 'blur(4px)' }}>
-              {coverUploading ? '⏳' : '📷'}
-            </button>
+          {/* Left column — cover plus the user's per-book actions
+              (shelves, rating) so the empty space under the cover gets used. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: isMobile ? '100%' : s.coverWrap.width, alignItems: isMobile ? 'center' : 'stretch' }}>
+            <div style={{ ...s.coverWrap, position: 'relative' }}
+              onMouseEnter={e => { const btn = e.currentTarget.querySelector('[data-upload-btn]'); if (btn) btn.style.opacity = '1' }}
+              onMouseLeave={e => { const btn = e.currentTarget.querySelector('[data-upload-btn]'); if (btn) btn.style.opacity = '0' }}>
+              {(() => {
+                const url = getCoverUrl(book)
+                return (url && !coverImgError)
+                  ? <img src={url} alt={book.title} style={{ ...s.coverImg, cursor: 'zoom-in' }} onClick={() => setShowCoverLightbox(true)} onError={() => setCoverImgError(true)} />
+                  : <FakeCover title={book.title} />
+              })()}
+              {/* Upload button overlay */}
+              <input ref={coverFileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCoverUpload} />
+              <button
+                data-upload-btn
+                onClick={() => coverFileInputRef.current?.click()}
+                disabled={coverUploading}
+                title="Upload a custom cover"
+                style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.65)', border: 'none', borderRadius: 8, padding: '5px 9px', cursor: 'pointer', color: 'white', fontSize: 15, opacity: 0, transition: 'opacity 0.2s', lineHeight: 1, backdropFilter: 'blur(4px)' }}>
+                {coverUploading ? '⏳' : '📷'}
+              </button>
+            </div>
+
+            {/* Shelves containing this book — sits under the cover so the
+                left column doesn't waste vertical space. */}
+            {myShelves.length > 0 && (
+              <div style={{ width: '100%' }}>
+                <div style={s.ratingLabel}>On your shelves</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {myShelves.map(shelf => (
+                    <button
+                      key={shelf.id}
+                      onClick={() => navigate(`/shelves?shelf=${shelf.id}`)}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: 20,
+                        border: `1px solid ${theme.border}`,
+                        background: theme.bgCard,
+                        color: theme.text,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: "'DM Sans', sans-serif",
+                      }}
+                    >
+                      📚 {shelf.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Star rating under the cover. */}
+            <div style={{ width: '100%' }}>
+              <div style={s.ratingLabel}>Your rating</div>
+              <div style={s.stars}>
+                {[1,2,3,4,5].map(n => (
+                  <span
+                    key={n}
+                    style={{
+                      ...s.star,
+                      color: n <= (hoverRating || rating) ? theme.gold : theme.border,
+                    }}
+                    onClick={() => saveHeroRating(n)}
+                    onMouseEnter={() => setHoverRating(n)}
+                    onMouseLeave={() => setHoverRating(0)}
+                  >★</span>
+                ))}
+                {rating > 0 && (
+                  <span style={s.ratingText}>{rating}/5 · saved</span>
+                )}
+                {!entry && (
+                  <span style={{ ...s.ratingText, fontStyle: 'italic' }}>
+                    Add to library to rate
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
 
           <div style={s.heroInfo}>
@@ -1192,60 +1251,6 @@ export default function BookDetail({ bookId, session, onBack }) {
               )}
             </div>
 
-            {/* Shelves containing this book — lets user find its physical location */}
-            {myShelves.length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <div style={s.ratingLabel}>On your shelves</div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {myShelves.map(shelf => (
-                    <button
-                      key={shelf.id}
-                      onClick={() => navigate(`/shelves?shelf=${shelf.id}`)}
-                      style={{
-                        padding: '6px 12px',
-                        borderRadius: 20,
-                        border: `1px solid ${theme.border}`,
-                        background: theme.bgCard,
-                        color: theme.text,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        fontFamily: "'DM Sans', sans-serif",
-                      }}
-                    >
-                      📚 {shelf.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Hero star rating — saves immediately on click */}
-            <div style={{ marginTop: 16 }}>
-              <div style={s.ratingLabel}>Your rating</div>
-              <div style={s.stars}>
-                {[1,2,3,4,5].map(n => (
-                  <span
-                    key={n}
-                    style={{
-                      ...s.star,
-                      color: n <= (hoverRating || rating) ? theme.gold : theme.border,
-                    }}
-                    onClick={() => saveHeroRating(n)}
-                    onMouseEnter={() => setHoverRating(n)}
-                    onMouseLeave={() => setHoverRating(0)}
-                  >★</span>
-                ))}
-                {rating > 0 && (
-                  <span style={s.ratingText}>{rating}/5 · saved</span>
-                )}
-                {!entry && (
-                  <span style={{ ...s.ratingText, fontStyle: 'italic' }}>
-                    Add to library to rate
-                  </span>
-                )}
-              </div>
-            </div>
 
             {/* Status buttons */}
             <div style={s.statusRow}>

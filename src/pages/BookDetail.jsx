@@ -1271,24 +1271,6 @@ export default function BookDetail({ bookId, session, onBack }) {
                 </button>
               ))}
             </div>
-            {/* "Mark as read" toggle for owned books */}
-            {status === 'owned' && (
-              <div style={{ marginTop: 8 }}>
-                <button
-                  onClick={toggleHasRead}
-                  style={{
-                    padding: '5px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600,
-                    fontFamily: "'DM Sans', sans-serif", cursor: 'pointer', transition: 'all 0.15s',
-                    border: `1px solid ${hasRead ? '#5a7a5a' : theme.border}`,
-                    background: hasRead ? 'rgba(90,122,90,0.15)' : 'transparent',
-                    color: hasRead ? '#5a7a5a' : theme.textMuted,
-                  }}
-                >
-                  {hasRead ? '✓ Read' : 'Mark as read'}
-                </button>
-              </div>
-            )}
-
             {/* Format toggle */}
             {entry && (
               <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
@@ -1321,21 +1303,6 @@ export default function BookDetail({ bookId, session, onBack }) {
                     </button>
                   )
                 })}
-              </div>
-            )}
-
-            {/* Remove from collection */}
-            {entry && (
-              <div style={{ marginTop: 10 }}>
-                <button
-                  style={{
-                    ...s.removeFromCollectionBtn,
-                    ...(removeConfirm ? s.removeFromCollectionBtnConfirm : {}),
-                  }}
-                  onClick={removeFromLibrary}
-                >
-                  {removeConfirm ? 'Are you sure? Click to confirm' : 'Remove from collection'}
-                </button>
               </div>
             )}
 
@@ -1966,6 +1933,25 @@ export default function BookDetail({ bookId, session, onBack }) {
               userId={session.user.id}
               theme={theme}
             />
+          </div>
+        )}
+
+        {/* Danger zone — remove from library. Sits at the bottom of the page
+            so it's out of the way of the primary reading actions above. */}
+        {entry && (
+          <div style={{
+            marginTop: 40, paddingTop: 20, borderTop: `1px solid ${theme.border}`,
+            display: 'flex', justifyContent: 'center',
+          }}>
+            <button
+              style={{
+                ...s.removeFromCollectionBtn,
+                ...(removeConfirm ? s.removeFromCollectionBtnConfirm : {}),
+              }}
+              onClick={removeFromLibrary}
+            >
+              {removeConfirm ? 'Are you sure? Click to confirm' : 'Remove from collection'}
+            </button>
           </div>
         )}
 

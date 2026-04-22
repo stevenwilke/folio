@@ -13,7 +13,12 @@ export HOMEBREW_NO_INSTALL_CLEANUP=1
 export HOMEBREW_NO_ENV_HINTS=1
 
 echo "▶️  Installing Homebrew dependencies"
-brew install node cocoapods
+# Pin Node to 22 (LTS). `brew install node` now pulls Node 25, which breaks
+# React Native 0.81's hermes-engine.podspec: `node -p require.resolve(...)`
+# returns an empty string, so react_native_path becomes "." and the podspec
+# fails trying to read ./package.json. RN 0.81 officially supports Node 20/22.
+brew install node@22 cocoapods
+brew link --overwrite --force node@22
 
 echo "▶️  Installing Node dependencies"
 cd "$CI_PRIMARY_REPOSITORY_PATH/mobile"

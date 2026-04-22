@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { fetchUsedPrices } from './fetchUsedPrices'
+import { syncExternalRating } from './externalRating'
 
 function isLikelyEnglish(text) {
   if (!text || text.length < 10) return false
@@ -126,6 +127,9 @@ export async function enrichBook(bookId, { isbn_13, isbn_10, title, author, cove
     needsDesc  ? fetchOLDescription(isbn, title, author) : Promise.resolve(null),
     supabase.functions.invoke('get-book-valuation', { body: { isbn, title, author } }),
     fetchUsedPrices(isbn, title, author),
+    // Pull a default community rating from Google Books / Open Library so the
+    // book has something to display until any Ex Libris user rates it.
+    syncExternalRating(bookId, { isbn_13, isbn_10, title, author }).catch(() => null),
   ])
 
   // Upload cover to our Storage bucket so it's cached on our CDN

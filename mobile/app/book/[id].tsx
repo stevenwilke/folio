@@ -316,6 +316,25 @@ export default function BookDetailScreen() {
     if (bookData) {
       setBook(bookData);
       loadValuation(bookData);
+
+      // First-time external-rating fetch for older books that pre-date this
+      // feature. Caches the result on the books row so subsequent views are
+      // instant.
+      if (bookData.external_rating_fetched_at == null) {
+        import('../../lib/externalRating').then(({ syncExternalRating }) =>
+          syncExternalRating(bookData.id, bookData).then(r => {
+            if (r) {
+              setBook(prev => prev ? {
+                ...prev,
+                external_rating: r.rating,
+                external_rating_count: r.count,
+                external_rating_source: r.source,
+                external_rating_fetched_at: new Date().toISOString(),
+              } : prev);
+            }
+          }).catch(() => {})
+        );
+      }
     }
     if (entryData) setEntry(entryData);
     if (entryData?.review_text) setReviewText(entryData.review_text);
@@ -913,7 +932,8 @@ export default function BookDetailScreen() {
               return <Text style={{ fontSize: 12, color: Colors.sage, fontWeight: '600', marginTop: 2 }}>⏱ ~{est.label}{entry?.read_status === 'reading' ? ' left' : ''}</Text>;
             })()}
 
-            {/* Community rating */}
+            {/* Community rating — falls back to a default from Google Books /
+                Open Library when no Ex Libris user has rated this book yet. */}
             {communityRating !== null ? (
               <View style={styles.communityRating}>
                 <Text style={styles.communityRatingStars}>
@@ -924,6 +944,18 @@ export default function BookDetailScreen() {
                   {communityRating}/5 community
                 </Text>
                 {ratingDist && <RatingDistribution {...ratingDist} />}
+              </View>
+            ) : (book as any)?.external_rating != null && (book as any)?.external_rating_count > 0 ? (
+              <View style={styles.communityRating}>
+                <Text style={styles.communityRatingStars}>
+                  {'★'.repeat(Math.round(Number((book as any).external_rating)))}
+                  {'☆'.repeat(5 - Math.round(Number((book as any).external_rating)))}
+                </Text>
+                <Text style={styles.communityRatingValue}>
+                  {Number((book as any).external_rating).toFixed(1)}/5 on{' '}
+                  {(book as any).external_rating_source === 'open_library' ? 'Open Library' : 'Google Books'}
+                  {' '}({Number((book as any).external_rating_count).toLocaleString()})
+                </Text>
               </View>
             ) : null}
 

@@ -232,6 +232,23 @@ export default function BookDetail({ bookId, session, onBack }) {
       setBook(data)
       setLoading(false)
 
+      // First-time external-rating fetch for older books that pre-date this
+      // feature. enrichBook handles freshly-added books; this catches the
+      // long tail.
+      if (data.external_rating_fetched_at == null) {
+        import('../lib/externalRating').then(({ syncExternalRating }) =>
+          syncExternalRating(data.id, data).then(r => {
+            if (r) setBook(prev => prev ? {
+              ...prev,
+              external_rating: r.rating,
+              external_rating_count: r.count,
+              external_rating_source: r.source,
+              external_rating_fetched_at: new Date().toISOString(),
+            } : prev)
+          }).catch(() => {})
+        )
+      }
+
       // Enrich missing fields in the background (description, cover, genre, ISBN)
       const needsDesc  = !data.description
       const needsCover = !data.cover_image_url
@@ -1011,8 +1028,10 @@ export default function BookDetail({ bookId, session, onBack }) {
               }
             </div>
 
-            {/* Community rating */}
-            {communityRating ? (
+            {/* Community rating (Ex Libris) — falls back to external rating
+                from Google Books / Open Library when no one on Ex Libris has
+                rated this book yet. */}
+            {communityRating && communityRating.rating_count > 0 ? (
               <>
                 <div style={s.communityRatingRow}>
                   <CommunityStars avg={parseFloat(communityRating.avg_rating)} />
@@ -1032,6 +1051,14 @@ export default function BookDetail({ bookId, session, onBack }) {
                   />
                 )}
               </>
+            ) : book?.external_rating != null && book.external_rating_count > 0 ? (
+              <div style={s.communityRatingRow} title={`Default rating from ${book.external_rating_source === 'open_library' ? 'Open Library' : 'Google Books'} — replaced once an Ex Libris reader rates this book.`}>
+                <CommunityStars avg={Number(book.external_rating)} />
+                <span style={s.communityRatingNum}>{Number(book.external_rating).toFixed(1)}</span>
+                <span style={s.communityRatingCount}>
+                  · {Number(book.external_rating_count).toLocaleString()} ratings on {book.external_rating_source === 'open_library' ? 'Open Library' : 'Google Books'}
+                </span>
+              </div>
             ) : (
               <div style={{ ...s.communityRatingRow, fontStyle: 'italic' }}>
                 <span style={s.communityRatingCount}>No ratings yet — be the first!</span>

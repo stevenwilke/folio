@@ -1097,32 +1097,6 @@ export default function BookDetail({ bookId, session, onBack }) {
               </div>
             )}
 
-            {/* Star rating under the cover. */}
-            <div style={{ width: '100%' }}>
-              <div style={s.ratingLabel}>Your rating</div>
-              <div style={s.stars}>
-                {[1,2,3,4,5].map(n => (
-                  <span
-                    key={n}
-                    style={{
-                      ...s.star,
-                      color: n <= (hoverRating || rating) ? theme.gold : theme.border,
-                    }}
-                    onClick={() => saveHeroRating(n)}
-                    onMouseEnter={() => setHoverRating(n)}
-                    onMouseLeave={() => setHoverRating(0)}
-                  >★</span>
-                ))}
-                {rating > 0 && (
-                  <span style={s.ratingText}>{rating}/5 · saved</span>
-                )}
-                {!entry && (
-                  <span style={{ ...s.ratingText, fontStyle: 'italic' }}>
-                    Add to library to rate
-                  </span>
-                )}
-              </div>
-            </div>
           </div>
 
           <div style={s.heroInfo}>
@@ -1145,42 +1119,97 @@ export default function BookDetail({ bookId, session, onBack }) {
               }
             </div>
 
-            {/* Community rating (Ex Libris) — falls back to external rating
-                from Google Books / Open Library when no one on Ex Libris has
-                rated this book yet. */}
-            {communityRating && communityRating.rating_count > 0 ? (
-              <>
-                <div style={s.communityRatingRow}>
-                  <CommunityStars avg={parseFloat(communityRating.avg_rating)} />
-                  <span style={s.communityRatingNum}>{communityRating.avg_rating}</span>
-                  <span style={s.communityRatingCount}>
-                    · {communityRating.rating_count} {communityRating.rating_count === 1 ? 'rating' : 'ratings'} on Ex Libris
-                  </span>
-                </div>
-                {communityRating.rating_count >= 5 && (
-                  <RatingDistribution
-                    stars_1={communityRating.stars_1}
-                    stars_2={communityRating.stars_2}
-                    stars_3={communityRating.stars_3}
-                    stars_4={communityRating.stars_4}
-                    stars_5={communityRating.stars_5}
-                    rating_count={communityRating.rating_count}
-                  />
-                )}
-              </>
-            ) : book?.external_rating != null && book.external_rating_count > 0 ? (
-              <div style={s.communityRatingRow} title={`Default rating from ${book.external_rating_source === 'open_library' ? 'Open Library' : 'Google Books'} — replaced once an Ex Libris reader rates this book.`}>
-                <CommunityStars avg={Number(book.external_rating)} />
-                <span style={s.communityRatingNum}>{Number(book.external_rating).toFixed(1)}</span>
-                <span style={s.communityRatingCount}>
-                  · {Number(book.external_rating_count).toLocaleString()} ratings on {book.external_rating_source === 'open_library' ? 'Open Library' : 'Google Books'}
-                </span>
-              </div>
-            ) : (
-              <div style={{ ...s.communityRatingRow, fontStyle: 'italic' }}>
-                <span style={s.communityRatingCount}>No ratings yet — be the first!</span>
-              </div>
-            )}
+            {/* Rating row — dual purpose:
+                - Shows the Ex Libris community average (or a Google Books /
+                  Open Library fallback) as the default display.
+                - When the user has the book in their library, the same stars
+                  are hoverable/clickable to rate. Clicking saves and the
+                  chosen rating shows up inline as "You: 4★".
+                The old separate "Your rating" block is gone — one stars row
+                does both jobs. */}
+            {(() => {
+              const hasCommunity = communityRating && communityRating.rating_count > 0
+              const hasExternal = !hasCommunity && book?.external_rating != null && book.external_rating_count > 0
+              const displayAvg = hasCommunity ? parseFloat(communityRating.avg_rating)
+                : hasExternal ? Number(book.external_rating)
+                : null
+              const canRate = !!entry
+              // When hovering to rate, the stars preview the user's would-be
+              // rating instead of the community average.
+              const starsValue = hoverRating > 0 ? hoverRating : (canRate && rating > 0 ? rating : (displayAvg ?? 0))
+              const starsAreInteractive = canRate
+              return (
+                <>
+                  <div
+                    style={{ ...s.communityRatingRow, cursor: starsAreInteractive ? 'pointer' : 'default' }}
+                    title={starsAreInteractive ? 'Click a star to rate' : (hasExternal ? `Default rating from ${book.external_rating_source === 'open_library' ? 'Open Library' : 'Google Books'} — replaced once an Ex Libris reader rates this book.` : undefined)}
+                    onMouseLeave={() => setHoverRating(0)}
+                  >
+                    {/* Interactive stars — display community avg by default,
+                        preview user's rating on hover, save on click. */}
+                    <span style={{ color: theme.gold, fontSize: 14, letterSpacing: 1, display: 'inline-flex' }}>
+                      {[1,2,3,4,5].map(n => {
+                        const filled = starsValue >= n
+                        const half = !filled && starsValue >= n - 0.5
+                        return (
+                          <span
+                            key={n}
+                            onMouseEnter={starsAreInteractive ? () => setHoverRating(n) : undefined}
+                            onClick={starsAreInteractive ? () => saveHeroRating(n) : undefined}
+                            style={{
+                              padding: '0 1px',
+                              color: filled ? theme.gold : theme.border,
+                              opacity: half ? 0.5 : 1,
+                            }}
+                          >★</span>
+                        )
+                      })}
+                    </span>
+
+                    {hasCommunity ? (
+                      <>
+                        <span style={s.communityRatingNum}>{communityRating.avg_rating}</span>
+                        <span style={s.communityRatingCount}>
+                          · {communityRating.rating_count} {communityRating.rating_count === 1 ? 'rating' : 'ratings'} on Ex Libris
+                        </span>
+                      </>
+                    ) : hasExternal ? (
+                      <>
+                        <span style={s.communityRatingNum}>{Number(book.external_rating).toFixed(1)}</span>
+                        <span style={s.communityRatingCount}>
+                          · {Number(book.external_rating_count).toLocaleString()} ratings on {book.external_rating_source === 'open_library' ? 'Open Library' : 'Google Books'}
+                        </span>
+                      </>
+                    ) : (
+                      <span style={{ ...s.communityRatingCount, fontStyle: 'italic' }}>
+                        {canRate ? 'No ratings yet — be the first!' : 'No ratings yet'}
+                      </span>
+                    )}
+
+                    {/* The user's own rating, once saved. */}
+                    {canRate && rating > 0 && (
+                      <span style={{
+                        marginLeft: 6, padding: '2px 8px', borderRadius: 12,
+                        background: `${theme.gold}22`, color: theme.gold,
+                        fontSize: 12, fontWeight: 700, letterSpacing: 0.2,
+                      }}>
+                        You: {rating}★
+                      </span>
+                    )}
+                  </div>
+                  {hasCommunity && communityRating.rating_count >= 5 && (
+                    <RatingDistribution
+                      stars_1={communityRating.stars_1}
+                      stars_2={communityRating.stars_2}
+                      stars_3={communityRating.stars_3}
+                      stars_4={communityRating.stars_4}
+                      stars_5={communityRating.stars_5}
+                      rating_count={communityRating.rating_count}
+                    />
+                  )}
+                </>
+              )
+            })()}
 
             {/* Friend stats */}
             <FriendStatsRow stats={friendStats} />

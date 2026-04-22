@@ -8,6 +8,7 @@ import {
   Platform,
   RefreshControl,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
@@ -91,22 +92,65 @@ const sc = StyleSheet.create({
 
 // ---- Section wrapper ----
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+  helpTitle,
+  helpMessage,
+}: {
+  title: string;
+  children: React.ReactNode;
+  helpTitle?: string;
+  helpMessage?: string;
+}) {
   return (
     <View style={sec.box}>
-      <Text style={sec.title}>{title}</Text>
+      <View style={sec.titleRow}>
+        <Text style={sec.title}>{title}</Text>
+        {helpMessage && (
+          <TouchableOpacity
+            onPress={() => Alert.alert(helpTitle ?? title, helpMessage)}
+            style={sec.helpBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel={`Help: ${title}`}
+          >
+            <Text style={sec.helpBtnText}>?</Text>
+          </TouchableOpacity>
+        )}
+      </View>
       {children}
     </View>
   );
 }
 const sec = StyleSheet.create({
   box: { marginBottom: 28 },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
   title: {
     fontSize: 16,
     fontWeight: '700',
     color: Colors.ink,
     fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
-    marginBottom: 14,
+  },
+  helpBtn: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: '#d4c9b0',
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  helpBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8a7f72',
+    lineHeight: 13,
   },
 });
 
@@ -573,7 +617,18 @@ export default function StatsScreen() {
 
       {/* Reading Activity Heatmap */}
       {sessionDates.length > 0 && (
-        <Section title="Reading Activity">
+        <Section
+          title="Reading Activity"
+          helpTitle="Reading Activity"
+          helpMessage={
+            'Each square is one day in the past year.\n\n' +
+            'The darker the green, the more activity you logged that day — adding books, marking books as reading or read, or completing reading-timer sessions.\n\n' +
+            '• Faint  = no activity\n' +
+            '• Light  = 1 activity\n' +
+            '• Medium = 2 activities\n' +
+            '• Dark   = 3 or more'
+          }
+        >
           <ReadingHeatmap activityDates={[
             ...sessionDates,
             ...rawEntries.filter((e: any) => e.read_status === 'read' || e.read_status === 'reading').map((e: any) => e.added_at?.slice(0, 10)).filter(Boolean),

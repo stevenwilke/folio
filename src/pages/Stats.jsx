@@ -511,6 +511,24 @@ export default function Stats({ session }) {
               <div style={s.sectionHeadRow}>
                 <span style={{ fontSize: 22 }}>📅</span>
                 <span style={{ ...s.chartTitle, marginBottom: 0 }}>Reading Activity</span>
+                <span
+                  title={
+                    "Each square is one day in the past year. The darker the green, the more activity you logged that day — adding books, finishing reads, completing reading-timer sessions, etc.\n\n" +
+                    "• Faint  = no activity\n" +
+                    "• Light  = 1 activity\n" +
+                    "• Medium = 2 activities\n" +
+                    "• Dark   = 3 or more\n\n" +
+                    "Hover any square to see the date + count."
+                  }
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 18, height: 18, borderRadius: '50%',
+                    background: theme.bgSubtle, border: `1px solid ${theme.border}`,
+                    color: theme.textSubtle, fontSize: 11, fontWeight: 700,
+                    cursor: 'help', lineHeight: 1,
+                  }}
+                  aria-label="How to read the heatmap"
+                >?</span>
               </div>
               <ReadingHeatmap activityDates={allActivityDates} />
             </div>
@@ -777,6 +795,41 @@ export default function Stats({ session }) {
 
               </div>
             </div>
+
+            {/* ── READER LEVEL ── */}
+            {(() => {
+              const lvl = computeLevelFromBadges(badges)
+              const floor = lvl.isMax ? lvl.points : lvl.points - Math.round((lvl.points - 0) * (lvl.progressPct / 100))
+              const toNext = lvl.isMax ? 0 : (lvl.nextLevelAt - lvl.points)
+              return (
+                <div style={s.section}>
+                  <div style={s.sectionHeadRow}>
+                    <h2 style={s.sectionTitle}>⭐️ Reader Level</h2>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                    <div style={{
+                      width: 64, height: 64, borderRadius: '50%',
+                      background: lvl.ring, color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 28, fontWeight: 800, fontFamily: "'DM Sans', sans-serif",
+                      flexShrink: 0,
+                    }}>{lvl.level}</div>
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: theme.text }}>
+                        {lvl.title}
+                      </div>
+                      <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 2 }}>
+                        {lvl.points.toLocaleString()} points
+                        {lvl.isMax ? ' · max level reached 👑' : ` · ${toNext.toLocaleString()} until Level ${lvl.level + 1}`}
+                      </div>
+                      <div style={{ height: 8, background: theme.bgSubtle, border: `1px solid ${theme.borderLight}`, borderRadius: 4, overflow: 'hidden', marginTop: 8 }}>
+                        <div style={{ height: '100%', width: `${lvl.progressPct}%`, background: lvl.ring, transition: 'width 0.4s' }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* ── BADGES ── */}
             <div style={s.section}>

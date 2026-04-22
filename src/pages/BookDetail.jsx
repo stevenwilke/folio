@@ -1199,8 +1199,9 @@ export default function BookDetail({ bookId, session, onBack }) {
               })()}
             </div>
 
-            {/* Valuation */}
-            {(valuationLoading || valuation) && <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: theme.textSubtle, marginTop: 14, marginBottom: 4 }}>Values</div>}
+            {/* Valuation — the dollar signs + "Retail / Used Paperback / Used
+                Hardcover" labels on each price make the section self-evident,
+                so we skip a redundant 'Values' header. */}
             {priceAlert && (
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'rgba(90,122,90,0.1)', borderRadius: 8, marginBottom: 6, fontSize: 13 }}>
                 <span>📈</span>

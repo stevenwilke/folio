@@ -118,6 +118,10 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [cropImageSrc, setCropImageSrc] = useState(null)
   const coverFileInputRef = useRef(null)
   const [tab, setTab]                   = useState('about')
+  // When a status is set, collapse the row to just that pill — user can
+  // click 'Change' to expand back to all four options.
+  const [showAllStatuses, setShowAllStatuses] = useState(false)
+  const [showAllFormats, setShowAllFormats] = useState(false)
   const [rating, setRating]             = useState(0)
   const [hoverRating, setHoverRating]   = useState(0)
   const [reviewText, setReviewText]     = useState('')
@@ -1344,59 +1348,183 @@ export default function BookDetail({ bookId, session, onBack }) {
             </div>
 
 
-            {/* Status buttons */}
+            {/* Status — collapses to just the chosen pill once set, with a
+                Change link to expand back to all four. */}
             <div style={s.statusRow}>
-              {Object.entries(STATUS_LABELS).map(([val, label]) => (
-                <button
-                  key={val}
-                  style={{
-                    ...s.statusBtn,
-                    ...(status === val ? {
-                      background: STATUS_COLORS[val].bg,
-                      color: STATUS_COLORS[val].color,
-                      borderColor: STATUS_COLORS[val].color,
-                    } : {}),
-                  }}
-                  onClick={() => changeStatus(val)}
-                >
-                  {status === val ? '✓ ' : ''}{label}
-                </button>
-              ))}
-            </div>
-            {/* Format toggle */}
-            {entry && (
-              <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
-                {[
-                  { value: 'Hardcover',   label: '📖 Hardcover' },
-                  { value: 'Paperback',   label: '📕 Paperback' },
-                  { value: 'eBook',       label: '📱 eBook' },
-                  { value: 'Audiobook',   label: '🎧 Audiobook' },
-                ].map(opt => {
-                  const isActive = (book.format || 'physical') === opt.value
-                  const isDigital = opt.value === 'eBook' || opt.value === 'Audiobook'
-                  return (
+              {(!status || showAllStatuses) ? (
+                <>
+                  {Object.entries(STATUS_LABELS).map(([val, label]) => (
                     <button
-                      key={opt.value}
-                      onClick={async () => {
-                        if (isActive) return
-                        await supabase.from('books').update({ format: opt.value }).eq('id', book.id)
-                        setBook(prev => ({ ...prev, format: opt.value }))
-                      }}
+                      key={val}
                       style={{
-                        padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                        fontFamily: "'DM Sans', sans-serif", cursor: isActive ? 'default' : 'pointer',
-                        transition: 'all 0.15s',
-                        border: `1px solid ${isActive ? (isDigital ? '#5a6e8a' : '#5a7a5a') : theme.border}`,
-                        background: isActive ? (isDigital ? 'rgba(90,110,138,0.15)' : 'rgba(90,122,90,0.15)') : 'transparent',
-                        color: isActive ? (isDigital ? '#5a6e8a' : '#5a7a5a') : theme.textMuted,
+                        ...s.statusBtn,
+                        ...(status === val ? {
+                          background: STATUS_COLORS[val].bg,
+                          color: STATUS_COLORS[val].color,
+                          borderColor: STATUS_COLORS[val].color,
+                        } : {}),
+                      }}
+                      onClick={() => { changeStatus(val); setShowAllStatuses(false) }}
+                    >
+                      {status === val ? '✓ ' : ''}{label}
+                    </button>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <button
+                    style={{
+                      ...s.statusBtn,
+                      background: STATUS_COLORS[status].bg,
+                      color: STATUS_COLORS[status].color,
+                      borderColor: STATUS_COLORS[status].color,
+                    }}
+                    onClick={() => setShowAllStatuses(true)}
+                    title="Click to change status"
+                  >
+                    ✓ {STATUS_LABELS[status]}
+                  </button>
+                  <button
+                    onClick={() => setShowAllStatuses(true)}
+                    style={{
+                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      color: theme.textSubtle, fontSize: 12, fontFamily: "'DM Sans', sans-serif",
+                      textDecoration: 'underline', padding: '4px 0',
+                    }}
+                  >
+                    Change
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Format — multi-select with per-format copy counts. Stored in
+                entry.format_copies as { Hardcover: 2, eBook: 1 } so a true
+                collector can mark both multiple formats and multiple copies
+                of the same format. Collection value scales with total copies.
+                Row collapses to only the selected formats once any is set,
+                with an "+ Add format" link to re-expand. */}
+            {entry && (() => {
+              const rawCopies = (entry?.format_copies && typeof entry.format_copies === 'object' && !Array.isArray(entry.format_copies))
+                ? entry.format_copies
+                : {}
+              // If the entry hasn't been migrated yet but books.format is set,
+              // treat that as a single implicit copy so the pill still shows.
+              const copies = Object.keys(rawCopies).length === 0 && book.format
+                ? { [book.format]: 1 }
+                : rawCopies
+              const ownedFormats = Object.keys(copies).filter(k => Number(copies[k]) > 0)
+              const totalCopies = ownedFormats.reduce((n, k) => n + Number(copies[k] || 0), 0)
+              const allFormats = [
+                { value: 'Hardcover',   label: '📖 Hardcover' },
+                { value: 'Paperback',   label: '📕 Paperback' },
+                { value: 'eBook',       label: '📱 eBook' },
+                { value: 'Audiobook',   label: '🎧 Audiobook' },
+              ]
+              const expanded = ownedFormats.length === 0 || showAllFormats
+              const visible = expanded ? allFormats : allFormats.filter(o => ownedFormats.includes(o.value))
+              const persist = async (next) => {
+                await supabase.from('collection_entries').update({ format_copies: next }).eq('id', entry.id)
+                setEntry(prev => prev ? { ...prev, format_copies: next } : prev)
+                const primary = Object.keys(next)[0]
+                if (primary && primary !== book.format) {
+                  await supabase.from('books').update({ format: primary }).eq('id', book.id)
+                  setBook(prev => ({ ...prev, format: primary }))
+                }
+              }
+              const setCount = async (value, count) => {
+                const next = { ...copies }
+                if (count <= 0) delete next[value]
+                else next[value] = count
+                await persist(next)
+              }
+              return (
+                <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {visible.map(opt => {
+                    const count = Number(copies[opt.value] || 0)
+                    const isActive = count > 0
+                    const isDigital = opt.value === 'eBook' || opt.value === 'Audiobook'
+                    const accent = isDigital ? '#5a6e8a' : '#5a7a5a'
+                    return (
+                      <span key={opt.value} style={{ display: 'inline-flex', alignItems: 'stretch', gap: 0 }}>
+                        <button
+                          onClick={async () => {
+                            await setCount(opt.value, isActive ? 0 : 1)
+                            if (expanded && !isActive) setShowAllFormats(false)
+                          }}
+                          style={{
+                            padding: '5px 12px',
+                            borderRadius: isActive ? '6px 0 0 6px' : 6,
+                            fontSize: 11, fontWeight: 600,
+                            fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            border: `1px solid ${isActive ? accent : theme.border}`,
+                            background: isActive ? (isDigital ? 'rgba(90,110,138,0.15)' : 'rgba(90,122,90,0.15)') : 'transparent',
+                            color: isActive ? accent : theme.textMuted,
+                          }}
+                          title={isActive ? 'Remove this format' : 'Add this format'}
+                        >
+                          {isActive ? '✓ ' : ''}{opt.label}
+                        </button>
+                        {isActive && (
+                          <span
+                            style={{
+                              display: 'inline-flex', alignItems: 'center',
+                              borderTop: `1px solid ${accent}`,
+                              borderRight: `1px solid ${accent}`,
+                              borderBottom: `1px solid ${accent}`,
+                              borderRadius: '0 6px 6px 0',
+                              background: isDigital ? 'rgba(90,110,138,0.08)' : 'rgba(90,122,90,0.08)',
+                            }}
+                          >
+                            <button
+                              onClick={() => setCount(opt.value, count - 1)}
+                              style={{
+                                border: 'none', background: 'transparent', cursor: 'pointer',
+                                padding: '0 6px', fontSize: 13, color: accent, fontWeight: 700, lineHeight: 1,
+                              }}
+                              title="Remove a copy"
+                            >
+                              −
+                            </button>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: accent, minWidth: 12, textAlign: 'center' }}>
+                              {count}
+                            </span>
+                            <button
+                              onClick={() => setCount(opt.value, count + 1)}
+                              style={{
+                                border: 'none', background: 'transparent', cursor: 'pointer',
+                                padding: '0 6px', fontSize: 13, color: accent, fontWeight: 700, lineHeight: 1,
+                              }}
+                              title="Add another copy"
+                            >
+                              +
+                            </button>
+                          </span>
+                        )}
+                      </span>
+                    )
+                  })}
+                  {!expanded && (
+                    <button
+                      onClick={() => setShowAllFormats(true)}
+                      style={{
+                        background: 'transparent', border: 'none', cursor: 'pointer',
+                        color: theme.textSubtle, fontSize: 12, fontFamily: "'DM Sans', sans-serif",
+                        textDecoration: 'underline', padding: '4px 0',
                       }}
                     >
-                      {opt.label}
+                      + Add format
                     </button>
-                  )
-                })}
-              </div>
-            )}
+                  )}
+                  {totalCopies > 1 && (
+                    <span style={{ fontSize: 11, color: theme.textSubtle, fontStyle: 'italic', marginLeft: 4 }}>
+                      {totalCopies} copies across {ownedFormats.length} format{ownedFormats.length === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Reading progress + timer */}
             {entry?.read_status === 'reading' && (

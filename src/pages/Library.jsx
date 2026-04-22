@@ -117,7 +117,7 @@ export default function Library({ session }) {
     setActiveListings(map)
   }
 
-  async function fetchCollectionValue(bookIds) {
+  async function fetchCollectionValue(bookIds, formatCountByBookId = {}) {
     const total = bookIds.length
     if (!total) { setCollectionStats({ retailTotal: 0, retailCount: 0, usedTotal: 0, usedCount: 0, total: 0 }); return }
     const { data } = await supabase
@@ -126,18 +126,20 @@ export default function Library({ session }) {
       .in('book_id', bookIds)
     const USED_ESTIMATE_FACTOR = 0.35
     const rows = data || []
+    // Each owned format counts as a copy toward collection value — someone who
+    // owns both Hardcover and eBook gets 2× that book's value.
+    const copies = v => Math.max(1, formatCountByBookId[v.book_id] || 1)
     const retailRows = rows.filter(v => v.list_price != null)
     const usedRows   = rows.filter(v => v.avg_price   != null)
-    // Books with retail price but no used price → estimate used at 35% of retail
     const estimatedRows = rows.filter(v => v.list_price != null && v.avg_price == null)
-    const estimatedUsedTotal = estimatedRows.reduce((sum, v) => sum + Number(v.list_price) * USED_ESTIMATE_FACTOR, 0)
+    const estimatedUsedTotal = estimatedRows.reduce((sum, v) => sum + Number(v.list_price) * USED_ESTIMATE_FACTOR * copies(v), 0)
     setCollectionStats({
-      retailTotal: retailRows.reduce((sum, v) => sum + Number(v.list_price), 0),
-      retailCount: retailRows.length,
-      usedTotal:   usedRows.reduce((sum, v) => sum + Number(v.avg_price), 0),
-      usedCount:   usedRows.length,
+      retailTotal: retailRows.reduce((sum, v) => sum + Number(v.list_price) * copies(v), 0),
+      retailCount: retailRows.reduce((sum, v) => sum + copies(v), 0),
+      usedTotal:   usedRows.reduce((sum, v) => sum + Number(v.avg_price) * copies(v), 0),
+      usedCount:   usedRows.reduce((sum, v) => sum + copies(v), 0),
       estimatedUsedTotal,
-      estimatedUsedCount: estimatedRows.length,
+      estimatedUsedCount: estimatedRows.reduce((sum, v) => sum + copies(v), 0),
       total,
     })
     // Embed valuations directly into books state so filtering is always in sync
@@ -180,8 +182,21 @@ export default function Library({ session }) {
       if (data && data.length > 0) {
         localStorage.setItem('exlibris-onboarded', '1')
       }
-      const allBookIds = (data || []).filter(e => e.read_status !== 'want').map(e => e.books?.id).filter(Boolean)
-      fetchCollectionValue(allBookIds)
+      const ownedEntries = (data || []).filter(e => e.read_status !== 'want' && e.books?.id)
+      const allBookIds = ownedEntries.map(e => e.books.id)
+      // Sum copies across all owned formats — a collector with 3 Hardcover +
+      // 1 Paperback of the same book counts as 4 copies toward value.
+      const formatCountByBookId = {}
+      for (const e of ownedEntries) {
+        const fc = (e.format_copies && typeof e.format_copies === 'object' && !Array.isArray(e.format_copies))
+          ? e.format_copies
+          : null
+        const total = fc
+          ? Object.values(fc).reduce((sum, v) => sum + (Number(v) > 0 ? Number(v) : 0), 0)
+          : 0
+        formatCountByBookId[e.books.id] = total > 0 ? total : 1
+      }
+      fetchCollectionValue(allBookIds, formatCountByBookId)
       // Track which books already have a pending cover submission
       if (allBookIds.length) {
         const { data: pending } = await supabase

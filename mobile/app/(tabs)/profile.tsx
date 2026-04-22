@@ -24,6 +24,7 @@ import { Colors } from '../../constants/colors';
 import { BookCard, ReadStatus } from '../../components/BookCard';
 import GoodreadsImportModal from '../../components/GoodreadsImportModal';
 import LevelAvatar from '../../components/LevelAvatar';
+import { getLevelInfo } from '../../lib/level';
 
 interface Profile {
   id: string;
@@ -263,6 +264,14 @@ export default function ProfileScreen() {
           </TouchableOpacity>
           <View style={styles.profileInfo}>
             <Text style={styles.username}>{username}</Text>
+            {(() => {
+              const lvl = getLevelInfo(profile?.level ?? 1, profile?.level_points ?? 0);
+              return (
+                <View style={[styles.levelPill, { backgroundColor: lvl.ring }]}>
+                  <Text style={styles.levelPillText}>Level {lvl.level} · {lvl.title}</Text>
+                </View>
+              );
+            })()}
             {profile?.bio ? (
               <Text style={styles.bio}>{profile.bio}</Text>
             ) : null}
@@ -670,6 +679,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255,255,255,0.75)',
     lineHeight: 17,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  levelPill: {
+    alignSelf: 'flex-start',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginTop: 2,
+  },
+  levelPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.3,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
 

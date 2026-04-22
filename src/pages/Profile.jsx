@@ -337,6 +337,9 @@ export default function Profile({ session }) {
           {/* Name + bio + stats */}
           <div style={s.heroInfo}>
             <div style={s.heroName}>{profile.username}</div>
+            <div style={{ display: 'inline-block', background: lvlInfo.ring, color: '#fff', borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 0.3, marginBottom: 8, fontFamily: "'DM Sans', sans-serif" }}>
+              Level {lvlInfo.level} · {lvlInfo.title}
+            </div>
             {profile.bio && <div style={s.heroBio}>{profile.bio}</div>}
 
             {stats.total > 0 && (

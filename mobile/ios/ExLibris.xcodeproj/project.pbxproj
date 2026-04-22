@@ -7,22 +7,31 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		08CC1A8762A71375F57C988B /* libPods-ExLibris.a in Frameworks */ = {isa = PBXBuildFile; fileRef = B38E43B209F630E20F1EADF5 /* libPods-ExLibris.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		1A0C2E68EA464C1D9300FC1C /* WatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E9A840A6DE7427085E236C2 /* WatchBridge.swift */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		49C9BA7E8F200AA9A3347278 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C8B273103B4E2953CCEB2F0 /* ExpoModulesProvider.swift */; };
+		4C2DBEE55A74CC559817D201 /* libPods-ExLibris.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C47FD073AF2AE39CC90A9976 /* libPods-ExLibris.a */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
-		D5F280A001AFF3510DB7A57F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 81EEB4B95FC505412D7D1087 /* PrivacyInfo.xcprivacy */; };
+		C0FF5381B51FFECB81B6138F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A7E95DE3A10424656CA5E08F /* PrivacyInfo.xcprivacy */; };
+		D506CB753E060053A4865E72 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A7E95DE3A10424656CA5E08F /* PrivacyInfo.xcprivacy */; };
+		EE7FE9117B22B50B8C8DAE55 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4208EDD8ADA405FC79A17084 /* ExpoModulesProvider.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
-		F11748452D0E000000000001 /* WatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748462D0E000000000002 /* WatchBridge.swift */; };
 		XX09E725E164C2787243F7XX /* widget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = XXD26DB380DB6D7349BA89XX /* widget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		XX12B55A1EDABF083C3B51XX /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = XX470101BAEB8E0BBC8B0DXX /* WidgetKit.framework */; };
 		XX1A6800511A685AB346D2XX /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = XXA12889081EB894481655XX /* AppIntents.framework */; };
 		XX3C562DEF346B45594832XX /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = XXCAF23C3FC41F82140FA1XX /* ActivityKit.framework */; };
 		XX6A44985675A04437B8C4XX /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = XX4DFF38D47332D6BF0183XX /* SwiftUI.framework */; };
+		XX7EF5C5204F3C1E31CE91XX /* Ex Libris Watch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = XX485C148B2C80C40D072AXX /* Ex Libris Watch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		XX1023FB6DD198999A9727XX /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = XX26DA2F2C948C95DCC95EXX;
+			remoteInfo = "Ex Libris Watch";
+		};
 		XXAF61D670184A27C61B89XX /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
@@ -44,24 +53,36 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		XX81D5C67C94C2E1F9007EXX /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				XX7EF5C5204F3C1E31CE91XX /* Ex Libris Watch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		13B07F961A680F5B00A75B9A /* ExLibris.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; fileEncoding = 4; includeInIndex = 0; path = ExLibris.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = ExLibris/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = text.plist.xml; name = Info.plist; path = ExLibris/Info.plist; sourceTree = "<group>"; };
-		2C8B273103B4E2953CCEB2F0 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-ExLibris/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
-		81EEB4B95FC505412D7D1087 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = ExLibris/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		A0314BC2522D4CA60A9EA020 /* Pods-ExLibris.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ExLibris.debug.xcconfig"; path = "Target Support Files/Pods-ExLibris/Pods-ExLibris.debug.xcconfig"; sourceTree = "<group>"; };
+		2007E5EB33C0A2386F9728EB /* Pods-ExLibris.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ExLibris.release.xcconfig"; path = "Target Support Files/Pods-ExLibris/Pods-ExLibris.release.xcconfig"; sourceTree = "<group>"; };
+		4208EDD8ADA405FC79A17084 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-ExLibris/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		8E9A840A6DE7427085E236C2 /* WatchBridge.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = WatchBridge.swift; path = ExLibris/WatchBridge.swift; sourceTree = "<group>"; };
+		A7E95DE3A10424656CA5E08F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = ExLibris/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = ExLibris/SplashScreen.storyboard; sourceTree = "<group>"; };
-		B38E43B209F630E20F1EADF5 /* libPods-ExLibris.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-ExLibris.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B8590DEFBA9470F8E5E20CD7 /* Pods-ExLibris.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ExLibris.debug.xcconfig"; path = "Target Support Files/Pods-ExLibris/Pods-ExLibris.debug.xcconfig"; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		C279F38A2C51C95AA2184710 /* Pods-ExLibris.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ExLibris.release.xcconfig"; path = "Target Support Files/Pods-ExLibris/Pods-ExLibris.release.xcconfig"; sourceTree = "<group>"; };
+		C47FD073AF2AE39CC90A9976 /* libPods-ExLibris.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-ExLibris.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = undefined; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = ExLibris/AppDelegate.swift; sourceTree = "<group>"; };
-		F11748462D0E000000000002 /* WatchBridge.swift */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = WatchBridge.swift; path = ExLibris/WatchBridge.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* ExLibris-Bridging-Header.h */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.h; name = "ExLibris-Bridging-Header.h"; path = "ExLibris/ExLibris-Bridging-Header.h"; sourceTree = "<group>"; };
 		XX470101BAEB8E0BBC8B0DXX /* WidgetKit.framework */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = undefined; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		XX485C148B2C80C40D072AXX /* Ex Libris Watch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; fileEncoding = 4; includeInIndex = 0; path = "Ex Libris Watch.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		XX4DFF38D47332D6BF0183XX /* SwiftUI.framework */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = undefined; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		XXA12889081EB894481655XX /* AppIntents.framework */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = undefined; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = System/Library/Frameworks/AppIntents.framework; sourceTree = SDKROOT; };
 		XXCAF23C3FC41F82140FA1XX /* ActivityKit.framework */ = {isa = PBXFileReference; fileEncoding = 4; includeInIndex = undefined; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
@@ -77,9 +98,29 @@
 			);
 			target = XXAAE683BFDDB17D30E8FCXX /* widget */;
 		};
+		XXEDC6483297CAB7B9F317XX /* Exceptions for "watch" folder in "Ex Libris Watch" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				"expo-target.config.json",
+			);
+			target = XX26DA2F2C948C95DCC95EXX /* Ex Libris Watch */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		XXA05E35ACC4911C279FCFXX /* watch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				XXEDC6483297CAB7B9F317XX /* Exceptions for "watch" folder in "Ex Libris Watch" target */,
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = watch;
+			sourceTree = "<group>";
+		};
 		XXBB6CFE8251F8B7B09626XX /* widget */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -99,7 +140,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				08CC1A8762A71375F57C988B /* libPods-ExLibris.a in Frameworks */,
+				4C2DBEE55A74CC559817D201 /* libPods-ExLibris.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -117,27 +158,37 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		04711A922E0E55C2AEDC90EA /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				B8590DEFBA9470F8E5E20CD7 /* Pods-ExLibris.debug.xcconfig */,
+				2007E5EB33C0A2386F9728EB /* Pods-ExLibris.release.xcconfig */,
+			);
+			name = Pods;
+			path = Pods;
+			sourceTree = "<group>";
+		};
 		13B07FAE1A68108700A75B9A /* ExLibris */ = {
 			isa = PBXGroup;
 			children = (
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
-				F11748462D0E000000000002 /* WatchBridge.swift */,
 				F11748442D0722820044C1D9 /* ExLibris-Bridging-Header.h */,
 				BB2F792B24A3F905000567C9 /* Supporting */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				81EEB4B95FC505412D7D1087 /* PrivacyInfo.xcprivacy */,
+				8E9A840A6DE7427085E236C2 /* WatchBridge.swift */,
+				A7E95DE3A10424656CA5E08F /* PrivacyInfo.xcprivacy */,
 			);
 			name = ExLibris;
 			sourceTree = "<group>";
 		};
-		25D50626D12EE199E2CF4E77 /* ExpoModulesProviders */ = {
+		21021ACDE880D8372DE3BE0A /* ExLibris */ = {
 			isa = PBXGroup;
 			children = (
-				78E8B34760FD4D0D15948077 /* ExLibris */,
+				4208EDD8ADA405FC79A17084 /* ExpoModulesProvider.swift */,
 			);
-			name = ExpoModulesProviders;
+			name = ExLibris;
 			sourceTree = "<group>";
 		};
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
@@ -148,27 +199,9 @@
 				XX4DFF38D47332D6BF0183XX /* SwiftUI.framework */,
 				XXCAF23C3FC41F82140FA1XX /* ActivityKit.framework */,
 				XXA12889081EB894481655XX /* AppIntents.framework */,
-				B38E43B209F630E20F1EADF5 /* libPods-ExLibris.a */,
+				C47FD073AF2AE39CC90A9976 /* libPods-ExLibris.a */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		2F844E7277A386EF463BFA8A /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				A0314BC2522D4CA60A9EA020 /* Pods-ExLibris.debug.xcconfig */,
-				C279F38A2C51C95AA2184710 /* Pods-ExLibris.release.xcconfig */,
-			);
-			name = Pods;
-			path = Pods;
-			sourceTree = "<group>";
-		};
-		78E8B34760FD4D0D15948077 /* ExLibris */ = {
-			isa = PBXGroup;
-			children = (
-				2C8B273103B4E2953CCEB2F0 /* ExpoModulesProvider.swift */,
-			);
-			name = ExLibris;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -186,8 +219,8 @@
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				2F844E7277A386EF463BFA8A /* Pods */,
-				25D50626D12EE199E2CF4E77 /* ExpoModulesProviders */,
+				04711A922E0E55C2AEDC90EA /* Pods */,
+				C6692825CFDB1AF62532D7B9 /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -198,6 +231,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* ExLibris.app */,
+				XX485C148B2C80C40D072AXX /* Ex Libris Watch.app */,
 				XXD26DB380DB6D7349BA89XX /* widget.appex */,
 			);
 			name = Products;
@@ -212,9 +246,18 @@
 			path = ExLibris/Supporting;
 			sourceTree = "<group>";
 		};
+		C6692825CFDB1AF62532D7B9 /* ExpoModulesProviders */ = {
+			isa = PBXGroup;
+			children = (
+				21021ACDE880D8372DE3BE0A /* ExLibris */,
+			);
+			name = ExpoModulesProviders;
+			sourceTree = "<group>";
+		};
 		XX3E41C1850246162C0061XX /* expo:targets */ = {
 			isa = PBXGroup;
 			children = (
+				XXA05E35ACC4911C279FCFXX /* watch */,
 				XXBB6CFE8251F8B7B09626XX /* widget */,
 			);
 			name = "expo:targets";
@@ -229,18 +272,20 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "ExLibris" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				28596070CB9E919E00F33AEE /* [Expo] Configure project */,
+				1681E5A6BEC933E997C62884 /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
+				XX81D5C67C94C2E1F9007EXX /* Embed Watch Content */,
 				XX72A8CFBF0FBA13A79902XX /* Embed Foundation Extensions */,
-				ED053909726499A4F825748B /* [CP] Embed Pods Frameworks */,
+				866B4F69CEA0D84EFBF444D2 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				XX7BFF99BA3BA3D1A4188BXX /* PBXTargetDependency */,
 				XXCD5F4B515CE9A5C328C4XX /* PBXTargetDependency */,
 			);
 			name = ExLibris;
@@ -248,13 +293,32 @@
 			productReference = 13B07F961A680F5B00A75B9A /* ExLibris.app */;
 			productType = "com.apple.product-type.application";
 		};
+		XX26DA2F2C948C95DCC95EXX /* Ex Libris Watch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = XX95BFF0AC16FA38651B98XX /* Build configuration list for PBXNativeTarget "Ex Libris Watch" */;
+			buildPhases = (
+				XXE45443DC38DCFE1DB622XX /* Sources */,
+				XXFA5A8CCDD805DF7AEF9CXX /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				XXA05E35ACC4911C279FCFXX /* watch */,
+			);
+			name = "Ex Libris Watch";
+			productName = ExLibrisWatch;
+			productReference = XX485C148B2C80C40D072AXX /* Ex Libris Watch.app */;
+			productType = "com.apple.product-type.application";
+		};
 		XXAAE683BFDDB17D30E8FCXX /* widget */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = XX0987836807790BE50F3FXX /* Build configuration list for PBXNativeTarget "widget" */;
 			buildPhases = (
 				XX074B8811C1CF8E8A3D74XX /* Frameworks */,
-				XXE45443DC38DCFE1DB622XX /* Sources */,
-				XXFA5A8CCDD805DF7AEF9CXX /* Resources */,
+				XXDC105B0E28F884B8E02DXX /* Sources */,
+				XXC55EF014B50CBDECCD15XX /* Resources */,
 			);
 			buildRules = (
 			);
@@ -279,6 +343,11 @@
 					13B07F861A680F5B00A75B9A = {
 						LastSwiftMigration = 1250;
 					};
+					XX26DA2F2C948C95DCC95EXX = {
+						CreatedOnToolsVersion = 14.3;
+						DevelopmentTeam = AA4H59JYYG;
+						ProvisioningStyle = Automatic;
+					};
 					XXAAE683BFDDB17D30E8FCXX = {
 						CreatedOnToolsVersion = 14.3;
 						DevelopmentTeam = AA4H59JYYG;
@@ -300,6 +369,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* ExLibris */,
+				XX26DA2F2C948C95DCC95EXX /* Ex Libris Watch */,
 				XXAAE683BFDDB17D30E8FCXX /* widget */,
 			);
 		};
@@ -313,7 +383,14 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				D5F280A001AFF3510DB7A57F /* PrivacyInfo.xcprivacy in Resources */,
+				D506CB753E060053A4865E72 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		XXC55EF014B50CBDECCD15XX /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -321,6 +398,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C0FF5381B51FFECB81B6138F /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -370,7 +448,7 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		28596070CB9E919E00F33AEE /* [Expo] Configure project */ = {
+		1681E5A6BEC933E997C62884 /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -436,7 +514,7 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-ExLibris/Pods-ExLibris-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		ED053909726499A4F825748B /* [CP] Embed Pods Frameworks */ = {
+		866B4F69CEA0D84EFBF444D2 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -466,8 +544,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				F11748452D0E000000000001 /* WatchBridge.swift in Sources */,
-				49C9BA7E8F200AA9A3347278 /* ExpoModulesProvider.swift in Sources */,
+				1A0C2E68EA464C1D9300FC1C /* WatchBridge.swift in Sources */,
+				EE7FE9117B22B50B8C8DAE55 /* ExpoModulesProvider.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		XXDC105B0E28F884B8E02DXX /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -481,6 +566,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		XX7BFF99BA3BA3D1A4188BXX /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = XX26DA2F2C948C95DCC95EXX /* Ex Libris Watch */;
+			targetProxy = XX1023FB6DD198999A9727XX /* PBXContainerItemProxy */;
+		};
 		XXCD5F4B515CE9A5C328C4XX /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = XXAAE683BFDDB17D30E8FCXX /* widget */;
@@ -491,8 +581,9 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = A0314BC2522D4CA60A9EA020 /* Pods-ExLibris.debug.xcconfig */;
+			baseConfigurationReference = B8590DEFBA9470F8E5E20CD7 /* Pods-ExLibris.debug.xcconfig */;
 			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = ExLibris/ExLibris.entitlements;
@@ -528,8 +619,9 @@
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = C279F38A2C51C95AA2184710 /* Pods-ExLibris.release.xcconfig */;
+			baseConfigurationReference = 2007E5EB33C0A2386F9728EB /* Pods-ExLibris.release.xcconfig */;
 			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = ExLibris/ExLibris.entitlements;
@@ -717,6 +809,50 @@
 			};
 			name = Debug;
 		};
+		XXA35C20136F6ECF6D19FEXX /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_ENTITLEMENTS = ../targets/watch/generated.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = AA4H59JYYG;
+				ENABLE_PREVIEWS = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ../targets/watch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Ex Libris Watch";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.exlibris.app;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
+				PRODUCT_BUNDLE_IDENTIFIER = com.exlibris.app.watch;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
 		XXEAE7928F92F62556505EXX /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -759,6 +895,50 @@
 			};
 			name = Release;
 		};
+		XXEF236586C95A4AE6E63EXX /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_ENTITLEMENTS = ../targets/watch/generated.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = AA4H59JYYG;
+				ENABLE_PREVIEWS = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ../targets/watch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Ex Libris Watch";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.exlibris.app;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				MTL_FAST_MATH = YES;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
+				PRODUCT_BUNDLE_IDENTIFIER = com.exlibris.app.watch;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -785,6 +965,15 @@
 			buildConfigurations = (
 				XX1A88B7109C9F4772DA04XX /* Debug */,
 				XXEAE7928F92F62556505EXX /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		XX95BFF0AC16FA38651B98XX /* Build configuration list for PBXNativeTarget "Ex Libris Watch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				XXA35C20136F6ECF6D19FEXX /* Debug */,
+				XXEF236586C95A4AE6E63EXX /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

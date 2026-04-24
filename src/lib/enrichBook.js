@@ -38,15 +38,30 @@ async function fetchBestCover(isbn, title, author) {
 
 // ── Upload cover to Supabase Storage (our own CDN cache) ─────────────────
 // Falls back to the original URL on CORS errors or upload failures.
+// Returns null if the fetched image looks like a placeholder, so the caller
+// leaves cover_image_url alone (book falls back to FakeCover).
 export async function uploadCoverToStorage(coverUrl, bookId) {
   if (!coverUrl || !bookId) return coverUrl
   try {
     const res = await fetch(coverUrl)
     if (!res.ok) return coverUrl
     const blob = await res.blob()
-    // Reject empty, tiny (likely placeholder), or non-image responses
     if (!blob.size || blob.size < 1000) return coverUrl
     if (!blob.type.startsWith('image/')) return coverUrl
+
+    // Dimension check — real book covers are at least ~200×300. Google Books
+    // and Open Library both return a small "No image available" stub when
+    // they don't have a cover, and the stubs sneak through the size check.
+    // Decode and bail if it's placeholder-sized.
+    try {
+      const bitmap = await createImageBitmap(blob)
+      const tooSmall = bitmap.width < 100 || bitmap.height < 150
+      bitmap.close?.()
+      if (tooSmall) return null
+    } catch {
+      return null
+    }
+
     const ext = blob.type === 'image/png' ? 'png' : 'jpg'
     const path = `${bookId}.${ext}`
     const { error } = await supabase.storage

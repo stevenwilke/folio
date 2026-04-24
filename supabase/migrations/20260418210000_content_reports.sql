@@ -23,18 +23,22 @@ create index if not exists content_reports_reported_user_idx on content_reports(
 alter table content_reports enable row level security;
 
 -- Users can create reports and see their own.
+drop policy if exists content_reports_insert_own on content_reports;
 create policy content_reports_insert_own on content_reports
   for insert with check (auth.uid() = reporter_id);
 
+drop policy if exists content_reports_select_own on content_reports;
 create policy content_reports_select_own on content_reports
   for select using (auth.uid() = reporter_id);
 
 -- Admins can see and update all reports.
+drop policy if exists content_reports_select_admin on content_reports;
 create policy content_reports_select_admin on content_reports
   for select using (
     exists (select 1 from profiles where id = auth.uid() and is_admin = true)
   );
 
+drop policy if exists content_reports_update_admin on content_reports;
 create policy content_reports_update_admin on content_reports
   for update using (
     exists (select 1 from profiles where id = auth.uid() and is_admin = true)

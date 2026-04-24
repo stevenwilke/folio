@@ -45,34 +45,43 @@ alter table book_club_nominations enable row level security;
 alter table book_club_votes       enable row level security;
 
 -- history: members read; admins write
+drop policy if exists "Members view history" on book_club_history;
 create policy "Members view history"
   on book_club_history for select to authenticated
   using (is_club_member(club_id, auth.uid()));
+drop policy if exists "Admins add to history" on book_club_history;
 create policy "Admins add to history"
   on book_club_history for insert to authenticated
   with check (is_club_admin(club_id, auth.uid()));
+drop policy if exists "Admins delete from history" on book_club_history;
 create policy "Admins delete from history"
   on book_club_history for delete to authenticated
   using (is_club_admin(club_id, auth.uid()));
 
 -- nominations: members read and nominate
+drop policy if exists "Members view nominations" on book_club_nominations;
 create policy "Members view nominations"
   on book_club_nominations for select to authenticated
   using (is_club_member(club_id, auth.uid()));
+drop policy if exists "Members can nominate" on book_club_nominations;
 create policy "Members can nominate"
   on book_club_nominations for insert to authenticated
   with check (nominated_by = auth.uid() and is_club_member(club_id, auth.uid()));
+drop policy if exists "Remove own nomination or admin" on book_club_nominations;
 create policy "Remove own nomination or admin"
   on book_club_nominations for delete to authenticated
   using (nominated_by = auth.uid() or is_club_admin(club_id, auth.uid()));
 
 -- votes: members read and vote
+drop policy if exists "Members view votes" on book_club_votes;
 create policy "Members view votes"
   on book_club_votes for select to authenticated
   using (is_club_member(club_id, auth.uid()));
+drop policy if exists "Members can vote" on book_club_votes;
 create policy "Members can vote"
   on book_club_votes for insert to authenticated
   with check (user_id = auth.uid() and is_club_member(club_id, auth.uid()));
+drop policy if exists "Members can unvote" on book_club_votes;
 create policy "Members can unvote"
   on book_club_votes for delete to authenticated
   using (user_id = auth.uid());

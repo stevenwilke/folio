@@ -74,20 +74,24 @@ alter table book_club_posts   enable row level security;
 
 -- book_clubs: public clubs visible to all; private clubs only to members
 -- Uses is_club_member() (security definer) to avoid recursion.
+drop policy if exists "View public clubs" on book_clubs;
 create policy "View public clubs"
   on book_clubs for select
   using (is_public = true or is_club_member(id, auth.uid()));
 
+drop policy if exists "Authenticated users can create clubs" on book_clubs;
 create policy "Authenticated users can create clubs"
   on book_clubs for insert
   to authenticated
   with check (created_by = auth.uid());
 
+drop policy if exists "Admins can update their clubs" on book_clubs;
 create policy "Admins can update their clubs"
   on book_clubs for update
   to authenticated
   using (is_club_admin(id, auth.uid()));
 
+drop policy if exists "Admins can delete their clubs" on book_clubs;
 create policy "Admins can delete their clubs"
   on book_clubs for delete
   to authenticated
@@ -97,11 +101,13 @@ create policy "Admins can delete their clubs"
 -- Membership is not sensitive (who's in a public book club), and keeping
 -- this policy simple is what breaks the recursion — no cross-reference back
 -- to book_clubs here.
+drop policy if exists "Authenticated users can view memberships" on book_club_members;
 create policy "Authenticated users can view memberships"
   on book_club_members for select
   to authenticated
   using (true);
 
+drop policy if exists "Users can join public clubs or be invited" on book_club_members;
 create policy "Users can join public clubs or be invited"
   on book_club_members for insert
   to authenticated
@@ -118,21 +124,25 @@ create policy "Users can join public clubs or be invited"
     )
   );
 
+drop policy if exists "Members can leave clubs" on book_club_members;
 create policy "Members can leave clubs"
   on book_club_members for delete
   to authenticated
   using (user_id = auth.uid());
 
 -- book_club_posts: members can read and post; uses is_club_member() to avoid recursion
+drop policy if exists "Members can view posts" on book_club_posts;
 create policy "Members can view posts"
   on book_club_posts for select
   using (is_club_member(club_id, auth.uid()));
 
+drop policy if exists "Members can post" on book_club_posts;
 create policy "Members can post"
   on book_club_posts for insert
   to authenticated
   with check (user_id = auth.uid() and is_club_member(club_id, auth.uid()));
 
+drop policy if exists "Users can delete their own posts" on book_club_posts;
 create policy "Users can delete their own posts"
   on book_club_posts for delete
   to authenticated

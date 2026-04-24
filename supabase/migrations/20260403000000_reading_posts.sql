@@ -33,28 +33,38 @@ alter table post_likes     enable row level security;
 alter table post_comments  enable row level security;
 
 -- reading_posts policies
+drop policy if exists "Anyone can read posts" on reading_posts;
 create policy "Anyone can read posts"
   on reading_posts for select using (true);
+drop policy if exists "Users insert own posts" on reading_posts;
 create policy "Users insert own posts"
   on reading_posts for insert with check (auth.uid() = user_id);
+drop policy if exists "Users delete own posts" on reading_posts;
 create policy "Users delete own posts"
   on reading_posts for delete using (auth.uid() = user_id);
+drop policy if exists "Users update own posts" on reading_posts;
 create policy "Users update own posts"
   on reading_posts for update using (auth.uid() = user_id);
 
 -- post_likes policies
+drop policy if exists "Anyone can read likes" on post_likes;
 create policy "Anyone can read likes"
   on post_likes for select using (true);
+drop policy if exists "Users insert own likes" on post_likes;
 create policy "Users insert own likes"
   on post_likes for insert with check (auth.uid() = user_id);
+drop policy if exists "Users delete own likes" on post_likes;
 create policy "Users delete own likes"
   on post_likes for delete using (auth.uid() = user_id);
 
 -- post_comments policies
+drop policy if exists "Anyone can read comments" on post_comments;
 create policy "Anyone can read comments"
   on post_comments for select using (true);
+drop policy if exists "Users insert own comments" on post_comments;
 create policy "Users insert own comments"
   on post_comments for insert with check (auth.uid() = user_id);
+drop policy if exists "Users delete own comments" on post_comments;
 create policy "Users delete own comments"
   on post_comments for delete using (auth.uid() = user_id);
 
@@ -70,14 +80,17 @@ insert into storage.buckets (id, name, public)
 values ('post-images', 'post-images', true)
 on conflict (id) do nothing;
 
+drop policy if exists "Anyone can read post images" on storage.objects;
 create policy "Anyone can read post images"
   on storage.objects for select
   using (bucket_id = 'post-images');
 
+drop policy if exists "Authenticated users can upload post images" on storage.objects;
 create policy "Authenticated users can upload post images"
   on storage.objects for insert
   with check (bucket_id = 'post-images' and auth.role() = 'authenticated');
 
+drop policy if exists "Users can delete own post images" on storage.objects;
 create policy "Users can delete own post images"
   on storage.objects for delete
   using (bucket_id = 'post-images' and auth.uid()::text = (storage.foldername(name))[1]);

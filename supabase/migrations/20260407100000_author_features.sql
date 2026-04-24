@@ -56,13 +56,16 @@ alter table author_posts   enable row level security;
 alter table author_claims  enable row level security;
 
 -- authors: public read; verified author (claimed_by) or admin can update
+drop policy if exists "Anyone can view authors" on authors;
 create policy "Anyone can view authors"
   on authors for select using (true);
 
+drop policy if exists "Authenticated can insert authors" on authors;
 create policy "Authenticated can insert authors"
   on authors for insert to authenticated
   with check (true);
 
+drop policy if exists "Verified author or admin can update" on authors;
 create policy "Verified author or admin can update"
   on authors for update to authenticated
   using (
@@ -71,25 +74,31 @@ create policy "Verified author or admin can update"
   );
 
 -- author_follows: users manage their own rows; anyone authenticated can read
+drop policy if exists "Authenticated can view follows" on author_follows;
 create policy "Authenticated can view follows"
   on author_follows for select to authenticated using (true);
 
+drop policy if exists "Users manage own follows" on author_follows;
 create policy "Users manage own follows"
   on author_follows for insert to authenticated
   with check (user_id = auth.uid());
 
+drop policy if exists "Users update own follows" on author_follows;
 create policy "Users update own follows"
   on author_follows for update to authenticated
   using (user_id = auth.uid());
 
+drop policy if exists "Users delete own follows" on author_follows;
 create policy "Users delete own follows"
   on author_follows for delete to authenticated
   using (user_id = auth.uid());
 
 -- author_posts: public read; only the claimed (verified) author can post
+drop policy if exists "Anyone can view author posts" on author_posts;
 create policy "Anyone can view author posts"
   on author_posts for select using (true);
 
+drop policy if exists "Verified author can post" on author_posts;
 create policy "Verified author can post"
   on author_posts for insert to authenticated
   with check (
@@ -99,6 +108,7 @@ create policy "Verified author can post"
     )
   );
 
+drop policy if exists "Verified author can delete own posts" on author_posts;
 create policy "Verified author can delete own posts"
   on author_posts for delete to authenticated
   using (
@@ -109,6 +119,7 @@ create policy "Verified author can delete own posts"
   );
 
 -- author_claims: users can see their own; admins see all; users can insert
+drop policy if exists "Users view own claims" on author_claims;
 create policy "Users view own claims"
   on author_claims for select to authenticated
   using (
@@ -116,10 +127,12 @@ create policy "Users view own claims"
     or exists (select 1 from profiles where id = auth.uid() and is_admin = true)
   );
 
+drop policy if exists "Users can submit claims" on author_claims;
 create policy "Users can submit claims"
   on author_claims for insert to authenticated
   with check (user_id = auth.uid());
 
+drop policy if exists "Admins can update claim status" on author_claims;
 create policy "Admins can update claim status"
   on author_claims for update to authenticated
   using (exists (select 1 from profiles where id = auth.uid() and is_admin = true));

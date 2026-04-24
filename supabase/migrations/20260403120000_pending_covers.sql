@@ -19,10 +19,12 @@ create unique index if not exists pending_covers_one_pending_per_book
 -- RLS
 alter table pending_covers enable row level security;
 
+drop policy if exists "Users can submit covers" on pending_covers;
 create policy "Users can submit covers"
   on pending_covers for insert
   with check (auth.uid() = user_id);
 
+drop policy if exists "Users can view own submissions" on pending_covers;
 create policy "Users can view own submissions"
   on pending_covers for select
   using (auth.uid() = user_id);
@@ -39,10 +41,12 @@ values (
 on conflict (id) do nothing;
 
 -- Storage policies
+drop policy if exists "Public read book covers" on storage.objects;
 create policy "Public read book covers"
   on storage.objects for select
   using (bucket_id = 'book-covers');
 
+drop policy if exists "Authenticated users can upload book covers" on storage.objects;
 create policy "Authenticated users can upload book covers"
   on storage.objects for insert
   with check (
@@ -51,6 +55,7 @@ create policy "Authenticated users can upload book covers"
   );
 
 -- Users can delete their own uploads (path starts with their user id)
+drop policy if exists "Users can delete own book cover uploads" on storage.objects;
 create policy "Users can delete own book cover uploads"
   on storage.objects for delete
   using (

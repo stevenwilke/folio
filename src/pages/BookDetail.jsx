@@ -122,6 +122,23 @@ export default function BookDetail({ bookId, session, onBack }) {
   // click 'Change' to expand back to all four options.
   const [showAllStatuses, setShowAllStatuses] = useState(false)
   const [showAllFormats, setShowAllFormats] = useState(false)
+  const statusPopoverRef = useRef(null)
+  const formatPopoverRef = useRef(null)
+  // Close popovers on outside click. Each popover is position:absolute so it
+  // overlays the page content below; we want a tap anywhere outside to dismiss.
+  useEffect(() => {
+    if (!showAllStatuses && !showAllFormats) return
+    const onDown = (e) => {
+      if (showAllStatuses && statusPopoverRef.current && !statusPopoverRef.current.contains(e.target)) {
+        setShowAllStatuses(false)
+      }
+      if (showAllFormats && formatPopoverRef.current && !formatPopoverRef.current.contains(e.target)) {
+        setShowAllFormats(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [showAllStatuses, showAllFormats])
   const [rating, setRating]             = useState(0)
   const [hoverRating, setHoverRating]   = useState(0)
   const [reviewText, setReviewText]     = useState('')
@@ -989,7 +1006,7 @@ export default function BookDetail({ bookId, session, onBack }) {
 
   /** Small share button next to the title. Uses the Web Share API on mobile
    *  (native share sheet); falls back to copy-to-clipboard on desktop. */
-  function ShareBookButton({ book }) {
+  function ShareBookButton({ book, floating = false }) {
     const [copied, setCopied] = useState(false)
     const shareUrl = `${window.location.origin}/?book=${book.id}`
     const onClick = async () => {
@@ -1015,12 +1032,13 @@ export default function BookDetail({ bookId, session, onBack }) {
         style={{
           background: copied ? `${theme.rust}22` : 'transparent',
           border: `1px solid ${copied ? theme.rust : theme.border}`,
-          borderRadius: 8,
-          padding: '6px 8px',
+          borderRadius: floating ? 999 : 8,
+          padding: floating ? 8 : '6px 8px',
           cursor: 'pointer',
           color: copied ? theme.rust : theme.textSubtle,
           display: 'inline-flex',
           alignItems: 'center',
+          justifyContent: 'center',
           gap: 4,
           fontFamily: "'DM Sans', sans-serif",
           fontSize: 12,
@@ -1034,7 +1052,7 @@ export default function BookDetail({ bookId, session, onBack }) {
           <polyline points="16 6 12 2 8 6" />
           <line x1="12" y1="2" x2="12" y2="15" />
         </svg>
-        {copied ? 'Copied' : 'Share'}
+        {!floating && (copied ? 'Copied' : 'Share')}
       </button>
     )
   }
@@ -1047,7 +1065,12 @@ export default function BookDetail({ bookId, session, onBack }) {
 
       <div style={s.content}>
         {/* Hero */}
-        <div style={s.hero}>
+        <div style={{ ...s.hero, position: 'relative' }}>
+          {/* Floating share button — icon-only, anchored to the hero's
+              top-right corner so title wraps don't bump it around. */}
+          <div style={{ position: 'absolute', top: 0, right: 0, zIndex: 2 }}>
+            <ShareBookButton book={book} theme={theme} floating />
+          </div>
           {/* Left column — cover plus the user's per-book actions
               (shelves, rating) so the empty space under the cover gets used. */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: isMobile ? '100%' : s.coverWrap.width, alignItems: isMobile ? 'center' : 'stretch' }}>
@@ -1104,10 +1127,7 @@ export default function BookDetail({ bookId, session, onBack }) {
           </div>
 
           <div style={s.heroInfo}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
-              <div style={{ ...s.title, flex: '1 1 auto', minWidth: 0 }}>{book.title}</div>
-              <ShareBookButton book={book} theme={theme} />
-            </div>
+            <div style={{ ...s.title, paddingRight: 44 }}>{book.title}</div>
             <div style={s.author}>
               {book.author
                 ? <span
@@ -1348,81 +1368,34 @@ export default function BookDetail({ bookId, session, onBack }) {
             </div>
 
 
-            {/* Status — collapses to just the chosen pill once set, with a
-                Change link to expand back to all four. */}
-            <div style={s.statusRow}>
-              {(!status || showAllStatuses) ? (
-                <>
-                  {Object.entries(STATUS_LABELS).map(([val, label]) => (
-                    <button
-                      key={val}
-                      style={{
-                        ...s.statusBtn,
-                        ...(status === val ? {
-                          background: STATUS_COLORS[val].bg,
-                          color: STATUS_COLORS[val].color,
-                          borderColor: STATUS_COLORS[val].color,
-                        } : {}),
-                      }}
-                      onClick={() => { changeStatus(val); setShowAllStatuses(false) }}
-                    >
-                      {status === val ? '✓ ' : ''}{label}
-                    </button>
-                  ))}
-                </>
-              ) : (
-                <>
-                  <button
-                    style={{
-                      ...s.statusBtn,
-                      background: STATUS_COLORS[status].bg,
-                      color: STATUS_COLORS[status].color,
-                      borderColor: STATUS_COLORS[status].color,
-                    }}
-                    onClick={() => setShowAllStatuses(true)}
-                    title="Click to change status"
-                  >
-                    ✓ {STATUS_LABELS[status]}
-                  </button>
-                  <button
-                    onClick={() => setShowAllStatuses(true)}
-                    style={{
-                      background: 'transparent', border: 'none', cursor: 'pointer',
-                      color: theme.textSubtle, fontSize: 12, fontFamily: "'DM Sans', sans-serif",
-                      textDecoration: 'underline', padding: '4px 0',
-                    }}
-                  >
-                    Change
-                  </button>
-                </>
-              )}
-            </div>
-
-            {/* Format — multi-select with per-format copy counts. Stored in
-                entry.format_copies as { Hardcover: 2, eBook: 1 } so a true
-                collector can mark both multiple formats and multiple copies
-                of the same format. Collection value scales with total copies.
-                Row collapses to only the selected formats once any is set,
-                with an "+ Add format" link to re-expand. */}
-            {entry && (() => {
-              const rawCopies = (entry?.format_copies && typeof entry.format_copies === 'object' && !Array.isArray(entry.format_copies))
-                ? entry.format_copies
-                : {}
-              // If the entry hasn't been migrated yet but books.format is set,
-              // treat that as a single implicit copy so the pill still shows.
-              const copies = Object.keys(rawCopies).length === 0 && book.format
-                ? { [book.format]: 1 }
-                : rawCopies
-              const ownedFormats = Object.keys(copies).filter(k => Number(copies[k]) > 0)
-              const totalCopies = ownedFormats.reduce((n, k) => n + Number(copies[k] || 0), 0)
+            {/* Status + Format — side-by-side triggers. Each opens a vertical
+                popover (position:absolute) that overlays the content below so
+                the page doesn't reflow when the list expands. Clicking outside
+                closes via the mousedown listener in the effect above. */}
+            {(() => {
               const allFormats = [
                 { value: 'Hardcover',   label: '📖 Hardcover' },
                 { value: 'Paperback',   label: '📕 Paperback' },
                 { value: 'eBook',       label: '📱 eBook' },
                 { value: 'Audiobook',   label: '🎧 Audiobook' },
               ]
-              const expanded = ownedFormats.length === 0 || showAllFormats
-              const visible = expanded ? allFormats : allFormats.filter(o => ownedFormats.includes(o.value))
+              const KNOWN = new Set(allFormats.map(f => f.value))
+              const hasExplicit = entry?.format_copies != null
+                && typeof entry.format_copies === 'object'
+                && !Array.isArray(entry.format_copies)
+              // Fall back to legacy book.format only for entries that haven't
+              // been migrated yet (format_copies is null/undefined). Once the
+              // user has explicitly touched formats — even to clear them to {}
+              // — respect that so removing the last copy actually sticks.
+              // Only seed when book.format is a known typed value (skip legacy
+              // catch-alls like "physical").
+              const copies = hasExplicit
+                ? entry.format_copies
+                : (KNOWN.has(book.format) ? { [book.format]: 1 } : {})
+              // Drop any unknown legacy keys so a stray "physical" entry never
+              // shows up as a bare pill without an emoji.
+              const ownedFormats = Object.keys(copies).filter(k => KNOWN.has(k) && Number(copies[k]) > 0)
+              const totalCopies = ownedFormats.reduce((n, k) => n + Number(copies[k] || 0), 0)
               const persist = async (next) => {
                 await supabase.from('collection_entries').update({ format_copies: next }).eq('id', entry.id)
                 setEntry(prev => prev ? { ...prev, format_copies: next } : prev)
@@ -1438,87 +1411,164 @@ export default function BookDetail({ bookId, session, onBack }) {
                 else next[value] = count
                 await persist(next)
               }
+              const popoverStyle = {
+                position: 'absolute', top: 'calc(100% + 4px)', left: 0,
+                display: 'flex', flexDirection: 'column', gap: 4,
+                padding: 6, borderRadius: 8,
+                background: theme.bgCard, border: `1px solid ${theme.border}`,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                zIndex: 20, minWidth: 160,
+              }
               return (
-                <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {visible.map(opt => {
-                    const count = Number(copies[opt.value] || 0)
-                    const isActive = count > 0
-                    const isDigital = opt.value === 'eBook' || opt.value === 'Audiobook'
+                <div style={{ ...s.statusRow, alignItems: 'flex-start' }}>
+                  {/* Status trigger + popover */}
+                  <div ref={statusPopoverRef} style={{ position: 'relative' }}>
+                    <button
+                      style={{
+                        ...s.statusBtn,
+                        ...(status ? {
+                          background: STATUS_COLORS[status].bg,
+                          color: STATUS_COLORS[status].color,
+                          borderColor: STATUS_COLORS[status].color,
+                        } : {}),
+                      }}
+                      onClick={() => setShowAllStatuses(v => !v)}
+                      title={status ? 'Click to change status' : 'Set status'}
+                    >
+                      {status ? `✓ ${STATUS_LABELS[status]}` : 'Set status'}
+                    </button>
+                    {showAllStatuses && (
+                      <div style={popoverStyle}>
+                        {Object.entries(STATUS_LABELS).map(([val, label]) => (
+                          <button
+                            key={val}
+                            style={{
+                              ...s.statusBtn,
+                              textAlign: 'left',
+                              ...(status === val ? {
+                                background: STATUS_COLORS[val].bg,
+                                color: STATUS_COLORS[val].color,
+                                borderColor: STATUS_COLORS[val].color,
+                              } : {}),
+                            }}
+                            onClick={() => { changeStatus(val); setShowAllStatuses(false) }}
+                          >
+                            {status === val ? '✓ ' : ''}{label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Selected format pills (inline, with stepper) */}
+                  {entry && ownedFormats.map(value => {
+                    const opt = allFormats.find(o => o.value === value) || { value, label: value }
+                    const count = Number(copies[value] || 0)
+                    const isDigital = value === 'eBook' || value === 'Audiobook'
                     const accent = isDigital ? '#5a6e8a' : '#5a7a5a'
                     return (
-                      <span key={opt.value} style={{ display: 'inline-flex', alignItems: 'stretch', gap: 0 }}>
+                      <span key={value} style={{ display: 'inline-flex', alignItems: 'stretch', gap: 0 }}>
                         <button
-                          onClick={async () => {
-                            await setCount(opt.value, isActive ? 0 : 1)
-                            if (expanded && !isActive) setShowAllFormats(false)
-                          }}
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={() => setShowAllFormats(v => !v)}
                           style={{
                             padding: '5px 12px',
-                            borderRadius: isActive ? '6px 0 0 6px' : 6,
+                            borderRadius: '6px 0 0 6px',
                             fontSize: 11, fontWeight: 600,
                             fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
                             transition: 'all 0.15s',
-                            border: `1px solid ${isActive ? accent : theme.border}`,
-                            background: isActive ? (isDigital ? 'rgba(90,110,138,0.15)' : 'rgba(90,122,90,0.15)') : 'transparent',
-                            color: isActive ? accent : theme.textMuted,
+                            border: `1px solid ${accent}`,
+                            background: isDigital ? 'rgba(90,110,138,0.15)' : 'rgba(90,122,90,0.15)',
+                            color: accent,
                           }}
-                          title={isActive ? 'Remove this format' : 'Add this format'}
+                          title="Change or add formats"
                         >
-                          {isActive ? '✓ ' : ''}{opt.label}
+                          ✓ {opt.label}
                         </button>
-                        {isActive && (
-                          <span
+                        <span
+                          style={{
+                            display: 'inline-flex', alignItems: 'center',
+                            borderTop: `1px solid ${accent}`,
+                            borderRight: `1px solid ${accent}`,
+                            borderBottom: `1px solid ${accent}`,
+                            borderRadius: '0 6px 6px 0',
+                            background: isDigital ? 'rgba(90,110,138,0.08)' : 'rgba(90,122,90,0.08)',
+                          }}
+                        >
+                          <button
+                            onClick={() => setCount(value, count - 1)}
                             style={{
-                              display: 'inline-flex', alignItems: 'center',
-                              borderTop: `1px solid ${accent}`,
-                              borderRight: `1px solid ${accent}`,
-                              borderBottom: `1px solid ${accent}`,
-                              borderRadius: '0 6px 6px 0',
-                              background: isDigital ? 'rgba(90,110,138,0.08)' : 'rgba(90,122,90,0.08)',
+                              border: 'none', background: 'transparent', cursor: 'pointer',
+                              padding: '0 6px', fontSize: 13, color: accent, fontWeight: 700, lineHeight: 1,
                             }}
+                            title="Remove a copy"
                           >
-                            <button
-                              onClick={() => setCount(opt.value, count - 1)}
-                              style={{
-                                border: 'none', background: 'transparent', cursor: 'pointer',
-                                padding: '0 6px', fontSize: 13, color: accent, fontWeight: 700, lineHeight: 1,
-                              }}
-                              title="Remove a copy"
-                            >
-                              −
-                            </button>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: accent, minWidth: 12, textAlign: 'center' }}>
-                              {count}
-                            </span>
-                            <button
-                              onClick={() => setCount(opt.value, count + 1)}
-                              style={{
-                                border: 'none', background: 'transparent', cursor: 'pointer',
-                                padding: '0 6px', fontSize: 13, color: accent, fontWeight: 700, lineHeight: 1,
-                              }}
-                              title="Add another copy"
-                            >
-                              +
-                            </button>
+                            −
+                          </button>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: accent, minWidth: 12, textAlign: 'center' }}>
+                            {count}
                           </span>
-                        )}
+                          <button
+                            onClick={() => setCount(value, count + 1)}
+                            style={{
+                              border: 'none', background: 'transparent', cursor: 'pointer',
+                              padding: '0 6px', fontSize: 13, color: accent, fontWeight: 700, lineHeight: 1,
+                            }}
+                            title="Add another copy"
+                          >
+                            +
+                          </button>
+                        </span>
                       </span>
                     )
                   })}
-                  {!expanded && (
-                    <button
-                      onClick={() => setShowAllFormats(true)}
-                      style={{
-                        background: 'transparent', border: 'none', cursor: 'pointer',
-                        color: theme.textSubtle, fontSize: 12, fontFamily: "'DM Sans', sans-serif",
-                        textDecoration: 'underline', padding: '4px 0',
-                      }}
-                    >
-                      + Add format
-                    </button>
+
+                  {/* Format trigger + popover */}
+                  {entry && (
+                    <div ref={formatPopoverRef} style={{ position: 'relative' }}>
+                      <button
+                        onClick={() => setShowAllFormats(v => !v)}
+                        style={{
+                          ...s.statusBtn,
+                          color: theme.textMuted,
+                        }}
+                      >
+                        + Add format
+                      </button>
+                      {showAllFormats && (
+                        <div style={popoverStyle}>
+                          {allFormats.map(opt => {
+                            const count = Number(copies[opt.value] || 0)
+                            const isActive = count > 0
+                            const isDigital = opt.value === 'eBook' || opt.value === 'Audiobook'
+                            const accent = isDigital ? '#5a6e8a' : '#5a7a5a'
+                            return (
+                              <button
+                                key={opt.value}
+                                onClick={async () => {
+                                  await setCount(opt.value, isActive ? 0 : 1)
+                                  setShowAllFormats(false)
+                                }}
+                                style={{
+                                  padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                                  fontFamily: "'DM Sans', sans-serif", cursor: 'pointer',
+                                  transition: 'all 0.15s', textAlign: 'left',
+                                  border: `1px solid ${isActive ? accent : theme.border}`,
+                                  background: isActive ? (isDigital ? 'rgba(90,110,138,0.15)' : 'rgba(90,122,90,0.15)') : 'transparent',
+                                  color: isActive ? accent : theme.textMuted,
+                                }}
+                              >
+                                {isActive ? '✓ ' : ''}{opt.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
                   )}
+
                   {totalCopies > 1 && (
-                    <span style={{ fontSize: 11, color: theme.textSubtle, fontStyle: 'italic', marginLeft: 4 }}>
+                    <span style={{ fontSize: 11, color: theme.textSubtle, fontStyle: 'italic', marginLeft: 4, alignSelf: 'center' }}>
                       {totalCopies} copies across {ownedFormats.length} format{ownedFormats.length === 1 ? '' : 's'}
                     </span>
                   )}

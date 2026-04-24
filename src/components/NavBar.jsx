@@ -248,7 +248,7 @@ export default function NavBar({ session, extra }) {
                 {NAV_ITEMS.map(item => (
                   <button key={item.path}
                     style={isActive(item)
-                      ? { ...s.active, color: theme.rust, background: `rgba(${isDark ? '212,105,58' : '192,82,30'},0.15)` }
+                      ? { ...s.active, color: theme.rust, background: theme.bg, boxShadow: `0 0 0 1px ${theme.rust}40` }
                       : { ...s.ghost, color: theme.navText }}
                     onClick={() => navigate(item.path)}>
                     {item.label}

@@ -228,6 +228,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   }, [])
 
   async function fetchFriendStats() {
+    if (!session) { setFriendStats([]); return }
     setFriendStats(null)
     const { data: fs } = await supabase
       .from('friendships').select('requester_id, addressee_id')
@@ -255,8 +256,8 @@ export default function BookDetail({ bookId, session, onBack }) {
 
       // First-time external-rating fetch for older books that pre-date this
       // feature. enrichBook handles freshly-added books; this catches the
-      // long tail.
-      if (data.external_rating_fetched_at == null) {
+      // long tail. syncExternalRating writes to books, so gate on session.
+      if (session && data.external_rating_fetched_at == null) {
         import('../lib/externalRating').then(({ syncExternalRating }) =>
           syncExternalRating(data.id, data).then(r => {
             if (r) setBook(prev => prev ? {
@@ -270,12 +271,13 @@ export default function BookDetail({ bookId, session, onBack }) {
         )
       }
 
-      // Enrich missing fields in the background (description, cover, genre, ISBN)
+      // Enrich missing fields in the background (description, cover, genre,
+      // ISBN). Writes to `books`, so only signed-in users kick this off.
       const needsDesc  = !data.description
       const needsCover = !data.cover_image_url
       const needsGenre = !data.genre
 
-      if (needsDesc || needsCover || needsGenre || !data.isbn_13) {
+      if (session && (needsDesc || needsCover || needsGenre || !data.isbn_13)) {
         setFetchingDesc(needsDesc)
 
         // Try Open Library first for description (free, no key)
@@ -383,6 +385,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   }
 
   async function fetchEntry() {
+    if (!session) { setEntry(null); setMyShelves([]); return }
     const [{ data }, { data: shelfRows }] = await Promise.all([
       supabase
         .from('collection_entries')
@@ -406,14 +409,13 @@ export default function BookDetail({ bookId, session, onBack }) {
   }
 
   async function fetchReviews() {
+    // Reads the `public_reviews` view (security-definer) so anon visitors can
+    // see reviews without granting SELECT on the whole collection_entries
+    // table.
     const { data } = await supabase
-      .from('collection_entries')
-      .select(`
-        id, user_rating, review_text, added_at,
-        profiles ( username )
-      `)
+      .from('public_reviews')
+      .select('id, user_rating, review_text, added_at, username')
       .eq('book_id', activeBookId)
-      .not('review_text', 'is', null)
       .order('added_at', { ascending: false })
     setReviews(data || [])
   }
@@ -506,8 +508,8 @@ export default function BookDetail({ bookId, session, onBack }) {
       const found = data?.found || usedData
 
       if (!found) {
-        // Don't overwrite existing prices with null — only write if no cache exists
-        if (!cached?.avg_price && !cached?.list_price) {
+        // Don't overwrite existing prices with null — only write if no cache exists.
+        if (session && !cached?.avg_price && !cached?.list_price) {
           await supabase.from('valuations').upsert(
             { book_id: bookData.id, fetched_at: new Date().toISOString() },
             { onConflict: 'book_id' }
@@ -532,7 +534,7 @@ export default function BookDetail({ bookId, session, onBack }) {
           row.paperback_avg = usedData.paperback_avg ?? null
           row.hardcover_avg = usedData.hardcover_avg ?? null
         }
-        await supabase.from('valuations').upsert(row, { onConflict: 'book_id' })
+        if (session) await supabase.from('valuations').upsert(row, { onConflict: 'book_id' })
         setValuation(row)
 
         // Price alert detection — only if the new price is materially different
@@ -555,6 +557,7 @@ export default function BookDetail({ bookId, session, onBack }) {
 
   // ── Reading Timer ────────────────────────────────────────────────────────
   async function fetchReadingSessions() {
+    if (!session) return
     const { data } = await supabase
       .from('reading_sessions')
       .select('started_at, ended_at, pages_read, is_fiction')
@@ -565,6 +568,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   }
 
   async function fetchAlsoEnjoyed(bookId) {
+    if (!session) return
     try {
       // Find users who own this book
       const { data: owners } = await supabase
@@ -608,6 +612,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   }
 
   async function fetchActiveSession() {
+    if (!session) return
     const { data } = await supabase
       .from('reading_sessions')
       .select('id, book_id, started_at, start_page')
@@ -712,6 +717,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   }
 
   async function fetchListing() {
+    if (!session) { setListing(null); return }
     const { data } = await supabase
       .from('listings')
       .select('id, price, condition')
@@ -981,7 +987,7 @@ export default function BookDetail({ bookId, session, onBack }) {
     return (
       <div style={s.page}>
         <div style={s.topbar}>
-          <button style={s.backBtn} onClick={onBack}>← Back to Library</button>
+          <button style={s.backBtn} onClick={onBack}>← {session ? 'Back to Library' : 'Back'}</button>
         </div>
         <div style={s.empty}>Loading…</div>
       </div>
@@ -1008,7 +1014,7 @@ export default function BookDetail({ bookId, session, onBack }) {
    *  (native share sheet); falls back to copy-to-clipboard on desktop. */
   function ShareBookButton({ book, floating = false }) {
     const [copied, setCopied] = useState(false)
-    const shareUrl = `${window.location.origin}/?book=${book.id}`
+    const shareUrl = `${window.location.origin}/book/${book.id}`
     const onClick = async () => {
       const shareData = {
         title: book.title,
@@ -1060,7 +1066,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   return (
     <div style={s.page}>
       <div style={s.topbar}>
-        <button style={s.backBtn} onClick={onBack}>← Back to Library</button>
+        <button style={s.backBtn} onClick={onBack}>← {session ? 'Back to Library' : 'Back'}</button>
       </div>
 
       <div style={s.content}>
@@ -1071,8 +1077,6 @@ export default function BookDetail({ bookId, session, onBack }) {
           <div style={{ position: 'absolute', top: 0, right: 0, zIndex: 2 }}>
             <ShareBookButton book={book} theme={theme} floating />
           </div>
-          {/* Left column — cover plus the user's per-book actions
-              (shelves, rating) so the empty space under the cover gets used. */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: isMobile ? '100%' : s.coverWrap.width, alignItems: isMobile ? 'center' : 'stretch' }}>
             <div style={{ ...s.coverWrap, position: 'relative' }}
               onMouseEnter={e => { const btn = e.currentTarget.querySelector('[data-upload-btn]'); if (btn) btn.style.opacity = '1' }}
@@ -1083,47 +1087,20 @@ export default function BookDetail({ bookId, session, onBack }) {
                   ? <img src={url} alt={book.title} style={{ ...s.coverImg, cursor: 'zoom-in' }} onClick={() => setShowCoverLightbox(true)} onError={() => setCoverImgError(true)} />
                   : <FakeCover title={book.title} />
               })()}
-              {/* Upload button overlay */}
-              <input ref={coverFileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCoverUpload} />
-              <button
-                data-upload-btn
-                onClick={() => coverFileInputRef.current?.click()}
-                disabled={coverUploading}
-                title="Upload a custom cover"
-                style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.65)', border: 'none', borderRadius: 8, padding: '5px 9px', cursor: 'pointer', color: 'white', fontSize: 15, opacity: 0, transition: 'opacity 0.2s', lineHeight: 1, backdropFilter: 'blur(4px)' }}>
-                {coverUploading ? '⏳' : '📷'}
-              </button>
+              {session && (
+                <>
+                  <input ref={coverFileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCoverUpload} />
+                  <button
+                    data-upload-btn
+                    onClick={() => coverFileInputRef.current?.click()}
+                    disabled={coverUploading}
+                    title="Upload a custom cover"
+                    style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.65)', border: 'none', borderRadius: 8, padding: '5px 9px', cursor: 'pointer', color: 'white', fontSize: 15, opacity: 0, transition: 'opacity 0.2s', lineHeight: 1, backdropFilter: 'blur(4px)' }}>
+                    {coverUploading ? '⏳' : '📷'}
+                  </button>
+                </>
+              )}
             </div>
-
-            {/* Shelves containing this book — sits under the cover so the
-                left column doesn't waste vertical space. */}
-            {myShelves.length > 0 && (
-              <div style={{ width: '100%' }}>
-                <div style={s.ratingLabel}>On your shelves</div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {myShelves.map(shelf => (
-                    <button
-                      key={shelf.id}
-                      onClick={() => navigate(`/shelves?shelf=${shelf.id}`)}
-                      style={{
-                        padding: '6px 12px',
-                        borderRadius: 20,
-                        border: `1px solid ${theme.border}`,
-                        background: theme.bgCard,
-                        color: theme.text,
-                        fontSize: 13,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        fontFamily: "'DM Sans', sans-serif",
-                      }}
-                    >
-                      📚 {shelf.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
           </div>
 
           <div style={s.heroInfo}>
@@ -1236,7 +1213,7 @@ export default function BookDetail({ bookId, session, onBack }) {
             })()}
 
             {/* Friend stats */}
-            <FriendStatsRow stats={friendStats} />
+            {session && <FriendStatsRow stats={friendStats} />}
 
             <div style={s.metaRow}>
               {book.published_year && <span style={s.metaPill}>{book.published_year}</span>}
@@ -1371,8 +1348,10 @@ export default function BookDetail({ bookId, session, onBack }) {
             {/* Status + Format — side-by-side triggers. Each opens a vertical
                 popover (position:absolute) that overlays the content below so
                 the page doesn't reflow when the list expands. Clicking outside
-                closes via the mousedown listener in the effect above. */}
-            {(() => {
+                closes via the mousedown listener in the effect above.
+                Hidden entirely for signed-out visitors — the CTA below takes
+                over the real-estate. */}
+            {session && (() => {
               const allFormats = [
                 { value: 'Hardcover',   label: '📖 Hardcover' },
                 { value: 'Paperback',   label: '📕 Paperback' },
@@ -1575,6 +1554,32 @@ export default function BookDetail({ bookId, session, onBack }) {
                 </div>
               )
             })()}
+
+            {!session && (
+              <div style={{
+                marginTop: 20, padding: '14px 18px', borderRadius: 10,
+                border: `1px solid ${theme.border}`, background: theme.bgSubtle,
+                display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12,
+                fontFamily: "'DM Sans', sans-serif",
+              }}>
+                <div style={{ flex: '1 1 auto', minWidth: 0, fontSize: 13, color: theme.text }}>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Sign in to track this book</div>
+                  <div style={{ color: theme.textMuted, fontSize: 12 }}>
+                    Add to your library, rate, review, and track your reading across formats.
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigate('/auth')}
+                  style={{
+                    padding: '8px 16px', background: theme.rust, color: '#fff',
+                    border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600,
+                    cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", flexShrink: 0,
+                  }}
+                >
+                  Sign in
+                </button>
+              </div>
+            )}
 
             {/* Reading progress + timer */}
             {entry?.read_status === 'reading' && (
@@ -1818,7 +1823,7 @@ export default function BookDetail({ bookId, session, onBack }) {
 
         {/* Tabs */}
         <div style={s.tabs}>
-          {['about', 'details', 'reviews', 'your review', 'quotes', ...(entry ? ['actions'] : [])].map(t => (
+          {['about', 'details', 'reviews', ...(session ? ['your review'] : []), 'quotes', ...(entry ? ['actions'] : [])].map(t => (
             <div
               key={t}
               style={{ ...s.tab, ...(tab === t ? s.tabActive : {}) }}
@@ -1957,10 +1962,10 @@ export default function BookDetail({ bookId, session, onBack }) {
                   <div key={r.id} style={s.reviewCard}>
                     <div style={s.reviewHeader}>
                       <div style={s.reviewAvatar}>
-                        {r.profiles?.username?.[0]?.toUpperCase() || '?'}
+                        {r.username?.[0]?.toUpperCase() || '?'}
                       </div>
                       <div>
-                        <div style={s.reviewUsername}>{r.profiles?.username || 'Unknown'}</div>
+                        <div style={s.reviewUsername}>{r.username || 'Unknown'}</div>
                         <div style={s.reviewDate}>
                           {new Date(r.added_at).toLocaleDateString('en-US', {
                             month: 'long', day: 'numeric', year: 'numeric'
@@ -1982,7 +1987,7 @@ export default function BookDetail({ bookId, session, onBack }) {
         )}
 
         {/* Your review */}
-        {tab === 'your review' && (
+        {tab === 'your review' && session && (
           <div style={s.tabContent}>
             {!entry ? (
               <div style={s.empty}>
@@ -2198,6 +2203,32 @@ export default function BookDetail({ bookId, session, onBack }) {
             <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 14, fontStyle: 'italic' }}>
               List your copy for sale, lend it to a friend, recommend the book, or drop it somewhere for a stranger to find.
             </div>
+            {myShelves.length > 0 && (
+              <div style={{ marginTop: 22 }}>
+                <div style={{ ...s.ratingLabel, marginBottom: 8 }}>On your shelves</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {myShelves.map(shelf => (
+                    <button
+                      key={shelf.id}
+                      onClick={() => navigate(`/shelves?shelf=${shelf.id}`)}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: 20,
+                        border: `1px solid ${theme.border}`,
+                        background: 'transparent',
+                        color: theme.textMuted,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: "'DM Sans', sans-serif",
+                      }}
+                    >
+                      📚 {shelf.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

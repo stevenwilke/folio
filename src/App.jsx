@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Link, useSearchParams } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { ThemeProvider } from './contexts/ThemeContext'
 import Auth from './pages/Auth'
@@ -19,6 +19,7 @@ import Author from './pages/Author'
 import Admin from './pages/Admin'
 import Onboarding from './pages/Onboarding'
 import Landing from './pages/Landing'
+import BookDetailPage from './pages/BookDetailPage'
 import Notifications from './pages/Notifications'
 import Nearby from './pages/Nearby'
 import PrivacyPolicy from './pages/PrivacyPolicy'
@@ -30,6 +31,16 @@ import { useIsMobile } from './hooks/useIsMobile'
 import { useTheme } from './contexts/ThemeContext'
 import { loadClarity } from './lib/clarity'
 
+// Legacy share URLs were `/?book=<uuid>`. Signed-in users still use that to
+// open the Library overlay, but anon visitors hit Landing and the param was
+// ignored. Redirect them to the public `/book/:id` route instead.
+function LandingOrBookRedirect() {
+  const [searchParams] = useSearchParams()
+  const bookId = searchParams.get('book')
+  if (bookId) return <Navigate to={`/book/${bookId}`} replace />
+  return <Landing />
+}
+
 function AppRoutes({ session }) {
   const isMobile = useIsMobile()
 
@@ -39,7 +50,7 @@ function AppRoutes({ session }) {
         <Routes>
           <Route
             path="/"
-            element={session ? <Library session={session} /> : <Landing />}
+            element={session ? <Library session={session} /> : <LandingOrBookRedirect />}
           />
           <Route
             path="/profile/:username"
@@ -89,6 +100,10 @@ function AppRoutes({ session }) {
           <Route
             path="/author/:authorName"
             element={<Author session={session} />}
+          />
+          <Route
+            path="/book/:bookId"
+            element={<BookDetailPage session={session} />}
           />
           <Route
             path="/admin"

@@ -80,17 +80,25 @@ async function fetchSubjectBooks(slug, limit = 18) {
 
 async function fetchNewReleases(limit = 24) {
   const year = new Date().getFullYear()
-  const cutoff = year - 3  // books first published in last 3 years
+  // Current year + last year only — 3 years was too wide and let high-rated
+  // books from 2+ years back dominate (they've had longer to accumulate
+  // ratings than genuinely new ones).
+  const cutoff = year - 1
   try {
     // Lucene range query on first_publish_year so reprints of old books are excluded
     const r = await fetch(
-      `https://openlibrary.org/search.json?q=first_publish_year:[${cutoff}+TO+${year}]&sort=rating&limit=${limit * 2}&fields=key,title,author_name,cover_i,first_publish_year`
+      `https://openlibrary.org/search.json?q=first_publish_year:[${cutoff}+TO+${year}]&sort=rating&limit=${limit * 3}&fields=key,title,author_name,cover_i,first_publish_year`
     )
     const j = await r.json()
+    // OL only supports one sort key; sort client-side by year desc first so
+    // this-year books outrank last-year ones, breaking ties by the rating
+    // order OL already returned (which we preserve with a stable sort).
     const results = (j.docs ?? [])
       .filter(d => d.cover_i && d.first_publish_year >= cutoff)
+      .map((d, i) => ({ d, i }))
+      .sort((a, b) => (b.d.first_publish_year - a.d.first_publish_year) || (a.i - b.i))
       .slice(0, limit)
-      .map(d => ({
+      .map(({ d }) => ({
         olKey:    d.key,
         title:    d.title,
         author:   d.author_name?.[0] ?? null,
@@ -680,9 +688,25 @@ export default function Discover({ session }) {
 
       if (topAuthors.length) {
         setForYouLabel(topAuthors.length === 1 ? `More by ${topAuthors[0]}` : `Because you read ${topAuthors[0]} & others`)
-        const results = await Promise.all(topAuthors.map(a => searchOL(`author:"${a}"`, 8)))
+        const results = await Promise.all(topAuthors.map(a => searchOL(`author:"${a}"`, 12)))
+        // Shuffle each author's pool so the carousel doesn't show the same
+        // books on every visit, then round-robin interleave across authors so
+        // the top author can't monopolize the first N visible slots.
+        const pools = results.map(list => {
+          const arr = [...list]
+          for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1))
+            ;[arr[i], arr[j]] = [arr[j], arr[i]]
+          }
+          return arr
+        })
+        const interleaved = []
+        const maxLen = Math.max(...pools.map(p => p.length))
+        for (let i = 0; i < maxLen; i++) {
+          for (const pool of pools) if (pool[i]) interleaved.push(pool[i])
+        }
         const seen = new Set()
-        const filtered = results.flat().filter(b => {
+        const filtered = interleaved.filter(b => {
           const k = titleKey(b.title, b.author)
           if (seen.has(k) || ownedKeys.has(k)) return false
           seen.add(k); return true

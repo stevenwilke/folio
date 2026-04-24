@@ -16,16 +16,22 @@ create index if not exists user_blocks_blocked_idx on user_blocks(blocked_id);
 alter table user_blocks enable row level security;
 
 -- You can see your own blocks and create/delete them.
+-- `drop policy if exists` guards let the migration re-run against a database
+-- that already has these policies (Supabase Preview reapplies migrations).
+drop policy if exists user_blocks_select_own on user_blocks;
 create policy user_blocks_select_own on user_blocks
   for select using (auth.uid() = blocker_id);
 
+drop policy if exists user_blocks_insert_own on user_blocks;
 create policy user_blocks_insert_own on user_blocks
   for insert with check (auth.uid() = blocker_id);
 
+drop policy if exists user_blocks_delete_own on user_blocks;
 create policy user_blocks_delete_own on user_blocks
   for delete using (auth.uid() = blocker_id);
 
 -- Admins can see all blocks (for moderation context).
+drop policy if exists user_blocks_select_admin on user_blocks;
 create policy user_blocks_select_admin on user_blocks
   for select using (
     exists (select 1 from profiles where id = auth.uid() and is_admin = true)

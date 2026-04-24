@@ -18,10 +18,7 @@ export default function BookDetailPage({ session }) {
       <BookDetail
         bookId={bookId}
         session={session}
-        onBack={() => {
-          if (window.history.length > 1) navigate(-1)
-          else navigate('/')
-        }}
+        onBack={window.history.length > 1 ? () => navigate(-1) : undefined}
       />
     </div>
   )

@@ -986,9 +986,11 @@ export default function BookDetail({ bookId, session, onBack }) {
   if (loading || !book) {
     return (
       <div style={s.page}>
-        <div style={s.topbar}>
-          <button style={s.backBtn} onClick={onBack}>← {session ? 'Back to Library' : 'Back'}</button>
-        </div>
+        {onBack && (
+          <div style={s.topbar}>
+            <button style={s.backBtn} onClick={onBack}>← {session ? 'Back to Library' : 'Back'}</button>
+          </div>
+        )}
         <div style={s.empty}>Loading…</div>
       </div>
     )
@@ -1065,9 +1067,11 @@ export default function BookDetail({ bookId, session, onBack }) {
 
   return (
     <div style={s.page}>
-      <div style={s.topbar}>
-        <button style={s.backBtn} onClick={onBack}>← {session ? 'Back to Library' : 'Back'}</button>
-      </div>
+      {onBack && (
+        <div style={s.topbar}>
+          <button style={s.backBtn} onClick={onBack}>← {session ? 'Back to Library' : 'Back'}</button>
+        </div>
+      )}
 
       <div style={s.content}>
         {/* Hero */}

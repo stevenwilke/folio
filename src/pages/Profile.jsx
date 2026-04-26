@@ -17,7 +17,14 @@ const STATUS_COLORS = {
   want:    { bg: 'rgba(184,134,11,0.12)',  color: '#b8860b' },
 }
 
-import { computeBadges, BADGE_CATEGORIES, TIER_STYLES } from '../lib/badges'
+import {
+  computeBadges, BADGE_CATEGORIES, TIER_STYLES, TIER_ORDER,
+  findHighestEarnedInCategory, findNextTier, topEarnedByCategory,
+  getPrestige, PRESTIGE_CAP,
+} from '../lib/badges'
+import { useOnClickOutside } from '../hooks/useOnClickOutside'
+import DragScrollRow from '../components/DragScrollRow'
+import SeeAllTile from '../components/SeeAllTile'
 import LevelAvatar from '../components/LevelAvatar'
 import { getLevelInfo } from '../lib/level'
 
@@ -56,6 +63,11 @@ export default function Profile({ session }) {
   const [refreshingValues, setRefreshingValues] = useState(false)
   const [showReport, setShowReport] = useState(false)
   const [blocked, setBlocked] = useState(false)
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const profileMenuRef = useRef(null)
+  const [showAllRead, setShowAllRead] = useState(false)
+  const [showAllWant, setShowAllWant] = useState(false)
+  const [showAllOwned, setShowAllOwned] = useState(false)
 
   // ── BADGES STATE ──
   const [badges, setBadges]               = useState([])
@@ -73,6 +85,8 @@ export default function Profile({ session }) {
       setTimeout(() => document.getElementById('wishlist')?.scrollIntoView({ behavior: 'smooth' }), 500)
     }
   }, [books])
+
+  useOnClickOutside(profileMenuRef, () => setShowProfileMenu(false), showProfileMenu)
 
   async function handleAvatarUpload(e) {
     const file = e.target.files?.[0]
@@ -267,40 +281,84 @@ export default function Profile({ session }) {
       <div style={{
         ...s.hero,
         backgroundImage: bannerUrl
-          // Stronger top→bottom darkening behind the text so name/bio/stats
-          // stay readable on busy banner photos.
-          ? `linear-gradient(180deg, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.85) 100%), url(${bannerUrl})`
+          // Mobile uses a much heavier overlay so a busy banner image doesn't
+          // compete with the avatar/name/stats stack on a narrow viewport.
+          ? isMobile
+            ? `linear-gradient(180deg, rgba(20,12,4,0.88) 0%, rgba(20,12,4,0.82) 60%, rgba(20,12,4,0.95) 100%), url(${bannerUrl})`
+            : `linear-gradient(180deg, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.85) 100%), url(${bannerUrl})`
           : `linear-gradient(160deg, #1e140a 0%, #2e1f10 60%, ${accentColor}22 100%)`,
         backgroundSize: bannerUrl ? 'cover' : undefined,
         backgroundPosition: bannerUrl ? 'center 30%' : undefined,
       }}>
-        {/* Banner upload/remove controls — own profile only */}
+        {/* Hero menu — collapses banner controls + Edit Profile + Customize
+            into a single ⋯ button so the mobile hero stack stays uncluttered. */}
         {isOwnProfile && (
-          <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 6, zIndex: 10 }}>
+          <div ref={profileMenuRef} style={{ position: 'absolute', top: 12, right: 12, zIndex: 10 }}>
             <button
-              onClick={() => bannerInputRef.current?.click()}
+              onClick={() => setShowProfileMenu(v => !v)}
               disabled={uploadingBanner}
-              title={bannerUrl ? 'Change banner' : 'Add banner image'}
-              style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: "'DM Sans', sans-serif", backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', gap: 5 }}
+              title="Profile options"
+              aria-label="Profile options"
+              aria-expanded={showProfileMenu}
+              style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 7, width: 32, height: 32, padding: 0, cursor: 'pointer', color: 'rgba(255,255,255,0.85)', fontFamily: "'DM Sans', sans-serif", backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
               {uploadingBanner ? '…' : (
-                <>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <circle cx="5" cy="12" r="2"/>
+                  <circle cx="12" cy="12" r="2"/>
+                  <circle cx="19" cy="12" r="2"/>
+                </svg>
+              )}
+            </button>
+            {showProfileMenu && (
+              <div role="menu" style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, minWidth: 190, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.35)', padding: 6, display: 'flex', flexDirection: 'column' }}>
+                <button
+                  role="menuitem"
+                  onClick={() => { setShowProfileMenu(false); setShowEditProfile(true) }}
+                  style={{ background: 'transparent', border: 'none', textAlign: 'left', padding: '9px 12px', borderRadius: 7, fontSize: 13, color: theme.text, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 8 }}
+                >
+                  ✏️ Edit Profile
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => { setShowProfileMenu(false); setShowCustomize(true) }}
+                  style={{ background: 'transparent', border: 'none', textAlign: 'left', padding: '9px 12px', borderRadius: 7, fontSize: 13, color: theme.text, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 8 }}
+                >
+                  🎨 Customize
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setShowProfileMenu(false)
+                    setGoalInputVal(goal ? String(goal.target_books) : '')
+                    setShowGoalInput(true)
+                  }}
+                  style={{ background: 'transparent', border: 'none', textAlign: 'left', padding: '9px 12px', borderRadius: 7, fontSize: 13, color: theme.text, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 8 }}
+                >
+                  🎯 {goal ? 'Edit reading goal' : `Set ${new Date().getFullYear()} reading goal`}
+                </button>
+                <div style={{ height: 1, background: theme.border, margin: '4px 6px' }} />
+                <button
+                  role="menuitem"
+                  onClick={() => { setShowProfileMenu(false); bannerInputRef.current?.click() }}
+                  style={{ background: 'transparent', border: 'none', textAlign: 'left', padding: '9px 12px', borderRadius: 7, fontSize: 13, color: theme.text, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 8 }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                     <circle cx="12" cy="13" r="4"/>
                   </svg>
                   {bannerUrl ? 'Change banner' : 'Add banner'}
-                </>
-              )}
-            </button>
-            {bannerUrl && (
-              <button
-                onClick={removeBanner}
-                title="Remove banner"
-                style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 7, padding: '5px 9px', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', fontSize: 12, fontFamily: "'DM Sans', sans-serif", backdropFilter: 'blur(6px)' }}
-              >
-                ✕
-              </button>
+                </button>
+                {bannerUrl && (
+                  <button
+                    role="menuitem"
+                    onClick={() => { setShowProfileMenu(false); removeBanner() }}
+                    style={{ background: 'transparent', border: 'none', textAlign: 'left', padding: '9px 12px', borderRadius: 7, fontSize: 13, color: theme.rust, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 8 }}
+                  >
+                    ✕ Remove banner
+                  </button>
+                )}
+              </div>
             )}
             <input ref={bannerInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
           </div>
@@ -355,21 +413,17 @@ export default function Profile({ session }) {
               </div>
             )}
 
-            {/* ── READING GOAL (own profile only) ── */}
-            {isOwnProfile && (
-              <div style={{ marginTop: 14 }}>
-                {!goal && !showGoalInput && (
-                  <button style={s.goalSetBtn} onClick={() => setShowGoalInput(true)}>
-                    📖 Set {new Date().getFullYear()} reading goal →
-                  </button>
-                )}
-                {!goal && showGoalInput && (
+            {/* Set/Edit lives in the hero ⋯ menu — that toggles
+                showGoalInput, and the input row appears here when active. */}
+            {isOwnProfile && (goal || showGoalInput) && (
+              <div style={{ marginTop: 10 }}>
+                {showGoalInput ? (
                   <div style={s.goalInputRow}>
                     <input
                       type="number"
                       min="1"
                       max="999"
-                      placeholder="e.g. 24"
+                      placeholder={goal ? String(goal.target_books) : 'e.g. 24'}
                       value={goalInputVal}
                       onChange={e => setGoalInputVal(e.target.value)}
                       style={s.goalInput}
@@ -381,40 +435,10 @@ export default function Profile({ session }) {
                     </button>
                     <button style={s.goalCancelBtn} onClick={() => { setShowGoalInput(false); setGoalInputVal('') }}>✕</button>
                   </div>
-                )}
-                {goal && (
-                  <div style={s.goalDisplay}>
-                    <div style={s.goalProgressWrap}>
-                      <div style={{
-                        ...s.goalProgressFill,
-                        width: `${Math.min(100, Math.round((booksReadThisYear / goal.target_books) * 100))}%`
-                      }} />
-                    </div>
-                    <div style={s.goalText}>
-                      {booksReadThisYear} of {goal.target_books} books read in {goal.year}
-                      <span style={s.goalPct}> · {Math.min(100, Math.round((booksReadThisYear / goal.target_books) * 100))}%</span>
-                    </div>
-                    {showGoalInput ? (
-                      <div style={{ ...s.goalInputRow, marginTop: 6 }}>
-                        <input
-                          type="number"
-                          min="1"
-                          max="999"
-                          placeholder={String(goal.target_books)}
-                          value={goalInputVal}
-                          onChange={e => setGoalInputVal(e.target.value)}
-                          style={s.goalInput}
-                          onKeyDown={e => e.key === 'Enter' && saveGoal()}
-                          autoFocus
-                        />
-                        <button style={s.goalSaveBtn} onClick={saveGoal} disabled={savingGoal}>
-                          {savingGoal ? '…' : 'Save'}
-                        </button>
-                        <button style={s.goalCancelBtn} onClick={() => { setShowGoalInput(false); setGoalInputVal('') }}>✕</button>
-                      </div>
-                    ) : (
-                      <button style={s.goalEditBtn} onClick={() => { setGoalInputVal(String(goal.target_books)); setShowGoalInput(true) }} title="Edit goal">✏️</button>
-                    )}
+                ) : goal && (
+                  <div style={s.goalText}>
+                    🎯 {booksReadThisYear} of {goal.target_books} books read in {goal.year}
+                    <span style={s.goalPct}> · {Math.min(100, Math.round((booksReadThisYear / goal.target_books) * 100))}%</span>
                   </div>
                 )}
               </div>
@@ -431,20 +455,9 @@ export default function Profile({ session }) {
               </div>
             )}
 
-            {isOwnProfile && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-                <button style={s.editProfileBtn} onClick={() => setShowEditProfile(true)}>
-                  ✏️ Edit Profile
-                </button>
-                <button style={s.editProfileBtn} onClick={() => setShowCustomize(true)}>
-                  🎨 Customize
-                </button>
-              </div>
-            )}
           </div>
 
-          {/* Featured book (own profile, top-right) */}
-          {isOwnProfile && featuredBook && (
+          {isOwnProfile && featuredBook && !isMobile && (
             <div
               style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer', marginRight: 4 }}
               onClick={() => setSelectedBook(featuredBook.id)}
@@ -460,12 +473,15 @@ export default function Profile({ session }) {
             </div>
           )}
 
-          {/* Action */}
+          {/* Mobile reaches My Library + Sign out via the BottomTabBar's
+              Library tab and More drawer — keep them desktop-only here. */}
           {isOwnProfile ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', flexShrink: 0 }}>
-              <button style={s.heroGhostBtn} onClick={() => navigate('/')}>← My Library</button>
-              <button style={s.heroSignOutBtn} onClick={() => supabase.auth.signOut()}>Sign out</button>
-            </div>
+            !isMobile && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end', flexShrink: 0 }}>
+                <button style={s.heroGhostBtn} onClick={() => navigate('/')}>← My Library</button>
+                <button style={s.heroSignOutBtn} onClick={() => supabase.auth.signOut()}>Sign out</button>
+              </div>
+            )
           ) : (
             session && (
               <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
@@ -548,58 +564,77 @@ export default function Profile({ session }) {
       ) : (
         <div style={s.content}>
 
-          {/* ── CURRENTLY READING WIDGET ── */}
+          {/* Each shelf below forks layout by viewport: mobile renders a
+              compact wrap-row of 64×96 covers, desktop renders a horizontal
+              ShelfCard scroll row inside DragScrollRow. */}
           {reading.length > 0 && (
-            <div style={{ marginBottom: 28 }}>
-              <div style={{ fontFamily:'Georgia, serif', fontSize:16, fontWeight:700, color:theme.text, marginBottom:12 }}>
-                📖 Currently Reading
-                <span style={{ fontSize:14, fontWeight:500, color:theme.textSubtle, fontFamily:"'DM Sans', sans-serif", marginLeft:8 }}>
-                  {reading.length} book{reading.length !== 1 ? 's' : ''}
-                </span>
+            isMobile ? (
+              <div style={{ marginBottom: 28 }}>
+                <div style={{ fontFamily:'Georgia, serif', fontSize:16, fontWeight:700, color:theme.text, marginBottom:12 }}>
+                  📖 Currently Reading
+                  <span style={{ fontSize:14, fontWeight:500, color:theme.textSubtle, fontFamily:"'DM Sans', sans-serif", marginLeft:8 }}>
+                    {reading.length} book{reading.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+                  {reading.map(entry => (
+                    <CurrentlyReadingBook
+                      key={entry.id || entry.book_id}
+                      book={entry.books}
+                      theme={theme}
+                      onClick={() => { if (session && entry.books?.id) setSelectedBook(entry.books.id) }}
+                    />
+                  ))}
+                </div>
               </div>
-              <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-                {reading.map(entry => (
-                  <CurrentlyReadingBook
-                    key={entry.id || entry.book_id}
-                    book={entry.books}
-                    theme={theme}
-                    onClick={() => { if (session && entry.books?.id) setSelectedBook(entry.books.id) }}
-                  />
-                ))}
-              </div>
-            </div>
+            ) : (
+              <section style={s.section}>
+                <ShelfHeader label="Currently Reading" count={reading.length} accent="#c0521e" theme={theme} />
+                <DragScrollRow style={s.shelf} isMobile={isMobile}>
+                  {reading.map(entry => (
+                    <ShelfCard key={entry.id} entry={entry} theme={theme}
+                      onSelect={session ? () => setSelectedBook(entry.books.id) : undefined}
+                      canBorrow={false} onBorrow={() => {}} />
+                  ))}
+                </DragScrollRow>
+              </section>
+            )
           )}
 
-          {/* Currently Reading */}
-          {reading.length > 0 && (
-            <section style={s.section}>
-              <ShelfHeader label="Currently Reading" count={reading.length} accent="#c0521e" theme={theme} />
-              <div style={s.shelf}>
-                {reading.map(entry => (
-                  <ShelfCard key={entry.id} entry={entry} theme={theme}
-                    onSelect={session ? () => setSelectedBook(entry.books.id) : undefined}
-                    canBorrow={isFriend && !isOwnProfile && entry.read_status === 'owned'}
-                    onBorrow={() => setBorrowTarget(entry)} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Read */}
           {read.length > 0 && (
             <section style={s.section}>
               <ShelfHeader label="Read" count={read.length} accent="#5a7a5a" theme={theme} />
-              <div style={s.shelf}>
-                {read.map(entry => (
-                  <ShelfCard key={entry.id} entry={entry} theme={theme}
-                    onSelect={session ? () => setSelectedBook(entry.books.id) : undefined}
-                    canBorrow={false} onBorrow={() => {}} />
-                ))}
-              </div>
+              {isMobile ? (
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  {(showAllRead ? read : read.slice(0, 7)).map(entry => (
+                    <CurrentlyReadingBook
+                      key={entry.id || entry.book_id}
+                      book={entry.books}
+                      theme={theme}
+                      onClick={() => { if (session && entry.books?.id) setSelectedBook(entry.books.id) }}
+                    />
+                  ))}
+                  {read.length > 7 && (
+                    <SeeAllTile
+                      expanded={showAllRead}
+                      remaining={read.length - 7}
+                      onToggle={() => setShowAllRead(v => !v)}
+                      theme={theme}
+                    />
+                  )}
+                </div>
+              ) : (
+                <DragScrollRow style={s.shelf} isMobile={isMobile}>
+                  {read.map(entry => (
+                    <ShelfCard key={entry.id} entry={entry} theme={theme}
+                      onSelect={session ? () => setSelectedBook(entry.books.id) : undefined}
+                      canBorrow={false} onBorrow={() => {}} />
+                  ))}
+                </DragScrollRow>
+              )}
             </section>
           )}
 
-          {/* Want to Read / Wishlist */}
           {want.length > 0 && (
             <section style={s.section} id="wishlist">
               <ShelfHeader label="Want to Read" count={want.length} accent="#b8860b" theme={theme} />
@@ -618,28 +653,72 @@ export default function Profile({ session }) {
                   🔗 Share Wishlist
                 </button>
               )}
-              <div style={s.shelf}>
-                {want.map(entry => (
-                  <ShelfCard key={entry.id} entry={entry} theme={theme}
-                    onSelect={session ? () => setSelectedBook(entry.books.id) : undefined}
-                    canBorrow={false} onBorrow={() => {}} />
-                ))}
-              </div>
+              {isMobile ? (
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  {(showAllWant ? want : want.slice(0, 7)).map(entry => (
+                    <CurrentlyReadingBook
+                      key={entry.id || entry.book_id}
+                      book={entry.books}
+                      theme={theme}
+                      onClick={() => { if (session && entry.books?.id) setSelectedBook(entry.books.id) }}
+                    />
+                  ))}
+                  {want.length > 7 && (
+                    <SeeAllTile
+                      expanded={showAllWant}
+                      remaining={want.length - 7}
+                      onToggle={() => setShowAllWant(v => !v)}
+                      theme={theme}
+                    />
+                  )}
+                </div>
+              ) : (
+                <DragScrollRow style={s.shelf} isMobile={isMobile}>
+                  {want.map(entry => (
+                    <ShelfCard key={entry.id} entry={entry} theme={theme}
+                      onSelect={session ? () => setSelectedBook(entry.books.id) : undefined}
+                      canBorrow={false} onBorrow={() => {}} />
+                  ))}
+                </DragScrollRow>
+              )}
             </section>
           )}
 
-          {/* In Library */}
+          {/* In Library still renders ShelfCard on desktop so the friend
+              `Borrow` affordance stays inline; mobile's compact widget hides
+              it behind the book detail modal. */}
           {owned.length > 0 && (
             <section style={s.section}>
               <ShelfHeader label="In Library" count={owned.length} accent="#8a7f72" theme={theme} />
-              <div style={s.shelf}>
-                {owned.map(entry => (
-                  <ShelfCard key={entry.id} entry={entry} theme={theme}
-                    onSelect={session ? () => setSelectedBook(entry.books.id) : undefined}
-                    canBorrow={isFriend && !isOwnProfile}
-                    onBorrow={() => setBorrowTarget(entry)} />
-                ))}
-              </div>
+              {isMobile ? (
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  {(showAllOwned ? owned : owned.slice(0, 7)).map(entry => (
+                    <CurrentlyReadingBook
+                      key={entry.id || entry.book_id}
+                      book={entry.books}
+                      theme={theme}
+                      onClick={() => { if (session && entry.books?.id) setSelectedBook(entry.books.id) }}
+                    />
+                  ))}
+                  {owned.length > 7 && (
+                    <SeeAllTile
+                      expanded={showAllOwned}
+                      remaining={owned.length - 7}
+                      onToggle={() => setShowAllOwned(v => !v)}
+                      theme={theme}
+                    />
+                  )}
+                </div>
+              ) : (
+                <DragScrollRow style={s.shelf} isMobile={isMobile}>
+                  {owned.map(entry => (
+                    <ShelfCard key={entry.id} entry={entry} theme={theme}
+                      onSelect={session ? () => setSelectedBook(entry.books.id) : undefined}
+                      canBorrow={isFriend && !isOwnProfile}
+                      onBorrow={() => setBorrowTarget(entry)} />
+                  ))}
+                </DragScrollRow>
+              )}
             </section>
           )}
 
@@ -1159,10 +1238,11 @@ function ShelfHeader({ label, count, accent, theme }) {
 
 // ── BADGES SECTION ──
 const TIER_CARD = {
-  bronze:   { cardBg: 'linear-gradient(135deg,rgba(180,100,40,0.14),rgba(180,100,40,0.07))', border: 'rgba(180,100,40,0.40)', glow: 'rgba(180,100,40,0.18)', ringBg: 'rgba(180,100,40,0.15)', ringBorder: 'rgba(180,100,40,0.45)', name: '#7a3e0e', pill: 'rgba(180,100,40,0.15)', pillText: '#7a3e0e', pillBorder: 'rgba(180,100,40,0.35)', label: 'Bronze',   bar: '#c06820' },
-  silver:   { cardBg: 'linear-gradient(135deg,rgba(110,110,140,0.12),rgba(110,110,140,0.05))', border: 'rgba(110,110,140,0.38)', glow: 'rgba(110,110,140,0.14)', ringBg: 'rgba(110,110,140,0.12)', ringBorder: 'rgba(110,110,140,0.42)', name: '#505070', pill: 'rgba(110,110,140,0.14)', pillText: '#505070', pillBorder: 'rgba(110,110,140,0.32)', label: 'Silver',   bar: '#7070a0' },
-  gold:     { cardBg: 'linear-gradient(135deg,rgba(184,134,11,0.16),rgba(184,134,11,0.06))', border: 'rgba(184,134,11,0.45)', glow: 'rgba(184,134,11,0.22)', ringBg: 'rgba(184,134,11,0.16)', ringBorder: 'rgba(184,134,11,0.50)', name: '#7a580a', pill: 'rgba(184,134,11,0.17)', pillText: '#7a580a', pillBorder: 'rgba(184,134,11,0.40)', label: 'Gold',     bar: '#b8860b' },
-  platinum: { cardBg: 'linear-gradient(135deg,rgba(0,148,148,0.13),rgba(0,148,148,0.05))',  border: 'rgba(0,148,148,0.38)',  glow: 'rgba(0,148,148,0.18)', ringBg: 'rgba(0,148,148,0.13)', ringBorder: 'rgba(0,148,148,0.44)', name: '#006868', pill: 'rgba(0,148,148,0.14)', pillText: '#006868', pillBorder: 'rgba(0,148,148,0.34)', label: 'Platinum', bar: '#009090' },
+  bronze:    { cardBg: 'linear-gradient(135deg,rgba(180,100,40,0.14),rgba(180,100,40,0.07))', border: 'rgba(180,100,40,0.40)', glow: 'rgba(180,100,40,0.18)', ringBg: 'rgba(180,100,40,0.15)', ringBorder: 'rgba(180,100,40,0.45)', name: '#7a3e0e', pill: 'rgba(180,100,40,0.15)', pillText: '#7a3e0e', pillBorder: 'rgba(180,100,40,0.35)', label: 'Bronze',    bar: '#c06820' },
+  silver:    { cardBg: 'linear-gradient(135deg,rgba(110,110,140,0.12),rgba(110,110,140,0.05))', border: 'rgba(110,110,140,0.38)', glow: 'rgba(110,110,140,0.14)', ringBg: 'rgba(110,110,140,0.12)', ringBorder: 'rgba(110,110,140,0.42)', name: '#505070', pill: 'rgba(110,110,140,0.14)', pillText: '#505070', pillBorder: 'rgba(110,110,140,0.32)', label: 'Silver',    bar: '#7070a0' },
+  gold:      { cardBg: 'linear-gradient(135deg,rgba(184,134,11,0.16),rgba(184,134,11,0.06))', border: 'rgba(184,134,11,0.45)', glow: 'rgba(184,134,11,0.22)', ringBg: 'rgba(184,134,11,0.16)', ringBorder: 'rgba(184,134,11,0.50)', name: '#7a580a', pill: 'rgba(184,134,11,0.17)', pillText: '#7a580a', pillBorder: 'rgba(184,134,11,0.40)', label: 'Gold',      bar: '#b8860b' },
+  platinum:  { cardBg: 'linear-gradient(135deg,rgba(0,148,148,0.13),rgba(0,148,148,0.05))',  border: 'rgba(0,148,148,0.38)',  glow: 'rgba(0,148,148,0.18)', ringBg: 'rgba(0,148,148,0.13)', ringBorder: 'rgba(0,148,148,0.44)', name: '#006868', pill: 'rgba(0,148,148,0.14)', pillText: '#006868', pillBorder: 'rgba(0,148,148,0.34)', label: 'Platinum',  bar: '#009090' },
+  legendary: { cardBg: 'linear-gradient(135deg,rgba(150,80,200,0.18),rgba(150,80,200,0.07))', border: 'rgba(150,80,200,0.50)', glow: 'rgba(150,80,200,0.28)', ringBg: 'rgba(150,80,200,0.18)', ringBorder: 'rgba(150,80,200,0.55)', name: '#5e2a8a', pill: 'rgba(150,80,200,0.18)', pillText: '#5e2a8a', pillBorder: 'rgba(150,80,200,0.45)', label: 'Legendary', bar: '#9050c8' },
 }
 
 function BadgesSection({ badges, theme, isMobile }) {
@@ -1170,8 +1250,14 @@ function BadgesSection({ badges, theme, isMobile }) {
   // On mobile, collapse the earned badges into a compact emoji strip by
   // default — the full grid eats too much vertical space on a phone.
   const [expandEarned, setExpandEarned] = useState(!isMobile)
+  // Tapped compact-mode chip shows a small details popover (touch can't hover).
+  const [selectedBadge, setSelectedBadge] = useState(null)
   const earned = badges.filter(b => b.earned)
   const locked = badges.filter(b => !b.earned)
+  // Show one card per category (highest tier earned) so the grid reflects
+  // current standing instead of every step of every progression. Total
+  // earned-vs-defs count below uses `earned.length` so nothing shrinks.
+  const earnedTopByCategory = topEarnedByCategory(badges)
 
   return (
     <div style={{ background: theme.bg, borderTop: `1px solid ${theme.border}`, borderBottom: `1px solid ${theme.border}` }}>
@@ -1193,46 +1279,190 @@ function BadgesSection({ badges, theme, isMobile }) {
           )}
         </div>
 
-        {/* Compact mode (mobile default): emoji-only chips in a wrap row */}
         {isMobile && !expandEarned && earned.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {earned.map(b => {
+            {earnedTopByCategory.map(b => {
               const t = TIER_CARD[b.tier] || TIER_CARD.bronze
               return (
-                <div
+                <button
                   key={b.id}
+                  onClick={() => setSelectedBadge(b)}
                   title={`${b.name} — ${b.desc}`}
+                  aria-label={`${b.name} (${t.label}). ${b.desc}`}
                   style={{
                     width: 38, height: 38, borderRadius: '50%',
                     background: t.ringBg, border: `1.5px solid ${t.ringBorder}`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 18, lineHeight: 1,
+                    fontSize: 18, lineHeight: 1, padding: 0, cursor: 'pointer',
                   }}
                 >
                   {b.emoji}
-                </div>
+                </button>
               )
             })}
           </div>
         )}
 
-        {/* Earned — prominent grid */}
+        {selectedBadge && (() => {
+          const display = findHighestEarnedInCategory(selectedBadge, badges)
+          const t = TIER_CARD[display.tier] || TIER_CARD.bronze
+          const next = findNextTier(display, badges)
+          const nextT = next ? (TIER_CARD[next.tier] || TIER_CARD.bronze) : null
+          const nextProg = next?.prog
+          const nextPct = next?.pct ?? 0
+          const prestige = getPrestige(display)
+          const stretchPct = prestige.nextTarget
+            ? Math.min(100, Math.round(((prestige.valueOverflow ?? 0) / prestige.nextTarget) * 100))
+            : 0
+          return (
+            <div
+              onClick={() => setSelectedBadge(null)}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+            >
+              <div
+                onClick={e => e.stopPropagation()}
+                style={{
+                  background: theme.bgCard, borderRadius: 16, border: `1.5px solid ${t.border}`,
+                  boxShadow: `0 12px 40px rgba(0,0,0,0.45), 0 0 24px ${t.glow}`,
+                  padding: '24px 22px 22px', maxWidth: 320, width: '100%',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, textAlign: 'center',
+                }}
+              >
+                <div style={{
+                  width: 72, height: 72, borderRadius: '50%',
+                  background: t.ringBg, border: `2px solid ${t.ringBorder}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 36, boxShadow: `0 0 16px ${t.glow}`,
+                }}>
+                  {display.emoji}
+                </div>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: t.name, lineHeight: 1.2, marginTop: 4 }}>
+                  {display.name}
+                </div>
+                <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.8, padding: '3px 12px', borderRadius: 20, background: t.pill, color: t.pillText, border: `1px solid ${t.pillBorder}` }}>
+                  {t.label}{prestige.multiplier > 1 ? ` · ×${prestige.multiplier}` : ''}
+                </div>
+                <div style={{ fontSize: 13, color: theme.textSubtle, lineHeight: 1.5, marginTop: 4 }}>
+                  {display.desc}
+                </div>
+
+                {!next && prestige.nextTarget && (
+                  <div style={{ width: '100%', marginTop: 14, paddingTop: 14, borderTop: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6, color: theme.textSubtle }}>
+                      Stretch goal
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: t.name, lineHeight: 1.2 }}>
+                      {display.name} ×{prestige.nextMultiplier}
+                    </div>
+                    <div style={{ fontSize: 11, color: theme.textSubtle, textAlign: 'center', lineHeight: 1.4 }}>
+                      Earn it again by reaching {prestige.nextTarget.toLocaleString()} {display.prog.label}.
+                    </div>
+                    <div style={{ width: '100%', height: 6, background: theme.bgSubtle, borderRadius: 20, overflow: 'hidden', marginTop: 4 }}>
+                      <div style={{ height: '100%', width: `${stretchPct}%`, background: t.bar, borderRadius: 20, transition: 'width 0.4s ease' }} />
+                    </div>
+                    <div style={{ fontSize: 11, color: theme.textSubtle }}>
+                      {(prestige.valueOverflow ?? 0).toLocaleString()} / {prestige.nextTarget.toLocaleString()} {display.prog.label}
+                      <span style={{ marginLeft: 6, opacity: 0.6 }}>· {stretchPct}%</span>
+                    </div>
+                  </div>
+                )}
+
+                {!next && display.earned && display.tier === 'legendary' && prestige.multiplier >= PRESTIGE_CAP && (
+                  <div style={{ width: '100%', marginTop: 14, paddingTop: 14, borderTop: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: t.name, letterSpacing: 0.3 }}>
+                      ✨ Master of this category
+                    </div>
+                    <div style={{ fontSize: 11, color: theme.textSubtle, textAlign: 'center', lineHeight: 1.4 }}>
+                      You've earned {display.name} three times over.
+                    </div>
+                  </div>
+                )}
+
+                {!next && display.earned && display.tier !== 'legendary' && (
+                  <div style={{ width: '100%', marginTop: 14, paddingTop: 14, borderTop: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: t.name, letterSpacing: 0.3 }}>
+                      🏆 Top tier in this category
+                    </div>
+                    <div style={{ fontSize: 11, color: theme.textSubtle, textAlign: 'center', lineHeight: 1.4 }}>
+                      You've earned the highest badge currently available here.
+                    </div>
+                  </div>
+                )}
+
+                {next && (
+                  <div style={{ width: '100%', marginTop: 14, paddingTop: 14, borderTop: `1px solid ${theme.border}`, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6, color: theme.textSubtle }}>
+                      Next tier
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{
+                        width: 36, height: 36, borderRadius: '50%',
+                        background: nextT.ringBg, border: `1.5px solid ${nextT.ringBorder}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 18, opacity: 0.9,
+                      }}>
+                        {next.emoji}
+                      </div>
+                      <div style={{ textAlign: 'left' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: nextT.name, lineHeight: 1.2 }}>
+                          {next.name}
+                          <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.6, padding: '2px 7px', borderRadius: 20, background: nextT.pill, color: nextT.pillText, border: `1px solid ${nextT.pillBorder}` }}>
+                            {nextT.label}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11, color: theme.textSubtle, marginTop: 2 }}>
+                          {next.desc}
+                        </div>
+                      </div>
+                    </div>
+                    {nextProg && nextProg.max > 0 && (
+                      <>
+                        <div style={{ width: '100%', height: 6, background: theme.bgSubtle, borderRadius: 20, overflow: 'hidden', marginTop: 4 }}>
+                          <div style={{ height: '100%', width: `${nextPct}%`, background: nextT.bar, borderRadius: 20, transition: 'width 0.4s ease' }} />
+                        </div>
+                        <div style={{ fontSize: 11, color: theme.textSubtle }}>
+                          {nextProg.value.toLocaleString()} / {nextProg.max.toLocaleString()} {nextProg.label}
+                          <span style={{ marginLeft: 6, opacity: 0.6 }}>· {nextPct}%</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => setSelectedBadge(null)}
+                  style={{ marginTop: 14, padding: '7px 20px', background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.text, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+
         {(!isMobile || expandEarned) && (earned.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '20px 0 28px', color: theme.textSubtle, fontSize: 14 }}>
             No badges yet — keep reading to earn your first one!
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(auto-fill,minmax(150px,1fr))', gap: 12, marginBottom: locked.length ? 28 : 0 }}>
-            {earned.map(b => {
+            {earnedTopByCategory.map(b => {
               const t = TIER_CARD[b.tier] || TIER_CARD.bronze
               return (
-                <div key={b.id} title={b.desc} style={{
-                  borderRadius: 14, border: `1.5px solid ${t.border}`,
-                  background: t.cardBg,
-                  boxShadow: `0 2px 16px ${t.glow}`,
-                  padding: '18px 12px 14px',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textAlign: 'center',
-                }}>
+                <button
+                  key={b.id}
+                  onClick={() => setSelectedBadge(b)}
+                  title={b.desc}
+                  aria-label={`${b.name} (${t.label}). ${b.desc}`}
+                  style={{
+                    borderRadius: 14, border: `1.5px solid ${t.border}`,
+                    background: t.cardBg,
+                    boxShadow: `0 2px 16px ${t.glow}`,
+                    padding: '18px 12px 14px',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textAlign: 'center',
+                    cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+                  }}
+                >
                   {/* Emoji in a glowing ring */}
                   <div style={{
                     width: 56, height: 56, borderRadius: '50%',
@@ -1248,7 +1478,7 @@ function BadgesSection({ badges, theme, isMobile }) {
                   <div style={{ marginTop: 4, fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.8, padding: '3px 10px', borderRadius: 20, background: t.pill, color: t.pillText, border: `1px solid ${t.pillBorder}` }}>
                     {t.label}
                   </div>
-                </div>
+                </button>
               )
             })}
           </div>
@@ -1259,7 +1489,7 @@ function BadgesSection({ badges, theme, isMobile }) {
           <>
             <button
               onClick={() => setShowLocked(v => !v)}
-              style={{ background: 'none', border: `1px solid ${theme.border}`, borderRadius: 8, padding: '6px 14px', fontSize: 12, color: theme.textSubtle, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 6, marginBottom: showLocked ? 20 : 0 }}
+              style={{ background: 'none', border: `1px solid ${theme.border}`, borderRadius: 8, padding: '6px 14px', fontSize: 12, color: theme.textSubtle, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 6, marginTop: 18, marginBottom: showLocked ? 20 : 0 }}
             >
               <span>{showLocked ? '▾' : '▸'}</span>
               {showLocked ? 'Hide' : 'Show'} {locked.length} locked badge{locked.length !== 1 ? 's' : ''}
@@ -1565,20 +1795,14 @@ function makeStyles(theme, accentColor = '#c0521e', isMobile = false) {
     heroPrimaryBtn:  { padding: '8px 18px', background: accentColor, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     heroGhostBtn:    { padding: '7px 14px', background: 'transparent', border: '1px solid rgba(253,248,240,0.25)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: 'rgba(253,248,240,0.7)' },
     heroSignOutBtn:  { padding: '5px 12px', background: 'transparent', border: '1px solid rgba(253,248,240,0.15)', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: 'rgba(253,248,240,0.35)' },
-    editProfileBtn: { marginTop: 10, padding: '6px 14px', background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 7, fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
 
     // Reading goal — lives on the hero, so stays light always
-    goalSetBtn:      { background: 'transparent', border: '1px dashed rgba(253,248,240,0.3)', borderRadius: 8, padding: '6px 14px', fontSize: 12, color: 'rgba(253,248,240,0.65)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     goalInputRow:    { display: 'flex', alignItems: 'center', gap: 6 },
     goalInput:       { width: 72, padding: '5px 10px', borderRadius: 7, border: '1px solid rgba(253,248,240,0.3)', background: 'rgba(255,255,255,0.12)', color: '#fdf8f0', fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: 'none' },
     goalSaveBtn:     { padding: '5px 12px', background: accentColor, color: 'white', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
     goalCancelBtn:   { background: 'transparent', border: 'none', color: 'rgba(253,248,240,0.4)', fontSize: 14, cursor: 'pointer', padding: '4px 6px', lineHeight: 1 },
-    goalDisplay:     { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-    goalProgressWrap:{ width: 160, height: 7, background: 'rgba(245,240,232,0.15)', borderRadius: 20, overflow: 'hidden', flexShrink: 0 },
-    goalProgressFill:{ height: '100%', background: accentColor, borderRadius: 20, minWidth: 4, transition: 'width 0.5s ease' },
     goalText:        { fontSize: 12, color: 'rgba(253,248,240,0.7)' },
     goalPct:         { color: 'rgba(253,248,240,0.45)' },
-    goalEditBtn:     { background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 13, padding: '2px 4px', opacity: 0.6, lineHeight: 1 },
 
     // (badges moved to BadgesSection component with self-contained styles)
 
@@ -1590,9 +1814,19 @@ function makeStyles(theme, accentColor = '#c0521e', isMobile = false) {
     // Shelf — desktop is a horizontal scroll row; mobile wraps to a grid so
     // visitors don't have to figure out that they need to swipe to see more
     // than the first few books.
+    // Desktop shelf fades on its right edge so it's obvious there's more to
+    // scroll to. macOS hides the thin scrollbar until the mouse is over it,
+    // so a gentle mask is the most reliable scroll cue we can add via inline
+    // styles. paddingRight 32px + a 56px transparent stop ensures the visible
+    // last card stays fully readable while the fade clearly extends past it.
     shelf: isMobile
       ? { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, paddingBottom: 12 }
-      : { display: 'flex', gap: 18, overflowX: 'auto', paddingBottom: 12, scrollbarWidth: 'thin', scrollbarColor: `${theme.border} transparent` },
+      : {
+          display: 'flex', gap: 18, overflowX: 'auto', paddingBottom: 12, paddingRight: 32,
+          scrollbarWidth: 'thin', scrollbarColor: `${theme.border} transparent`,
+          maskImage: 'linear-gradient(to right, black calc(100% - 56px), transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 56px), transparent 100%)',
+        },
     shelfCard:   { flexShrink: 0, width: isMobile ? '100%' : 120, transition: 'transform 0.15s' },
     shelfCardHover: { transform: 'translateY(-3px)' },
     shelfCoverWrap: isMobile

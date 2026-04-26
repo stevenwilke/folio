@@ -909,8 +909,8 @@ export default function BookDetail({ bookId, session, onBack }) {
     removeBtn:           { padding: '7px 14px', borderRadius: 8, border: `1px solid ${theme.border}`, background: 'transparent', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: theme.rust },
     removeFromCollectionBtn:        { padding: '6px 14px', borderRadius: 8, border: '1px solid #f5c6c6', background: 'transparent', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", color: '#c0392b', transition: 'all 0.15s' },
     removeFromCollectionBtnConfirm: { borderColor: '#c0392b', background: 'rgba(192,57,43,0.07)', fontWeight: 500 },
-    tabs:                { display: 'flex', borderBottom: `1px solid ${theme.border}`, marginBottom: 24 },
-    tab:                 { padding: '10px 20px', fontSize: 14, cursor: 'pointer', color: theme.textSubtle, borderBottom: '2px solid transparent', marginBottom: -1, transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 6 },
+    tabs:                { display: 'flex', borderBottom: `1px solid ${theme.border}`, marginBottom: 24, overflowX: 'auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none', marginLeft: isMobile ? -16 : 0, marginRight: isMobile ? -16 : 0, paddingLeft: isMobile ? 16 : 0, paddingRight: isMobile ? 16 : 0 },
+    tab:                 { padding: isMobile ? '9px 12px' : '10px 20px', fontSize: isMobile ? 13 : 14, cursor: 'pointer', color: theme.textSubtle, borderBottom: '2px solid transparent', marginBottom: -1, transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 6, flexShrink: 0, whiteSpace: 'nowrap' },
     tabActive:           { color: theme.rust, borderBottom: `2px solid ${theme.rust}`, fontWeight: 500 },
     reviewCount:         { fontSize: 11, background: theme.bgSubtle, color: theme.textSubtle, padding: '1px 6px', borderRadius: 20 },
     // minHeight kept generous so switching between tabs with little content
@@ -1833,7 +1833,9 @@ export default function BookDetail({ bookId, session, onBack }) {
               style={{ ...s.tab, ...(tab === t ? s.tabActive : {}) }}
               onClick={() => setTab(t)}
             >
-              {t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === 'your review'
+                ? (isMobile ? 'Mine' : 'Your review')
+                : t.charAt(0).toUpperCase() + t.slice(1)}
               {t === 'reviews' && reviews.length > 0 && (
                 <span style={s.reviewCount}>{reviews.length}</span>
               )}

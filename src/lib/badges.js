@@ -20,7 +20,7 @@
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-const readEntries   = (d) => d.entries.filter(e => e.read_status === 'read')
+const readEntries   = (d) => d._readEntries ?? d.entries.filter(e => e.read_status === 'read')
 const reviewEntries = (d) => d.entries.filter(e => e.review_text)
 const ratedEntries  = (d) => d.entries.filter(e => e.user_rating > 0)
 
@@ -28,7 +28,7 @@ function uniqueGenres(d) {
   return new Set(readEntries(d).map(e => e.books?.genre).filter(Boolean))
 }
 function totalPages(d) {
-  return readEntries(d).reduce((sum, e) => sum + (e.books?.pages || 0), 0)
+  return d._totalPages ?? readEntries(d).reduce((sum, e) => sum + (e.books?.pages || 0), 0)
 }
 function longestBook(d) {
   return Math.max(0, ...readEntries(d).map(e => e.books?.pages || 0))
@@ -86,6 +86,12 @@ export const BADGE_DEFS = [
     check: (d) => readEntries(d).length >= 500,
     progress: (d) => ({ value: readEntries(d).length, max: 500, label: 'books read' }),
   },
+  {
+    id: 'mythic_reader', emoji: '🌌', name: 'Mythic Reader',
+    desc: 'Read 1,000 books', category: 'Reading Milestones', tier: 'legendary',
+    check: (d) => readEntries(d).length >= 1000,
+    progress: (d) => ({ value: readEntries(d).length, max: 1000, label: 'books read' }),
+  },
 
   // ── Pages ────────────────────────────────────────────────────────────────
   {
@@ -105,6 +111,18 @@ export const BADGE_DEFS = [
     desc: 'Read 50,000 pages', category: 'Pages Read', tier: 'gold',
     check: (d) => totalPages(d) >= 50000,
     progress: (d) => ({ value: totalPages(d), max: 50000, label: 'pages' }),
+  },
+  {
+    id: 'page_cosmonaut', emoji: '🌠', name: 'Page Cosmonaut',
+    desc: 'Read 100,000 pages', category: 'Pages Read', tier: 'platinum',
+    check: (d) => totalPages(d) >= 100000,
+    progress: (d) => ({ value: totalPages(d), max: 100000, label: 'pages' }),
+  },
+  {
+    id: 'page_galaxy', emoji: '🪐', name: 'Reader of Lifetimes',
+    desc: 'Read 500,000 pages', category: 'Pages Read', tier: 'legendary',
+    check: (d) => totalPages(d) >= 500000,
+    progress: (d) => ({ value: totalPages(d), max: 500000, label: 'pages' }),
   },
 
   // ── Deep Reads ───────────────────────────────────────────────────────────
@@ -126,6 +144,18 @@ export const BADGE_DEFS = [
     check: (d) => longestBook(d) >= 1000,
     progress: (d) => ({ value: Math.min(longestBook(d), 1000), max: 1000, label: 'pages in longest book' }),
   },
+  {
+    id: 'behemoth_tamer', emoji: '🐉', name: 'Behemoth Tamer',
+    desc: 'Finish a book over 1,500 pages', category: 'Deep Reads', tier: 'platinum',
+    check: (d) => longestBook(d) >= 1500,
+    progress: (d) => ({ value: Math.min(longestBook(d), 1500), max: 1500, label: 'pages in longest book' }),
+  },
+  {
+    id: 'titan_reader', emoji: '🏔️', name: 'Titan Reader',
+    desc: 'Finish a book over 2,000 pages', category: 'Deep Reads', tier: 'legendary',
+    check: (d) => longestBook(d) >= 2000,
+    progress: (d) => ({ value: Math.min(longestBook(d), 2000), max: 2000, label: 'pages in longest book' }),
+  },
 
   // ── Genres ───────────────────────────────────────────────────────────────
   {
@@ -145,6 +175,18 @@ export const BADGE_DEFS = [
     desc: 'Read books in 10 different genres', category: 'Genres', tier: 'gold',
     check: (d) => uniqueGenres(d).size >= 10,
     progress: (d) => ({ value: uniqueGenres(d).size, max: 10, label: 'genres explored' }),
+  },
+  {
+    id: 'genre_polymath', emoji: '🌈', name: 'Genre Polymath',
+    desc: 'Read books in 15 different genres', category: 'Genres', tier: 'platinum',
+    check: (d) => uniqueGenres(d).size >= 15,
+    progress: (d) => ({ value: uniqueGenres(d).size, max: 15, label: 'genres explored' }),
+  },
+  {
+    id: 'boundless_reader', emoji: '🎆', name: 'Boundless Reader',
+    desc: 'Read books in 20 different genres', category: 'Genres', tier: 'legendary',
+    check: (d) => uniqueGenres(d).size >= 20,
+    progress: (d) => ({ value: uniqueGenres(d).size, max: 20, label: 'genres explored' }),
   },
 
   // ── Reviews & Ratings ────────────────────────────────────────────────────
@@ -166,6 +208,18 @@ export const BADGE_DEFS = [
     check: (d) => reviewEntries(d).length >= 25,
     progress: (d) => ({ value: reviewEntries(d).length, max: 25, label: 'reviews written' }),
   },
+  {
+    id: 'prolific_critic', emoji: '📝', name: 'Prolific Critic',
+    desc: 'Write 50 reviews', category: 'Reviews & Ratings', tier: 'platinum',
+    check: (d) => reviewEntries(d).length >= 50,
+    progress: (d) => ({ value: reviewEntries(d).length, max: 50, label: 'reviews written' }),
+  },
+  {
+    id: 'voice_of_letters', emoji: '🖋️', name: 'Voice of Letters',
+    desc: 'Write 100 reviews', category: 'Reviews & Ratings', tier: 'legendary',
+    check: (d) => reviewEntries(d).length >= 100,
+    progress: (d) => ({ value: reviewEntries(d).length, max: 100, label: 'reviews written' }),
+  },
 
   // ── Social ───────────────────────────────────────────────────────────────
   {
@@ -186,6 +240,18 @@ export const BADGE_DEFS = [
     check: (d) => d.friendCount >= 25,
     progress: (d) => ({ value: d.friendCount, max: 25, label: 'friends' }),
   },
+  {
+    id: 'reading_circle', emoji: '💞', name: 'Reading Circle',
+    desc: 'Make 50 friends', category: 'Social', tier: 'platinum',
+    check: (d) => d.friendCount >= 50,
+    progress: (d) => ({ value: d.friendCount, max: 50, label: 'friends' }),
+  },
+  {
+    id: 'club_royalty', emoji: '🎉', name: 'Book Club Royalty',
+    desc: 'Make 100 friends', category: 'Social', tier: 'legendary',
+    check: (d) => d.friendCount >= 100,
+    progress: (d) => ({ value: d.friendCount, max: 100, label: 'friends' }),
+  },
 
   // ── Series ───────────────────────────────────────────────────────────────
   {
@@ -199,6 +265,24 @@ export const BADGE_DEFS = [
     desc: 'Read 5 books in the same series', category: 'Series', tier: 'silver',
     check: (d) => seriesGroups(d).some(n => n >= 5),
     progress: (d) => ({ value: Math.max(0, ...seriesGroups(d), 0), max: 5, label: 'books in best series' }),
+  },
+  {
+    id: 'series_master', emoji: '🪢', name: 'Series Master',
+    desc: 'Read 10 books in the same series', category: 'Series', tier: 'gold',
+    check: (d) => seriesGroups(d).some(n => n >= 10),
+    progress: (d) => ({ value: Math.max(0, ...seriesGroups(d), 0), max: 10, label: 'books in best series' }),
+  },
+  {
+    id: 'saga_devotee', emoji: '🎬', name: 'Saga Devotee',
+    desc: 'Read 15 books in the same series', category: 'Series', tier: 'platinum',
+    check: (d) => seriesGroups(d).some(n => n >= 15),
+    progress: (d) => ({ value: Math.max(0, ...seriesGroups(d), 0), max: 15, label: 'books in best series' }),
+  },
+  {
+    id: 'series_legend', emoji: '🧬', name: 'Series Legend',
+    desc: 'Read 20 books in the same series', category: 'Series', tier: 'legendary',
+    check: (d) => seriesGroups(d).some(n => n >= 20),
+    progress: (d) => ({ value: Math.max(0, ...seriesGroups(d), 0), max: 20, label: 'books in best series' }),
   },
 
   // ── Collection & Habits ──────────────────────────────────────────────────
@@ -226,6 +310,18 @@ export const BADGE_DEFS = [
     desc: 'Add 200 books to your library', category: 'Collection & Habits', tier: 'gold',
     check: (d) => d.entries.length >= 200,
     progress: (d) => ({ value: d.entries.length, max: 200, label: 'books in library' }),
+  },
+  {
+    id: 'library_lord', emoji: '🏰', name: 'Library Lord',
+    desc: 'Add 500 books to your library', category: 'Collection & Habits', tier: 'platinum',
+    check: (d) => d.entries.length >= 500,
+    progress: (d) => ({ value: d.entries.length, max: 500, label: 'books in library' }),
+  },
+  {
+    id: 'sage_of_stacks', emoji: '🦉', name: 'Sage of the Stacks',
+    desc: 'Add 1,000 books to your library', category: 'Collection & Habits', tier: 'legendary',
+    check: (d) => d.entries.length >= 1000,
+    progress: (d) => ({ value: d.entries.length, max: 1000, label: 'books in library' }),
   },
   {
     id: 'well_read', emoji: '🧭', name: 'Well Read',
@@ -256,11 +352,71 @@ export const BADGE_CATEGORIES = [
 
 // ─── tier colours ─────────────────────────────────────────────────────────────
 
+// Single source of truth for tier ordering. TIER_ORDER and any future tier
+// styles must derive from this array so adding a tier is a one-line change.
+export const TIERS = ['bronze', 'silver', 'gold', 'platinum', 'legendary']
+export const TIER_ORDER = Object.fromEntries(TIERS.map((t, i) => [t, i]))
+
 export const TIER_STYLES = {
-  bronze:   { bg: 'rgba(180,100,40,0.12)',  border: 'rgba(180,100,40,0.35)',  text: '#a05a20', label: 'Bronze'   },
-  silver:   { bg: 'rgba(120,120,140,0.12)', border: 'rgba(120,120,140,0.35)', text: '#6a6a88', label: 'Silver'   },
-  gold:     { bg: 'rgba(184,134,11,0.14)',  border: 'rgba(184,134,11,0.40)',  text: '#a07808', label: 'Gold'     },
-  platinum: { bg: 'rgba(80,160,160,0.12)',  border: 'rgba(80,160,160,0.35)', text: '#2a9090', label: 'Platinum' },
+  bronze:    { bg: 'rgba(180,100,40,0.12)',  border: 'rgba(180,100,40,0.35)',  text: '#a05a20', label: 'Bronze'    },
+  silver:    { bg: 'rgba(120,120,140,0.12)', border: 'rgba(120,120,140,0.35)', text: '#6a6a88', label: 'Silver'    },
+  gold:      { bg: 'rgba(184,134,11,0.14)',  border: 'rgba(184,134,11,0.40)',  text: '#a07808', label: 'Gold'      },
+  platinum:  { bg: 'rgba(80,160,160,0.12)',  border: 'rgba(80,160,160,0.35)',  text: '#2a9090', label: 'Platinum'  },
+  legendary: { bg: 'rgba(150,80,200,0.13)',  border: 'rgba(150,80,200,0.40)',  text: '#5e2a8a', label: 'Legendary' },
+}
+
+// ─── shared badge-list queries ──────────────────────────────────────────────
+
+// Highest-tier earned badge in the same category as `badge` (or `badge` itself
+// if nothing is earned there yet). Used so tapping any chip in a category
+// surfaces the user's actual standing in that progression.
+export function findHighestEarnedInCategory(badge, badges) {
+  return badges
+    .filter(b => b.category === badge.category && b.earned)
+    .sort((a, b) => TIER_ORDER[b.tier] - TIER_ORDER[a.tier])[0] || badge
+}
+
+// Lowest unearned badge above `badge`'s tier in the same category. Used for
+// "Next tier" rendering — earned-but-higher tiers are skipped.
+export function findNextTier(badge, badges) {
+  return badges
+    .filter(b =>
+      b.category === badge.category
+      && TIER_ORDER[b.tier] > TIER_ORDER[badge.tier]
+      && !b.earned
+    )
+    .sort((a, b) => TIER_ORDER[a.tier] - TIER_ORDER[b.tier])[0] || null
+}
+
+// Returns one badge per category — the highest tier earned. Preserves
+// BADGE_CATEGORIES order for stable visual layout. Used by Profile to dedupe
+// the earned grid down to one card per progression.
+export function topEarnedByCategory(badges) {
+  const top = new Map()
+  for (const b of badges) {
+    if (!b.earned) continue
+    const cur = top.get(b.category)
+    if (!cur || TIER_ORDER[b.tier] > TIER_ORDER[cur.tier]) top.set(b.category, b)
+  }
+  return BADGE_CATEGORIES.map(cat => top.get(cat)).filter(Boolean)
+}
+
+// Stretch-goal multiplier for a legendary badge. Once earned, blowing past
+// the threshold counts as ×2/×3 (capped). Returns the next stretch target so
+// callers can render a progress bar.
+export const PRESTIGE_CAP = 3
+export function getPrestige(badge) {
+  if (!badge || badge.tier !== 'legendary' || !badge.earned) {
+    return { multiplier: 0, nextTarget: null, nextMultiplier: null, valueOverflow: 0 }
+  }
+  const value = badge.prog?.value ?? 0
+  const max   = badge.prog?.max ?? 1
+  const multiplier = Math.min(PRESTIGE_CAP, Math.max(1, Math.floor(value / max)))
+  if (multiplier >= PRESTIGE_CAP) {
+    return { multiplier, nextTarget: null, nextMultiplier: null, valueOverflow: value }
+  }
+  const nextMultiplier = multiplier + 1
+  return { multiplier, nextTarget: max * nextMultiplier, nextMultiplier, valueOverflow: value }
 }
 
 // ─── main compute function ───────────────────────────────────────────────────
@@ -271,7 +427,19 @@ export const TIER_STYLES = {
  * @param {number}   friendCount
  */
 export function computeBadges(entries, friendCount) {
-  const data = { entries: entries || [], friendCount: friendCount || 0 }
+  // Precompute frequently-read derivations once per call. Without this,
+  // every BADGE_DEF that mentions read books / total pages re-filters the
+  // full entries list inside both check() and progress() — quadratic-ish on
+  // larger libraries.
+  const safeEntries = entries || []
+  const _readEntries = safeEntries.filter(e => e.read_status === 'read')
+  const _totalPages  = _readEntries.reduce((sum, e) => sum + (e.books?.pages || 0), 0)
+  const data = {
+    entries: safeEntries,
+    friendCount: friendCount || 0,
+    _readEntries,
+    _totalPages,
+  }
   return BADGE_DEFS.map(b => {
     const earned = b.check(data)
     const prog   = b.progress(data)

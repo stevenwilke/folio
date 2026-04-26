@@ -12,6 +12,7 @@ import { uploadCoverToStorage } from '../lib/enrichBook'
 import { fetchUsedPrices } from '../lib/fetchUsedPrices'
 import { useIsMobile } from '../hooks/useIsMobile'
 import ShelfPlannerModal from '../components/ShelfPlannerModal'
+import TutorialOverlay from '../components/TutorialOverlay'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -67,6 +68,32 @@ export default function Library({ session }) {
 
   function changeViewMode(v)  { setViewMode(v);  localStorage.setItem('exlibris-view-mode',  v) }
   function changeCoverSize(s) { setCoverSize(s); localStorage.setItem('exlibris-cover-size', s) }
+
+  // Listen for global "open Library tool" events fired by the BottomTabBar
+  // More drawer, plus a sessionStorage flag for the case where the user fired
+  // the action from another page (we navigate here, then read the flag).
+  useEffect(() => {
+    function onImport()    { setShowImport(true) }
+    function onShelf()     { setShowShelfPlanner(true) }
+    function onExport()    { setShowExportMenu(true) }
+    window.addEventListener('exlibris:open-import',        onImport)
+    window.addEventListener('exlibris:open-shelf-planner', onShelf)
+    window.addEventListener('exlibris:open-export',        onExport)
+
+    const queued = sessionStorage.getItem('exlibris-pending-action')
+    if (queued) {
+      sessionStorage.removeItem('exlibris-pending-action')
+      if      (queued === 'import')        setShowImport(true)
+      else if (queued === 'shelf-planner') setShowShelfPlanner(true)
+      else if (queued === 'export')        setShowExportMenu(true)
+    }
+
+    return () => {
+      window.removeEventListener('exlibris:open-import',        onImport)
+      window.removeEventListener('exlibris:open-shelf-planner', onShelf)
+      window.removeEventListener('exlibris:open-export',        onExport)
+    }
+  }, [])
 
   // Redirect new users with empty libraries to onboarding
   useEffect(() => {
@@ -639,7 +666,7 @@ export default function Library({ session }) {
     forSaleBadge:   { position: 'absolute', bottom: 6, right: 6, background: theme.sage, color: 'white', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, letterSpacing: 0.3 },
     cardSelected:   { outline: `2px solid ${theme.rust}`, borderRadius: 6 },
     dropzone:       { display: 'block', border: '2px dashed #d4c9b0', borderRadius: 10, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', color: '#8a7f72', fontSize: 14, marginBottom: 16, background: '#f5f0e8' },
-    bulkBar:        { position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, background: theme.bgCard, borderTop: `1px solid ${theme.border}`, boxShadow: '0 -4px 20px rgba(26,18,8,0.1)', padding: '14px 32px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' },
+    bulkBar:        { position: 'fixed', bottom: isMobile ? 'calc(60px + env(safe-area-inset-bottom, 0px))' : 0, left: 0, right: 0, zIndex: 101, background: theme.bgCard, borderTop: `1px solid ${theme.border}`, boxShadow: '0 -4px 20px rgba(26,18,8,0.1)', padding: isMobile ? '10px 14px' : '14px 32px', display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 14, flexWrap: 'wrap' },
     bulkCount:      { fontSize: 14, fontWeight: 600, color: theme.text, marginRight: 4 },
     bulkSelect:     { padding: '7px 10px', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif", background: theme.bgCard, color: theme.text, cursor: 'pointer', outline: 'none' },
     bulkBtn:        { padding: '7px 16px', background: theme.rust, color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
@@ -665,35 +692,68 @@ export default function Library({ session }) {
   return (
     <div style={s.page}>
       <NavBar session={session} />
+      <TutorialOverlay session={session} />
 
       <div style={s.content}>
         {/* Stats — clicking filters the library to that shelf */}
         {isMobile ? (
-          <div style={s.statsRow}>
-            {[
-              ['All Books', stats.total,   'all'],
-              ['Read',    stats.read,    'has_read'],
-              ['Reading', stats.reading, 'reading'],
-              ['Want',    stats.want,    'want'],
-            ].map(([label, val, f]) => {
-              const active = filter === f
+          <>
+            <div data-tour="library-stats" style={s.statsRow}>
+              {[
+                ['All Books', stats.total,   'all'],
+                ['Read',    stats.read,    'has_read'],
+                ['Reading', stats.reading, 'reading'],
+                ['Want',    stats.want,    'want'],
+              ].map(([label, val, f]) => {
+                const active = filter === f
+                return (
+                  <div key={label}
+                    onClick={() => setFilter(active ? 'all' : f)}
+                    style={{
+                      ...s.statCard,
+                      cursor: 'pointer',
+                      border: `1px solid ${active ? theme.rust : theme.border}`,
+                      background: active ? theme.rust + '12' : theme.bgCard,
+                    }}>
+                    <div style={{ ...s.statVal, color: active ? theme.rust : theme.rust }}>{val}</div>
+                    <div style={{ ...s.statLabel, color: active ? theme.rust : theme.textSubtle }}>{label}</div>
+                  </div>
+                )
+              })}
+            </div>
+            {collectionStats && (() => {
+              const usedActual = collectionStats.usedTotal
+              const usedEst = collectionStats.estimatedUsedTotal || 0
+              const usedCombined = usedActual + usedEst
+              const valueCards = [
+                { f: 'valued-retail', color: '#5a7a5a', icon: '💰', label: 'Retail', val: collectionStats.retailCount > 0 ? `$${collectionStats.retailTotal.toFixed(2)}` : '—' },
+                { f: 'valued-used',   color: '#b8860b', icon: '📊', label: 'Used',   val: usedCombined > 0 ? `$${usedCombined.toFixed(2)}` : '—' },
+              ]
               return (
-                <div key={label}
-                  onClick={() => setFilter(active ? 'all' : f)}
-                  style={{
-                    ...s.statCard,
-                    cursor: 'pointer',
-                    border: `1px solid ${active ? theme.rust : theme.border}`,
-                    background: active ? theme.rust + '12' : theme.bgCard,
-                  }}>
-                  <div style={{ ...s.statVal, color: active ? theme.rust : theme.rust }}>{val}</div>
-                  <div style={{ ...s.statLabel, color: active ? theme.rust : theme.textSubtle }}>{label}</div>
+                <div style={s.statsRow}>
+                  {valueCards.map(({ f, color, icon, label, val }) => {
+                    const active = filter === f
+                    return (
+                      <div key={f}
+                        data-tour="book-values"
+                        onClick={() => { const next = active ? 'all' : f; setFilter(next); if (!active) { setSort('price'); setSortDir('desc') } else setSort('added') }}
+                        style={{
+                          ...s.statCard,
+                          cursor: 'pointer',
+                          border: `1px solid ${active ? color : theme.border}`,
+                          background: active ? color + '14' : theme.bgCard,
+                        }}>
+                        <div style={{ ...s.statVal, color }}>{icon} {val}</div>
+                        <div style={{ ...s.statLabel, color: active ? color : theme.textSubtle }}>{label} Value</div>
+                      </div>
+                    )
+                  })}
                 </div>
               )
-            })}
-          </div>
+            })()}
+          </>
         ) : (
-          <div style={s.statsRow}>
+          <div data-tour="library-stats" style={s.statsRow}>
             {[
               ['All Books',   stats.total,   'all',     null,      '📚'],
               ['Read',        stats.read,    'has_read', '#5a7a5a', '✓'],
@@ -735,6 +795,7 @@ export default function Library({ session }) {
                   const active = filter === f
                   return (
                     <div key={f}
+                      data-tour={(f === 'valued-retail' || f === 'valued-used') ? 'book-values' : undefined}
                       onClick={() => { const next = active ? 'all' : f; setFilter(next); if (!active) { setSort('price'); setSortDir('desc') } else setSort('added') }}
                       style={{
                         ...s.statCard,
@@ -920,8 +981,8 @@ export default function Library({ session }) {
           </div>
         </div>
 
-        {/* Import / Export buttons */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
+        {/* Import / Export buttons — desktop only; mobile equivalents live in the BottomTabBar More drawer */}
+        {!isMobile && <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
           <button style={{ ...s.filterInactive, color: theme.sage, borderColor: theme.sage }} onClick={() => setShowImport(true)}>
             📥 Import from Goodreads
           </button>
@@ -1022,7 +1083,7 @@ export default function Library({ session }) {
               </div>
             )}
           </div>
-        </div>
+        </div>}
 
         {/* Book grid */}
         {loading ? (

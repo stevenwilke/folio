@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, RefreshControl, Platform, Alert, Image, Modal, ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Stack, useRouter } from 'expo-router';
@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 import { haversineKm, formatDistance } from '../lib/geo';
 import { fetchBlockedUserIds } from '../lib/moderation';
+import { fetchOsmLibraries, OsmLibrary } from '../lib/osmLibraries';
 import BookDropCard from '../components/BookDropCard';
 import AddLibraryModal from '../components/AddLibraryModal';
 import ScanLibraryModal from '../components/ScanLibraryModal';
@@ -19,6 +20,8 @@ const CONDITION_LABELS: Record<string, string> = { like_new: 'Like New', very_go
 const CONDITION_COLORS: Record<string, string> = { like_new: Colors.sage, very_good: Colors.sage, good: Colors.gold, acceptable: Colors.rust };
 
 const TEAL = '#2a9d8f';
+const OSM_PIN = '#b08968'; // muted brown to distinguish from user-added (teal) pins
+const OSM_DEDUP_METERS = 30;
 
 function timeAgo(dateStr: string | null | undefined): string {
   if (!dateStr) return '';
@@ -38,6 +41,8 @@ export default function NearbyScreen() {
   const [drops, setDrops] = useState<any[]>([]);
   const [myDrops, setMyDrops] = useState<any[]>([]);
   const [libraries, setLibraries] = useState<any[]>([]);
+  const [osmLibraries, setOsmLibraries] = useState<OsmLibrary[]>([]);
+  const [osmLoading, setOsmLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<'nearby' | 'libraries' | 'my'>('nearby');
@@ -49,16 +54,29 @@ export default function NearbyScreen() {
   const [claiming, setClaiming] = useState<string | null>(null);
   const [selectedDrop, setSelectedDrop] = useState<any>(null);
   const [selectedLibrary, setSelectedLibrary] = useState<any>(null);
+  const [selectedOsm, setSelectedOsm] = useState<(OsmLibrary & { distanceKm?: number | null }) | null>(null);
   const [showAddLibrary, setShowAddLibrary] = useState(false);
+  const [adoptInitial, setAdoptInitial] = useState<{ latitude: number; longitude: number; name: string | null; locationName: string | null; osmId: string } | null>(null);
   const [showScanLibrary, setShowScanLibrary] = useState<any>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
   async function fetchLocation() {
     const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status === 'granted') {
-      const loc = await Location.getCurrentPositionAsync({});
+    if (status !== 'granted') return;
+    // Try a fast cached fix first; if there isn't one, fall back to a low-accuracy
+    // GPS read. Both Android and iOS can take 10s+ on a cold high-accuracy fix.
+    const cached = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60 * 1000 });
+    if (cached) {
+      setUserLat(cached.coords.latitude);
+      setUserLng(cached.coords.longitude);
+      return;
+    }
+    try {
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       setUserLat(loc.coords.latitude);
       setUserLng(loc.coords.longitude);
+    } catch {
+      // Permission ok but no fix — let the user use the screen without distance info.
     }
   }
 
@@ -97,11 +115,33 @@ export default function NearbyScreen() {
 
   useFocusEffect(useCallback(() => {
     setLoading(true);
-    Promise.all([fetchLocation(), fetchDrops(), fetchLibraries()]).finally(() => setLoading(false));
+    // Location resolves in the background — don't gate render on it.
+    fetchLocation();
+    Promise.all([fetchDrops(), fetchLibraries()]).finally(() => setLoading(false));
   }, []));
+
+  // Round to ~1km grid so small GPS jitters don't refire the OSM fetch.
+  const osmLat = userLat != null ? Math.round(userLat * 100) / 100 : null;
+  const osmLng = userLng != null ? Math.round(userLng * 100) / 100 : null;
+
+  // Fetch OSM-sourced little libraries when on the Libraries tab and we know
+  // where the user is. Cached + timeout-bounded in osmLibraries.ts.
+  useEffect(() => {
+    if (tab !== 'libraries' || osmLat == null || osmLng == null) return;
+    let cancelled = false;
+    setOsmLoading(true);
+    fetchOsmLibraries(osmLat, osmLng, radius ?? 50)
+      .then(rows => { if (!cancelled) setOsmLibraries(rows); })
+      .finally(() => { if (!cancelled) setOsmLoading(false); });
+    return () => { cancelled = true; };
+  }, [tab, osmLat, osmLng, radius]);
 
   async function onRefresh() {
     setRefreshing(true);
+    // Kick OSM refresh in the background so the spinner doesn't wait on Overpass.
+    if (tab === 'libraries' && osmLat != null && osmLng != null) {
+      fetchOsmLibraries(osmLat, osmLng, radius ?? 50).then(setOsmLibraries).catch(() => {});
+    }
     await Promise.all([fetchDrops(), fetchLibraries()]);
     setRefreshing(false);
   }
@@ -132,6 +172,22 @@ export default function NearbyScreen() {
       if (lib.distanceKm == null) return true;
       return lib.distanceKm <= radius;
     })
+    .sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999));
+
+  // OSM-sourced libraries: skip any already adopted (matching osm_id) or sitting
+  // within a few meters of an existing user-added pin.
+  const adoptedOsmIds = new Set(libraries.map(l => l.osm_id).filter(Boolean));
+  const filteredOsm = osmLibraries
+    .filter(o => !adoptedOsmIds.has(o.osm_id))
+    .filter(o => !libraries.some(l =>
+      l.latitude != null && l.longitude != null &&
+      haversineKm(l.latitude, l.longitude, o.latitude, o.longitude) * 1000 < OSM_DEDUP_METERS
+    ))
+    .map(o => ({
+      ...o,
+      distanceKm: userLat != null ? haversineKm(userLat, userLng!, o.latitude, o.longitude) : null,
+    }))
+    .filter(o => radius == null || o.distanceKm == null || o.distanceKm <= radius)
     .sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999));
 
   async function claimDrop(dropId: string) {
@@ -262,23 +318,53 @@ export default function NearbyScreen() {
               mapRef={mapRef}
               userLat={userLat}
               userLng={userLng}
-              markers={filteredLibraries
-                .filter(l => l.latitude != null && l.longitude != null)
-                .map(l => ({
-                  id: l.id,
-                  lat: l.latitude,
-                  lng: l.longitude,
-                  title: l.name || 'Little Library',
-                  subtitle: l.location_name,
-                  color: TEAL,
-                  onPress: () => setSelectedLibrary(l),
-                }))}
+              markers={[
+                ...filteredLibraries
+                  .filter(l => l.latitude != null && l.longitude != null)
+                  .map(l => ({
+                    id: l.id,
+                    lat: l.latitude,
+                    lng: l.longitude,
+                    title: l.name || 'Little Library',
+                    subtitle: l.location_name,
+                    color: TEAL,
+                    onPress: () => setSelectedLibrary(l),
+                  })),
+                ...filteredOsm.map(o => ({
+                  id: o.osm_id,
+                  lat: o.latitude,
+                  lng: o.longitude,
+                  title: o.name || 'Little Free Library',
+                  subtitle: o.location_name || 'From OpenStreetMap',
+                  color: OSM_PIN,
+                  onPress: () => setSelectedOsm(o),
+                })),
+              ]}
             />
           ) : (
           <FlatList
-            data={filteredLibraries}
-            keyExtractor={item => item.id}
-            renderItem={({ item }) => (
+            data={[
+              ...filteredLibraries.map(l => ({ ...l, __osm: false as const })),
+              ...filteredOsm.map(o => ({ ...o, __osm: true as const })),
+            ].sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999))}
+            keyExtractor={item => (item.__osm ? `osm:${item.osm_id}` : item.id)}
+            renderItem={({ item }) => item.__osm ? (
+              <TouchableOpacity
+                onPress={() => setSelectedOsm(item)}
+                style={[styles.libRow, styles.osmRow]}
+                activeOpacity={0.7}
+              >
+                <View style={styles.osmIconBox}><Text style={styles.osmIcon}>📖</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.libName} numberOfLines={1}>{item.name || 'Little Free Library'}</Text>
+                  <Text style={styles.libLocation} numberOfLines={1}>📍 {item.location_name || 'From OpenStreetMap'}</Text>
+                  <Text style={styles.osmTag}>Tap to adopt · OpenStreetMap</Text>
+                </View>
+                {item.distanceKm != null && (
+                  <Text style={styles.libDist}>{formatDistance(item.distanceKm)}</Text>
+                )}
+              </TouchableOpacity>
+            ) : (
               <TouchableOpacity
                 onPress={() => setSelectedLibrary(item)}
                 style={styles.libRow}
@@ -308,7 +394,7 @@ export default function NearbyScreen() {
             ListEmptyComponent={
               <View style={styles.empty}>
                 <Text style={styles.emptyIcon}>📚</Text>
-                <Text style={styles.emptyTitle}>No Little Libraries nearby</Text>
+                <Text style={styles.emptyTitle}>{osmLoading ? 'Searching nearby…' : 'No Little Libraries nearby'}</Text>
                 <Text style={styles.emptyDesc}>Know of one? Add it to the map!</Text>
               </View>
             }
@@ -448,11 +534,50 @@ export default function NearbyScreen() {
         </View>
       )}
 
+      {/* OSM library detail overlay */}
+      {selectedOsm && (
+        <View style={styles.overlay}>
+          <View style={styles.detailCard}>
+            <TouchableOpacity onPress={() => setSelectedOsm(null)} style={styles.closeBtn}>
+              <Text style={styles.closeText}>✕</Text>
+            </TouchableOpacity>
+            <Text style={styles.libDetailTitle}>📖 {selectedOsm.name || 'Little Free Library'}</Text>
+            {selectedOsm.location_name && (
+              <Text style={styles.detailMeta}>📍 {selectedOsm.location_name}</Text>
+            )}
+            {selectedOsm.distanceKm != null && (
+              <Text style={styles.detailMeta}>{formatDistance(selectedOsm.distanceKm)} from you</Text>
+            )}
+            {selectedOsm.operator && (
+              <Text style={styles.detailMeta}>Operated by {selectedOsm.operator}</Text>
+            )}
+            <Text style={[styles.osmTag, { marginTop: 8, marginBottom: 12 }]}>Source: OpenStreetMap</Text>
+
+            <TouchableOpacity
+              onPress={() => {
+                setAdoptInitial({
+                  latitude: selectedOsm.latitude,
+                  longitude: selectedOsm.longitude,
+                  name: selectedOsm.name,
+                  locationName: selectedOsm.location_name,
+                  osmId: selectedOsm.osm_id,
+                });
+                setSelectedOsm(null);
+              }}
+              style={styles.scanBtn}
+            >
+              <Text style={styles.scanBtnText}>📚 Adopt this library</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* Add Library Modal */}
-      {showAddLibrary && (
+      {(showAddLibrary || adoptInitial) && (
         <AddLibraryModal
-          onClose={() => setShowAddLibrary(false)}
-          onSuccess={() => { setShowAddLibrary(false); fetchLibraries(); }}
+          initial={adoptInitial || undefined}
+          onClose={() => { setShowAddLibrary(false); setAdoptInitial(null); }}
+          onSuccess={() => { setShowAddLibrary(false); setAdoptInitial(null); fetchLibraries(); }}
         />
       )}
 
@@ -577,6 +702,10 @@ const styles = StyleSheet.create({
   libDist: { fontSize: 12, color: Colors.muted },
   addLibBtn: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 8, backgroundColor: TEAL, marginLeft: 'auto' },
   addLibText: { fontSize: 12, fontWeight: '600', color: Colors.white },
+  osmRow: { borderStyle: 'dashed' },
+  osmIconBox: { width: 48, height: 48, borderRadius: 8, backgroundColor: '#f5ede3', alignItems: 'center', justifyContent: 'center' },
+  osmIcon: { fontSize: 22 },
+  osmTag: { fontSize: 11, color: OSM_PIN, marginTop: 2, fontStyle: 'italic' },
 
   // Detail overlay
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 50 },

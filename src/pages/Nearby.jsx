@@ -10,10 +10,13 @@ import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { haversineKm, formatDistance } from '../lib/geo'
 import { getCoverUrl } from '../lib/coverUrl'
+import { fetchOsmLibraries } from '../lib/osmLibraries'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 const RADIUS_OPTIONS = [5, 10, 25, 50, null] // null = Any
 const RADIUS_LABELS = { 5: '5 km', 10: '10 km', 25: '25 km', 50: '50 km', null: 'Any' }
+const OSM_PIN_COLOR = '#b08968'
+const OSM_DEDUP_METERS = 30
 
 const CONDITION_LABELS = {
   like_new: 'Like New', very_good: 'Very Good', good: 'Good', acceptable: 'Acceptable',
@@ -42,10 +45,13 @@ export default function Nearby({ session }) {
   const mapContainer = useRef(null)
   const mapRef = useRef(null)
   const markersRef = useRef([])
+  const userMarkerRef = useRef(null)
 
   const [drops, setDrops] = useState([])
   const [myDrops, setMyDrops] = useState([])
   const [libraries, setLibraries] = useState([])
+  const [osmLibraries, setOsmLibraries] = useState([])
+  const [osmLoading, setOsmLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('nearby') // nearby | my-drops | libraries
   const [view, setView] = useState('map') // map | list
@@ -54,7 +60,9 @@ export default function Nearby({ session }) {
   const [radius, setRadius] = useState(25)
   const [selectedDrop, setSelectedDrop] = useState(null)
   const [selectedLibrary, setSelectedLibrary] = useState(null)
+  const [selectedOsm, setSelectedOsm] = useState(null)
   const [showAddLibrary, setShowAddLibrary] = useState(false)
+  const [adoptInitial, setAdoptInitial] = useState(null)
   const [showScanLibrary, setShowScanLibrary] = useState(null) // library object
   const [claiming, setClaiming] = useState(null)
 
@@ -70,11 +78,14 @@ export default function Nearby({ session }) {
   async function fetchDrops() {
     setLoading(true)
     const [{ data: available }, { data: mine }] = await Promise.all([
+      // Cap the global query — radius is filtered client-side, but without a limit
+      // this can pull every available drop in the world as the table grows.
       supabase
         .from('book_drops')
         .select('*, books(id, title, author, cover_image_url, genre), profiles:user_id(username, avatar_url)')
         .eq('status', 'available')
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false })
+        .limit(500),
       supabase
         .from('book_drops')
         .select('*, books(id, title, author, cover_image_url, genre), claimer:claimed_by(username)')
@@ -99,6 +110,21 @@ export default function Nearby({ session }) {
     })))
   }
 
+  // Round to ~1km grid so small geolocation jitters don't refire the OSM fetch.
+  const osmLat = userLat != null ? Math.round(userLat * 100) / 100 : null
+  const osmLng = userLng != null ? Math.round(userLng * 100) / 100 : null
+
+  // Fetch OSM-sourced little libraries for the user's area when on the libraries tab.
+  useEffect(() => {
+    if (tab !== 'libraries' || osmLat == null || osmLng == null) return
+    let cancelled = false
+    setOsmLoading(true)
+    fetchOsmLibraries(osmLat, osmLng, radius ?? 50)
+      .then(rows => { if (!cancelled) setOsmLibraries(rows) })
+      .finally(() => { if (!cancelled) setOsmLoading(false) })
+    return () => { cancelled = true }
+  }, [tab, osmLat, osmLng, radius])
+
   // Compute distances for libraries
   const librariesWithDistance = libraries.map(lib => ({
     ...lib,
@@ -110,6 +136,23 @@ export default function Nearby({ session }) {
     if (lib.distanceKm == null) return true
     return lib.distanceKm <= radius
   }).sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999))
+
+  // Dedupe OSM pins against adopted (osm_id match) and very-close (≤30m) user pins.
+  const adoptedOsmIds = new Set(libraries.map(l => l.osm_id).filter(Boolean))
+  const filteredOsm = osmLibraries
+    .filter(o => !adoptedOsmIds.has(o.osm_id))
+    .filter(o => !libraries.some(l =>
+      l.latitude != null && l.longitude != null &&
+      haversineKm(l.latitude, l.longitude, o.latitude, o.longitude) * 1000 < OSM_DEDUP_METERS
+    ))
+    .map(o => ({
+      ...o,
+      distanceKm: userLat != null ? haversineKm(userLat, userLng, o.latitude, o.longitude) : null,
+    }))
+    .filter(o => radius == null || o.distanceKm == null || o.distanceKm <= radius)
+    .sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999))
+
+  const totalLibraries = filteredLibraries.length + filteredOsm.length
 
   // Compute distances
   const dropsWithDistance = drops.map(d => ({
@@ -124,7 +167,8 @@ export default function Nearby({ session }) {
     return d.distanceKm <= radius
   }).sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999))
 
-  // Initialize / update map
+  // Initialize map. Intentionally NOT depending on userLat — when geolocation
+  // resolves later we flyTo (see effect below) instead of rebuilding the map.
   useEffect(() => {
     if ((tab !== 'nearby' && tab !== 'libraries') || view !== 'map' || !mapContainer.current || !MAPBOX_TOKEN) return
 
@@ -154,23 +198,28 @@ export default function Nearby({ session }) {
     mapRef.current = map
     map.addControl(new mapboxgl.NavigationControl(), 'top-right')
 
-    // User location marker
-    if (userLat && userLng) {
-      new mapboxgl.Marker({ color: '#4a90d9' })
-        .setLngLat([userLng, userLat])
-        .addTo(map)
-    }
-
     map.on('load', () => updateMarkers())
     return () => {
       map.remove()
       mapRef.current = null
+      userMarkerRef.current = null
     }
-  }, [tab, view, userLat])
+  }, [tab, view])
+
+  // When geolocation arrives (or radius changes), recenter without rebuilding the map.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || userLat == null || userLng == null) return
+    map.flyTo({ center: [userLng, userLat], zoom: 11, duration: 800 })
+    if (userMarkerRef.current) userMarkerRef.current.remove()
+    userMarkerRef.current = new mapboxgl.Marker({ color: '#4a90d9' })
+      .setLngLat([userLng, userLat])
+      .addTo(map)
+  }, [userLat, userLng])
 
   useEffect(() => {
     if (mapRef.current) updateMarkers()
-  }, [filtered.length, filteredLibraries.length, radius, tab])
+  }, [filtered.length, filteredLibraries.length, filteredOsm.length, radius, tab])
 
   function updateMarkers() {
     const map = mapRef.current
@@ -232,9 +281,34 @@ export default function Nearby({ session }) {
         markersRef.current.push(marker)
       }
 
-      if (filteredLibraries.length > 0 && !userLat) {
+      // OSM-sourced pins (muted brown to distinguish from user-added teal)
+      for (const osm of filteredOsm) {
+        const el = document.createElement('div')
+        el.style.width = '28px'
+        el.style.height = '28px'
+        el.style.borderRadius = '50%'
+        el.style.background = OSM_PIN_COLOR
+        el.style.border = '3px solid white'
+        el.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)'
+        el.style.cursor = 'pointer'
+        el.style.display = 'flex'
+        el.style.alignItems = 'center'
+        el.style.justifyContent = 'center'
+        el.style.fontSize = '12px'
+        el.textContent = '📖'
+        el.title = osm.name || 'Little Free Library (OpenStreetMap)'
+        el.addEventListener('click', () => setSelectedOsm(osm))
+
+        const marker = new mapboxgl.Marker(el)
+          .setLngLat([osm.longitude, osm.latitude])
+          .addTo(map)
+        markersRef.current.push(marker)
+      }
+
+      if ((filteredLibraries.length + filteredOsm.length) > 0 && !userLat) {
         const bounds = new mapboxgl.LngLatBounds()
         filteredLibraries.forEach(lib => bounds.extend([lib.longitude, lib.latitude]))
+        filteredOsm.forEach(o => bounds.extend([o.longitude, o.latitude]))
         map.fitBounds(bounds, { padding: 60 })
       }
     }
@@ -321,45 +395,40 @@ export default function Nearby({ session }) {
               </div>
             </div>
 
-            {loading ? (
-              <div style={s.empty}>Loading nearby books...</div>
-            ) : (
-              <>
-                {/* Map view */}
-                {view === 'map' && (
-                  <div style={{ position: 'relative' }}>
-                    <div
-                      ref={mapContainer}
-                      style={s.mapContainer}
-                    />
-                    <div style={s.mapCount}>
-                      {filtered.length} book{filtered.length !== 1 ? 's' : ''} available
-                    </div>
-                  </div>
-                )}
+            {/* Map view — render immediately so Mapbox can warm up while data loads */}
+            {view === 'map' && (
+              <div style={{ position: 'relative' }}>
+                <div ref={mapContainer} style={s.mapContainer} />
+                <div style={s.mapCount}>
+                  {loading
+                    ? 'Loading…'
+                    : `${filtered.length} book${filtered.length !== 1 ? 's' : ''} available`}
+                </div>
+              </div>
+            )}
 
-                {/* List view */}
-                {view === 'list' && (
-                  filtered.length === 0 ? (
-                    <div style={s.empty}>
-                      <div style={{ fontSize: 36, marginBottom: 12 }}>📍</div>
-                      <div style={{ fontWeight: 600, color: theme.text, marginBottom: 6 }}>No books nearby</div>
-                      <div>Be the first to free a book in your area!</div>
-                    </div>
-                  ) : (
-                    <div style={s.grid}>
-                      {filtered.map(drop => (
-                        <BookDropCard
-                          key={drop.id}
-                          drop={drop}
-                          distanceKm={drop.distanceKm}
-                          onClick={() => setSelectedDrop(drop)}
-                        />
-                      ))}
-                    </div>
-                  )
-                )}
-              </>
+            {/* List view */}
+            {view === 'list' && (
+              loading ? (
+                <div style={s.empty}>Loading nearby books...</div>
+              ) : filtered.length === 0 ? (
+                <div style={s.empty}>
+                  <div style={{ fontSize: 36, marginBottom: 12 }}>📍</div>
+                  <div style={{ fontWeight: 600, color: theme.text, marginBottom: 6 }}>No books nearby</div>
+                  <div>Be the first to free a book in your area!</div>
+                </div>
+              ) : (
+                <div style={s.grid}>
+                  {filtered.map(drop => (
+                    <BookDropCard
+                      key={drop.id}
+                      drop={drop}
+                      distanceKm={drop.distanceKm}
+                      onClick={() => setSelectedDrop(drop)}
+                    />
+                  ))}
+                </div>
+              )
             )}
 
             {/* Selected drop detail panel */}
@@ -458,57 +527,82 @@ export default function Nearby({ session }) {
               </div>
             </div>
 
-            {loading ? (
+            {view === 'map' ? (
+              <div style={{ position: 'relative' }}>
+                <div ref={mapContainer} style={s.mapContainer} />
+                <div style={{ ...s.mapCount, background: 'rgba(42,157,143,0.92)', color: 'white' }}>
+                  {totalLibraries} librar{totalLibraries !== 1 ? 'ies' : 'y'}
+                  {filteredOsm.length > 0 && ` · ${filteredOsm.length} from OpenStreetMap`}
+                  {osmLoading && totalLibraries === 0 && ' · searching…'}
+                </div>
+              </div>
+            ) : loading ? (
               <div style={s.empty}>Loading little libraries...</div>
-            ) : filteredLibraries.length === 0 ? (
+            ) : totalLibraries === 0 ? (
               <div style={s.empty}>
                 <div style={{ fontSize: 36, marginBottom: 12 }}>📚</div>
-                <div style={{ fontWeight: 600, color: theme.text, marginBottom: 6 }}>No Little Libraries nearby</div>
+                <div style={{ fontWeight: 600, color: theme.text, marginBottom: 6 }}>
+                  {osmLoading ? 'Searching nearby…' : 'No Little Libraries nearby'}
+                </div>
                 <div>Know of one? Add it to the map!</div>
               </div>
             ) : (
-              <>
-                {view === 'map' && (
-                  <div style={{ position: 'relative' }}>
-                    <div ref={mapContainer} style={s.mapContainer} />
-                    <div style={{ ...s.mapCount, background: 'rgba(42,157,143,0.92)', color: 'white' }}>
-                      {filteredLibraries.length} librar{filteredLibraries.length !== 1 ? 'ies' : 'y'}
-                    </div>
-                  </div>
-                )}
-
-                {view === 'list' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {filteredLibraries.map(lib => (
-                      <div
-                        key={lib.id}
-                        onClick={() => setSelectedLibrary(lib)}
-                        style={{ ...s.myDropRow, cursor: 'pointer' }}
-                      >
-                        {lib.photo_url && (
-                          <img src={lib.photo_url} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />
-                        )}
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>
-                            {lib.name || 'Little Library'}
-                          </div>
-                          <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 2 }}>
-                            📍 {lib.location_name}
-                          </div>
-                          {lib.latest_scan && (
-                            <div style={{ fontSize: 11, color: theme.textSubtle, marginTop: 2 }}>
-                              📷 {lib.latest_scan.books_found?.length || 0} books spotted · {timeAgo(lib.latest_scan.created_at)}
-                            </div>
-                          )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {[
+                  ...filteredLibraries.map(l => ({ ...l, __osm: false })),
+                  ...filteredOsm.map(o => ({ ...o, __osm: true })),
+                ]
+                  .sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999))
+                  .map(item => item.__osm ? (
+                    <div
+                      key={`osm:${item.osm_id}`}
+                      onClick={() => setSelectedOsm(item)}
+                      style={{ ...s.myDropRow, cursor: 'pointer', borderStyle: 'dashed' }}
+                    >
+                      <div style={{ width: 48, height: 48, borderRadius: 8, background: '#f5ede3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>📖</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>
+                          {item.name || 'Little Free Library'}
                         </div>
-                        {lib.distanceKm != null && (
-                          <span style={{ fontSize: 12, color: theme.textSubtle }}>{formatDistance(lib.distanceKm)}</span>
+                        <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 2 }}>
+                          📍 {item.location_name || 'From OpenStreetMap'}
+                        </div>
+                        <div style={{ fontSize: 11, color: OSM_PIN_COLOR, marginTop: 2, fontStyle: 'italic' }}>
+                          Tap to adopt · OpenStreetMap
+                        </div>
+                      </div>
+                      {item.distanceKm != null && (
+                        <span style={{ fontSize: 12, color: theme.textSubtle }}>{formatDistance(item.distanceKm)}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div
+                      key={item.id}
+                      onClick={() => setSelectedLibrary(item)}
+                      style={{ ...s.myDropRow, cursor: 'pointer' }}
+                    >
+                      {item.photo_url && (
+                        <img src={item.photo_url} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: theme.text }}>
+                          {item.name || 'Little Library'}
+                        </div>
+                        <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 2 }}>
+                          📍 {item.location_name}
+                        </div>
+                        {item.latest_scan && (
+                          <div style={{ fontSize: 11, color: theme.textSubtle, marginTop: 2 }}>
+                            📷 {item.latest_scan.books_found?.length || 0} books spotted · {timeAgo(item.latest_scan.created_at)}
+                          </div>
                         )}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </>
+                      {item.distanceKm != null && (
+                        <span style={{ fontSize: 12, color: theme.textSubtle }}>{formatDistance(item.distanceKm)}</span>
+                      )}
+                    </div>
+                  ))}
+              </div>
             )}
 
             {/* Library detail panel */}
@@ -613,12 +707,59 @@ export default function Nearby({ session }) {
             )}
           </div>
         )}
+        {/* OSM library detail */}
+        {selectedOsm && (
+          <div
+            style={s.detailOverlay}
+            onClick={e => { if (e.target === e.currentTarget) setSelectedOsm(null) }}
+          >
+            <div style={s.detailCard}>
+              <button onClick={() => setSelectedOsm(null)} style={s.detailClose}>✕</button>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ ...s.detailTitle, marginBottom: 4 }}>
+                  📖 {selectedOsm.name || 'Little Free Library'}
+                </div>
+                {selectedOsm.location_name && (
+                  <div style={{ fontSize: 13, color: theme.textSubtle }}>📍 {selectedOsm.location_name}</div>
+                )}
+                {selectedOsm.distanceKm != null && (
+                  <div style={{ fontSize: 13, color: theme.textSubtle, marginTop: 2 }}>
+                    {formatDistance(selectedOsm.distanceKm)} from you
+                  </div>
+                )}
+                {selectedOsm.operator && (
+                  <div style={{ fontSize: 13, color: theme.textSubtle, marginTop: 2 }}>Operated by {selectedOsm.operator}</div>
+                )}
+                <div style={{ fontSize: 11, color: OSM_PIN_COLOR, marginTop: 8, fontStyle: 'italic' }}>
+                  Source: OpenStreetMap
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setAdoptInitial({
+                    latitude: selectedOsm.latitude,
+                    longitude: selectedOsm.longitude,
+                    name: selectedOsm.name || '',
+                    locationName: selectedOsm.location_name || '',
+                    osmId: selectedOsm.osm_id,
+                  })
+                  setSelectedOsm(null)
+                }}
+                style={{ width: '100%', padding: '12px', background: '#2a9d8f', color: 'white', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+              >
+                📚 Adopt this library
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Modals */}
-        {showAddLibrary && (
+        {(showAddLibrary || adoptInitial) && (
           <AddLibraryModal
             session={session}
-            onClose={() => setShowAddLibrary(false)}
-            onSuccess={() => { setShowAddLibrary(false); fetchLibraries() }}
+            initial={adoptInitial}
+            onClose={() => { setShowAddLibrary(false); setAdoptInitial(null) }}
+            onSuccess={() => { setShowAddLibrary(false); setAdoptInitial(null); fetchLibraries() }}
           />
         )}
         {showScanLibrary && (

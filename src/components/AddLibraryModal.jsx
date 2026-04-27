@@ -6,17 +6,17 @@ import { useIsMobile } from '../hooks/useIsMobile'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
-export default function AddLibraryModal({ session, onClose, onSuccess }) {
+export default function AddLibraryModal({ session, onClose, onSuccess, initial }) {
   const { theme } = useTheme()
   const isMobile = useIsMobile()
   const mapContainer = useRef(null)
   const mapRef = useRef(null)
   const markerRef = useRef(null)
 
-  const [latitude, setLatitude] = useState(null)
-  const [longitude, setLongitude] = useState(null)
-  const [locationName, setLocationName] = useState('')
-  const [name, setName] = useState('')
+  const [latitude, setLatitude] = useState(initial?.latitude ?? null)
+  const [longitude, setLongitude] = useState(initial?.longitude ?? null)
+  const [locationName, setLocationName] = useState(initial?.locationName ?? '')
+  const [name, setName] = useState(initial?.name ?? '')
   const [photoFile, setPhotoFile] = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
   const [submitting, setSubmitting] = useState(false)
@@ -26,21 +26,30 @@ export default function AddLibraryModal({ session, onClose, onSuccess }) {
     if (!mapContainer.current || !MAPBOX_TOKEN) return
     mapboxgl.accessToken = MAPBOX_TOKEN
 
+    const startCenter = initial?.longitude != null && initial?.latitude != null
+      ? [initial.longitude, initial.latitude]
+      : [-98.5, 39.8]
     const map = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v12',
-      center: [-98.5, 39.8],
-      zoom: 3,
+      center: startCenter,
+      zoom: initial?.latitude != null ? 15 : 3,
     })
     mapRef.current = map
     map.addControl(new mapboxgl.NavigationControl(), 'top-right')
 
-    navigator.geolocation?.getCurrentPosition(
-      (pos) => {
-        map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 13 })
-      },
-      () => {}
-    )
+    if (initial?.latitude != null && initial?.longitude != null) {
+      markerRef.current = new mapboxgl.Marker({ color: '#2a9d8f' })
+        .setLngLat([initial.longitude, initial.latitude])
+        .addTo(map)
+    } else {
+      navigator.geolocation?.getCurrentPosition(
+        (pos) => {
+          map.flyTo({ center: [pos.coords.longitude, pos.coords.latitude], zoom: 13 })
+        },
+        () => {}
+      )
+    }
 
     map.on('click', async (e) => {
       const { lng, lat } = e.lngLat
@@ -103,6 +112,7 @@ export default function AddLibraryModal({ session, onClose, onSuccess }) {
       location_name: locationName.trim(),
       name: name.trim() || null,
       photo_url: photoUrl,
+      osm_id: initial?.osmId || null,
     }).select().single()
 
     if (insertErr) {

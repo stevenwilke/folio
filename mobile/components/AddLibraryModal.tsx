@@ -5,23 +5,32 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 
+interface InitialValues {
+  latitude?: number;
+  longitude?: number;
+  name?: string | null;
+  locationName?: string | null;
+  osmId?: string | null;
+}
+
 interface Props {
   onClose: () => void;
   onSuccess: () => void;
+  initial?: InitialValues;
 }
 
-export default function AddLibraryModal({ onClose, onSuccess }: Props) {
-  const [name, setName] = useState('');
-  const [locationName, setLocationName] = useState('');
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
+export default function AddLibraryModal({ onClose, onSuccess, initial }: Props) {
+  const [name, setName] = useState(initial?.name || '');
+  const [locationName, setLocationName] = useState(initial?.locationName || '');
+  const [latitude, setLatitude] = useState<number | null>(initial?.latitude ?? null);
+  const [longitude, setLongitude] = useState<number | null>(initial?.longitude ?? null);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
 
   useEffect(() => {
-    getCurrentLocation();
+    if (initial?.latitude == null) getCurrentLocation();
   }, []);
 
   async function getCurrentLocation() {
@@ -123,6 +132,7 @@ export default function AddLibraryModal({ onClose, onSuccess }: Props) {
         location_name: locationName.trim(),
         name: name.trim() || null,
         photo_url: photoUrl,
+        osm_id: initial?.osmId || null,
       });
 
       if (insertErr) {
@@ -149,8 +159,8 @@ export default function AddLibraryModal({ onClose, onSuccess }: Props) {
             </TouchableOpacity>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.heading}>📚 Add a Little Library</Text>
-              <Text style={styles.subtitle}>Share a Free Little Library location with the community</Text>
+              <Text style={styles.heading}>📚 {initial?.osmId ? 'Adopt a Little Library' : 'Add a Little Library'}</Text>
+              <Text style={styles.subtitle}>{initial?.osmId ? 'This pin came from OpenStreetMap. Add a photo or details and it joins the community map.' : 'Share a Free Little Library location with the community'}</Text>
 
               {/* Location */}
               <View style={styles.field}>

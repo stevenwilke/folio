@@ -600,7 +600,7 @@ export default function Nearby({ session }) {
                           📍 {item.location_name || 'From OpenStreetMap'}
                         </div>
                         <div style={{ fontSize: 11, color: OSM_PIN_COLOR, marginTop: 2, fontStyle: 'italic' }}>
-                          Tap to adopt · OpenStreetMap
+                          Tap to add a photo · OpenStreetMap
                         </div>
                       </div>
                       {item.distanceKm != null && (
@@ -779,7 +779,7 @@ export default function Nearby({ session }) {
                 }}
                 style={{ width: '100%', padding: '12px', background: '#2a9d8f', color: 'white', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
               >
-                📚 Adopt this library
+                ✏️ Add a photo + details
               </button>
             </div>
           </div>

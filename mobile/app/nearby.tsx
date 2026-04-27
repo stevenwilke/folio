@@ -399,7 +399,7 @@ export default function NearbyScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.libName} numberOfLines={1}>{item.name || 'Little Free Library'}</Text>
                   <Text style={styles.libLocation} numberOfLines={1}>📍 {item.location_name || 'From OpenStreetMap'}</Text>
-                  <Text style={styles.osmTag}>Tap to adopt · OpenStreetMap</Text>
+                  <Text style={styles.osmTag}>Tap to add a photo · OpenStreetMap</Text>
                 </View>
                 {item.distanceKm != null && (
                   <Text style={styles.libDist}>{formatDistance(item.distanceKm, units)}</Text>
@@ -607,7 +607,7 @@ export default function NearbyScreen() {
               }}
               style={styles.scanBtn}
             >
-              <Text style={styles.scanBtnText}>📚 Adopt this library</Text>
+              <Text style={styles.scanBtnText}>✏️ Add a photo + details</Text>
             </TouchableOpacity>
           </View>
         </View>

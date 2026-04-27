@@ -159,8 +159,8 @@ export default function AddLibraryModal({ onClose, onSuccess, initial }: Props) 
             </TouchableOpacity>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.heading}>📚 {initial?.osmId ? 'Adopt a Little Library' : 'Add a Little Library'}</Text>
-              <Text style={styles.subtitle}>{initial?.osmId ? 'This pin came from OpenStreetMap. Add a photo or details and it joins the community map.' : 'Share a Free Little Library location with the community'}</Text>
+              <Text style={styles.heading}>📚 {initial?.osmId ? 'Add Library Details' : 'Add a Little Library'}</Text>
+              <Text style={styles.subtitle}>{initial?.osmId ? 'This pin came from OpenStreetMap. A photo or extra details will help neighbors find it.' : 'Share a Free Little Library location with the community'}</Text>
 
               {/* Location */}
               <View style={styles.field}>

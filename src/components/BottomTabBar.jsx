@@ -20,6 +20,17 @@ const MORE_ITEMS = [
   { path: '/stats',       icon: '📈', label: 'Stats'       },
 ]
 
+// Library-scoped actions surfaced in the More drawer. Each fires a window
+// event (or queues a sessionStorage flag and navigates home) — Library mounts
+// the listeners that actually open the modals.
+const LIBRARY_ACTIONS = [
+  { action: 'import',        event: 'exlibris:open-import',        icon: '📥', label: 'Import from Goodreads' },
+  { action: 'shelf-planner', event: 'exlibris:open-shelf-planner', icon: '📚', label: 'Shelf Planner' },
+  // TODO: Add Export Library once we render the format-picker as a centered
+  // sheet on mobile (currently the dropdown anchors to a button hidden by the
+  // !isMobile toolbar guard).
+]
+
 // Module-level cache shared with NavBar
 let _cachedId      = null
 let _cachedProfile = null
@@ -85,6 +96,16 @@ export default function BottomTabBar({ session }) {
   function goTo(dest) {
     setShowMore(false)
     navigate(dest)
+  }
+
+  function fireLibraryAction({ action, event }) {
+    setShowMore(false)
+    if (location.pathname === '/') {
+      window.dispatchEvent(new Event(event))
+    } else {
+      sessionStorage.setItem('exlibris-pending-action', action)
+      navigate('/')
+    }
   }
 
   return (
@@ -188,6 +209,31 @@ export default function BottomTabBar({ session }) {
                 color: path.startsWith(item.path) ? theme.rust : theme.text,
                 fontWeight: path.startsWith(item.path) ? 600 : 400,
               }}>
+                {item.label}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Library tools — open Import / Shelf Planner / Export modals */}
+        <div style={{
+          margin: '4px 12px 0',
+          borderTop: `1px solid ${theme.borderLight}`,
+          paddingTop: 8,
+          display: 'flex', flexDirection: 'column', gap: 4,
+        }}>
+          {LIBRARY_ACTIONS.map(item => (
+            <button
+              key={item.action}
+              onClick={() => fireLibraryAction(item)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '11px 12px', background: 'none', border: 'none',
+                borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+              }}
+            >
+              <span style={{ fontSize: 20, lineHeight: 1, width: 24, textAlign: 'center' }}>{item.icon}</span>
+              <span style={{ fontSize: 14, color: theme.text, fontFamily: "'DM Sans', sans-serif" }}>
                 {item.label}
               </span>
             </button>

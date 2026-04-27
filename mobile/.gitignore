@@ -17,6 +17,17 @@ ios/*.xcworkspace/xcuserdata/
 ios/*.xcodeproj/xcuserdata/
 ios/*.xcodeproj/project.xcworkspace/xcuserdata/
 
+# Android build artifacts (Gradle-generated)
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/.kotlin/
+
+# Firebase config — pulled in via EAS secret / app.json googleServicesFile
+google-services.json
+android/app/google-services.json
+
 # Node
 node_modules/
 

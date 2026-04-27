@@ -16,6 +16,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 import { FakeCover } from '../components/FakeCover';
+import { fetchUsedPrices } from '../lib/fetchUsedPrices';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const FRAME_SIZE = SCREEN_W * 0.7;
@@ -63,6 +64,8 @@ export default function ScanScreen() {
   const [format, setFormat]     = useState<'Hardcover' | 'Paperback'>('Paperback');
   const [selectedStatus, setSelectedStatus] = useState<ReadStatus>('owned');
   const [scanValuation, setScanValuation] = useState<{ list_price?: number | null; avg_price?: number | null; paperback_avg?: number | null; hardcover_avg?: number | null; list_price_is_ebook?: boolean } | null>(null);
+  const [scannedBookId, setScannedBookId] = useState<string | null>(null);
+  const [valuationLoading, setValuationLoading] = useState(false);
 
   // Animated scan line (barcode mode)
   const scanLine = useRef(new Animated.Value(0)).current;
@@ -86,12 +89,12 @@ export default function ScanScreen() {
   // Pull cached valuation for the scanned book (if it already exists in the DB).
   // Delayed + fire-and-forget so it can never interrupt the barcode lookup flow.
   useEffect(() => {
-    if (!book || mode !== 'barcode' || addedAs) return;
+    if (!book || mode !== 'barcode') return;
     const id = setTimeout(() => {
       fetchValuationForBook(book).catch(() => {});
     }, 150);
     return () => clearTimeout(id);
-  }, [book?.isbn13, book?.isbn10, mode, addedAs]);
+  }, [book?.isbn13, book?.isbn10, mode]);
 
   // ── Barcode handler ──
   async function handleBarcode({ data }: { type: string; data: string }) {
@@ -347,8 +350,12 @@ export default function ScanScreen() {
         .upsert({ user_id: user.id, book_id: bookId, read_status: status }, { onConflict: 'user_id,book_id' });
       if (ee) throw ee;
 
+      setScannedBookId(bookId);
       setAddedAs(status);
       setCoverResults([]);
+      // Now that the book exists in the DB, kick off a real valuation lookup so
+      // prices appear inline without making the user open the detail page.
+      ensureValuation(bookId, b).catch(() => {});
     } catch (err: any) {
       setError(err.message ?? 'Could not add book.');
     } finally {
@@ -366,6 +373,62 @@ export default function ScanScreen() {
     setFormat('Paperback');
     setSelectedStatus('owned');
     setScanValuation(null);
+    setScannedBookId(null);
+    setValuationLoading(false);
+  }
+
+  // Run the same valuation lookup the BookDetail screen does, so prices populate
+  // for newly scanned books that haven't been opened before.
+  async function ensureValuation(bookId: string, b: BookResult) {
+    setValuationLoading(true);
+    try {
+      const { data: cached } = await supabase
+        .from('valuations')
+        .select('list_price, avg_price, paperback_avg, hardcover_avg, list_price_is_ebook, fetched_at')
+        .eq('book_id', bookId)
+        .maybeSingle();
+      const cacheAge = cached
+        ? (Date.now() - new Date(cached.fetched_at).getTime()) / (1000 * 60 * 60)
+        : Infinity;
+      if (cached && cacheAge < 24) {
+        if (cached.list_price || cached.avg_price || cached.paperback_avg || cached.hardcover_avg) {
+          setScanValuation(cached);
+        }
+        return;
+      }
+
+      const isbn = b.isbn13 || b.isbn10 || null;
+      const [retailResult, usedResult] = await Promise.allSettled([
+        supabase.functions.invoke('get-book-valuation', {
+          body: { isbn, title: b.title, author: b.author },
+        }),
+        fetchUsedPrices(isbn, b.title, b.author),
+      ]);
+      const data: any = retailResult.status === 'fulfilled' ? retailResult.value.data : null;
+      const used: any = usedResult.status === 'fulfilled' ? usedResult.value : null;
+      const found = data?.found || used;
+      if (!found) return;
+
+      const row = {
+        book_id: bookId,
+        avg_price: used?.avg_price ?? null,
+        min_price: used?.min_price ?? null,
+        max_price: used?.max_price ?? null,
+        sample_count: used?.sample_count ?? null,
+        paperback_avg: used?.paperback_avg ?? null,
+        hardcover_avg: used?.hardcover_avg ?? null,
+        currency: data?.currency || 'USD',
+        list_price: data?.list_price ?? used?.new_price ?? null,
+        list_price_currency: data?.list_price_currency ?? (used?.new_price ? 'USD' : null),
+        list_price_is_ebook: data?.list_price_is_ebook ?? false,
+        list_price_source: data?.list_price_source ?? null,
+        fetched_at: new Date().toISOString(),
+      };
+      await supabase.from('valuations').upsert(row, { onConflict: 'book_id' });
+      setScanValuation(row);
+    } finally {
+      setValuationLoading(false);
+    }
   }
 
   // Fetch any cached valuation for a scanned book so we can display prices inline.
@@ -383,6 +446,7 @@ export default function ScanScreen() {
       ]);
       const bookRow = byIsbn13.data ?? byIsbn10.data;
       if (!bookRow) return;
+      setScannedBookId(bookRow.id);
       const { data: val } = await supabase
         .from('valuations')
         .select('list_price, avg_price, paperback_avg, hardcover_avg, list_price_is_ebook')
@@ -571,7 +635,12 @@ export default function ScanScreen() {
           {/* Barcode mode: single confirmed result */}
           {book && !coverResults.length && !scanning && !takingPhoto && (
             <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
-              <View style={styles.bookRow}>
+              <TouchableOpacity
+                style={styles.bookRow}
+                activeOpacity={scannedBookId ? 0.7 : 1}
+                onPress={() => { if (scannedBookId) router.push(`/book/${scannedBookId}` as any); }}
+                disabled={!scannedBookId}
+              >
                 <View style={styles.bookCover}>
                   {book.coverUrl
                     ? <Image source={{ uri: book.coverUrl }} style={styles.coverImg} resizeMode="cover" />
@@ -583,8 +652,17 @@ export default function ScanScreen() {
                   {book.author && <Text style={styles.bookAuthor}>{book.author}</Text>}
                   {book.year   && <Text style={styles.bookYear}>{book.year}</Text>}
                   {book.isbn13 && <Text style={styles.bookIsbn}>ISBN {book.isbn13}</Text>}
+                  {scannedBookId && <Text style={styles.tapHint}>Tap to view details →</Text>}
                 </View>
-              </View>
+              </TouchableOpacity>
+
+              {/* Valuation loading hint */}
+              {valuationLoading && !scanValuation && (
+                <View style={styles.valuationLoadingRow}>
+                  <ActivityIndicator size="small" color={Colors.muted} />
+                  <Text style={styles.valuationLoadingText}>Looking up prices…</Text>
+                </View>
+              )}
 
               {/* Valuation strip — shown if this book has cached prices */}
               {scanValuation && (scanValuation.list_price != null || scanValuation.avg_price != null || scanValuation.paperback_avg != null || scanValuation.hardcover_avg != null) && (
@@ -621,6 +699,14 @@ export default function ScanScreen() {
                   <Text style={styles.addedText}>
                     ✓ Added as {STATUS_OPTIONS.find(s => s.key === addedAs)?.label}
                   </Text>
+                  {scannedBookId && (
+                    <TouchableOpacity
+                      style={styles.viewBookBtn}
+                      onPress={() => router.push(`/book/${scannedBookId}` as any)}
+                    >
+                      <Text style={styles.viewBookBtnText}>View Book</Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity style={styles.scanAgainBtn} onPress={resetScan}>
                     <Text style={styles.scanAgainText}>Scan Another</Text>
                   </TouchableOpacity>
@@ -886,6 +972,11 @@ const styles = StyleSheet.create({
 
   addedRow:  { alignItems: 'center', gap: 12, paddingVertical: 4 },
   addedText: { fontSize: 15, fontWeight: '700', color: Colors.sage, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  viewBookBtn: { alignSelf: 'center', paddingHorizontal: 24, paddingVertical: 11, borderRadius: 10, backgroundColor: Colors.rust },
+  viewBookBtnText: { fontSize: 14, fontWeight: '700', color: '#fff', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  tapHint: { fontSize: 11, color: Colors.rust, marginTop: 4, fontWeight: '600', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
+  valuationLoadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 4, marginBottom: 8 },
+  valuationLoadingText: { fontSize: 12, color: Colors.muted, fontStyle: 'italic', fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },
 
   scanAgainBtn:  { alignSelf: 'center', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: Colors.border, marginTop: 4 },
   scanAgainText: { fontSize: 14, color: Colors.ink, fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }) },

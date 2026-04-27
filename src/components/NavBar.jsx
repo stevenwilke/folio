@@ -4,9 +4,13 @@ import { supabase } from '../lib/supabase'
 import SearchModal from './SearchModal'
 import GlobalSearchModal from './GlobalSearchModal'
 import GoodreadsImportModal from './GoodreadsImportModal'
+import { triggerTutorial } from './TutorialOverlay'
 import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
 import LevelAvatar from './LevelAvatar'
+import { notify } from '../lib/notify'
+import { NOTIF_ICONS, LEGACY_INAPP_FILTER } from '../lib/notifTypes'
+import { clearCachedUsername } from '../lib/currentUser'
 
 const NAV_ITEMS = [
   { label: 'Library',     path: '/' },
@@ -49,7 +53,11 @@ export default function NavBar({ session, extra }) {
   // Close mobile menu when route changes
   useEffect(() => { setShowMenu(false) }, [location.pathname])
 
-  // Cmd+K / Ctrl+K opens global search
+  useEffect(() => {
+    function onAdd() { setShowSearch(true) }
+    window.addEventListener('exlibris:open-add', onAdd)
+    return () => window.removeEventListener('exlibris:open-add', onAdd)
+  }, [])
   useEffect(() => {
     function onKey(e) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -65,19 +73,23 @@ export default function NavBar({ session, extra }) {
   useEffect(() => {
     if (!session) return
     if (session.user.id === _cachedId && _cachedProfile) return
-    supabase.from('profiles').select('username, avatar_url, is_admin, level, level_points')
-      .eq('id', session.user.id).maybeSingle()
-      .then(({ data }) => {
-        _cachedId      = session.user.id
-        _cachedProfile = data ? {
-          username: data.username,
-          avatar_url: data.avatar_url,
-          is_admin: !!data.is_admin,
-          level: data.level ?? 1,
-          level_points: data.level_points ?? 0,
-        } : null
-        setProfile(_cachedProfile)
-      })
+    Promise.all([
+      supabase.from('profiles').select('username, avatar_url, is_admin, level, level_points')
+        .eq('id', session.user.id).maybeSingle(),
+      supabase.from('authors').select('id', { head: false, count: 'exact' })
+        .eq('claimed_by', session.user.id).eq('is_verified', true).limit(1),
+    ]).then(([{ data }, { data: claimed }]) => {
+      _cachedId      = session.user.id
+      _cachedProfile = data ? {
+        username: data.username,
+        avatar_url: data.avatar_url,
+        is_admin: !!data.is_admin,
+        level: data.level ?? 1,
+        level_points: data.level_points ?? 0,
+        is_author: !!(claimed && claimed.length > 0),
+      } : null
+      setProfile(_cachedProfile)
+    })
   }, [session?.user?.id])
 
   // Fetch notifications
@@ -140,12 +152,12 @@ export default function NavBar({ session, extra }) {
     setBorrowNotifs(enrichedBorrows)
     setOrderNotifs(orders)
 
-    // Also fetch from unified notifications table
     const { data: unified } = await supabase
       .from('notifications')
       .select('id, type, title, body, link, is_read, created_at')
       .eq('user_id', session.user.id)
       .eq('is_read', false)
+      .not('type', 'in', LEGACY_INAPP_FILTER)
       .order('created_at', { ascending: false })
       .limit(20)
     setUnifiedNotifs(unified || [])
@@ -154,6 +166,16 @@ export default function NavBar({ session, extra }) {
   async function respondToFriend(id, accept) {
     if (accept) {
       await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id)
+      const { data: row } = await supabase.from('friendships').select('requester_id').eq('id', id).maybeSingle()
+      if (row?.requester_id) {
+        const fromUsername = profile?.username || 'Someone'
+        notify(row.requester_id, 'friend_accepted', {
+          title: 'Friend request accepted',
+          body: `${fromUsername} accepted your friend request`,
+          link: `/profile/${fromUsername}`,
+          metadata: { friendship_id: id },
+        })
+      }
     } else {
       await supabase.from('friendships').delete().eq('id', id)
     }
@@ -201,6 +223,7 @@ export default function NavBar({ session, extra }) {
               <>
                 {/* Global Search icon */}
                 <button
+                  data-tour="search"
                   onClick={() => setShowGlobalSearch(true)}
                   title="Search books"
                   style={{ ...s.bellBtn, color: theme.navText, borderColor: theme.border }}
@@ -210,7 +233,7 @@ export default function NavBar({ session, extra }) {
                   </svg>
                 </button>
                 {/* Add Book button */}
-                <button style={s.addBtn} onClick={() => setShowSearch(true)}>+ Add Book</button>
+                <button data-tour="add-book" style={s.addBtn} onClick={() => setShowSearch(true)}>+ Add Book</button>
 
                 {/* Notification bell */}
                 <div style={{ position: 'relative' }} ref={dropdownRef}>
@@ -226,15 +249,43 @@ export default function NavBar({ session, extra }) {
                       friendReqs={friendReqs}
                       borrowNotifs={borrowNotifs}
                       orderNotifs={orderNotifs}
+                      unifiedNotifs={unifiedNotifs}
                       onRespondFriend={respondToFriend}
                       onViewLoans={() => { setShowBell(false); navigate('/loans') }}
                       onViewMarketplace={() => { setShowBell(false); navigate('/marketplace') }}
                       onNavigate={username => { setShowBell(false); navigate(`/profile/${username}`) }}
+                      onUnifiedClick={(n) => {
+                        setShowBell(false)
+                        supabase.from('notifications').update({ is_read: true }).eq('id', n.id).then(() => {})
+                        if (n.link) navigate(n.link)
+                      }}
                       onClose={() => setShowBell(false)}
                       onViewAll={() => { setShowBell(false); navigate('/notifications') }}
                     />
                   )}
                 </div>
+
+                {/* Avatar — taps straight through to the profile page */}
+                {profile?.username && (
+                  <button
+                    onClick={() => navigate(`/profile/${profile.username}`)}
+                    title={profile.username}
+                    style={{
+                      background: 'transparent', border: 'none', padding: 0, marginLeft: 4,
+                      cursor: 'pointer', flexShrink: 0, borderRadius: '50%',
+                      outline: path.startsWith('/profile') ? '2px solid #c0521e' : 'none',
+                      outlineOffset: 2,
+                    }}
+                  >
+                    <LevelAvatar
+                      src={profile.avatar_url}
+                      name={profile.username}
+                      size={28}
+                      level={profile.level}
+                      points={profile.level_points}
+                    />
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -257,6 +308,7 @@ export default function NavBar({ session, extra }) {
 
                 {/* Global Search icon */}
                 <button
+                  data-tour="search"
                   onClick={() => setShowGlobalSearch(true)}
                   title="Search books (⌘K)"
                   style={{ ...s.bellBtn, color: theme.navText, borderColor: theme.border, marginLeft: 4 }}
@@ -266,7 +318,7 @@ export default function NavBar({ session, extra }) {
                   </svg>
                 </button>
 
-                <button style={s.addBtn} onClick={() => setShowSearch(true)}>+ Add Book</button>
+                <button data-tour="add-book" style={s.addBtn} onClick={() => setShowSearch(true)}>+ Add Book</button>
 
                 {/* Slot for page-specific extras */}
                 {extra}
@@ -285,10 +337,16 @@ export default function NavBar({ session, extra }) {
                   friendReqs={friendReqs}
                   borrowNotifs={borrowNotifs}
                   orderNotifs={orderNotifs}
+                  unifiedNotifs={unifiedNotifs}
                   onRespondFriend={respondToFriend}
                   onViewLoans={() => { setShowBell(false); navigate('/loans') }}
                   onViewMarketplace={() => { setShowBell(false); navigate('/marketplace') }}
                   onNavigate={username => { setShowBell(false); navigate(`/profile/${username}`) }}
+                  onUnifiedClick={(n) => {
+                    setShowBell(false)
+                    supabase.from('notifications').update({ is_read: true }).eq('id', n.id).then(() => {})
+                    if (n.link) navigate(n.link)
+                  }}
                   onClose={() => setShowBell(false)}
                   onViewAll={() => { setShowBell(false); navigate('/notifications') }}
                 />
@@ -323,9 +381,10 @@ export default function NavBar({ session, extra }) {
                     toggleTheme={toggleTheme}
                     goodreadsImported={goodreadsImported}
                     isAdmin={profile?.is_admin}
+                    isAuthor={profile?.is_author}
                     onProfile={() => { setShowAvatar(false); navigate(`/profile/${profile.username}`) }}
                     onImport={() => { setShowAvatar(false); setShowImport(true) }}
-                    onSignOut={async () => { setShowAvatar(false); await supabase.auth.signOut() }}
+                    onSignOut={async () => { setShowAvatar(false); clearCachedUsername(); await supabase.auth.signOut() }}
                     onNavigate={path => { setShowAvatar(false); navigate(path) }}
                   />
                 )}
@@ -368,7 +427,7 @@ export default function NavBar({ session, extra }) {
 }
 
 // ---- AVATAR DROPDOWN ----
-function AvatarDropdown({ profile, isDark, toggleTheme, goodreadsImported, onProfile, onImport, onSignOut, onNavigate, isAdmin }) {
+function AvatarDropdown({ profile, isDark, toggleTheme, goodreadsImported, onProfile, onImport, onSignOut, onNavigate, isAdmin, isAuthor }) {
   return (
     <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 14, minWidth: 230, boxShadow: '0 8px 24px rgba(26,18,8,0.14)', zIndex: 200, overflow: 'hidden' }}>
       {/* Profile header */}
@@ -388,6 +447,10 @@ function AvatarDropdown({ profile, isDark, toggleTheme, goodreadsImported, onPro
       <div style={{ padding: '6px 0' }}>
         <MenuItem icon="📊" label="Reading Stats"       onClick={() => onNavigate('/stats')} />
         <MenuItem icon="🗂️"  label="My Shelves"         onClick={() => onNavigate('/shelves')} />
+        <MenuItem icon="👯" label="Buddy Reads"          onClick={() => onNavigate('/buddy-reads')} />
+        <div style={{ height: 1, background: '#e8dfc8', margin: '6px 0' }} />
+        <MenuItem icon="🎓" label="Take the tour" onClick={() => triggerTutorial(onNavigate)} />
+        <MenuItem icon="❓" label="Help & FAQ"      onClick={() => onNavigate('/help')} />
         <div style={{ height: 1, background: '#e8dfc8', margin: '6px 0' }} />
         <MenuItem icon={isDark ? '☀️' : '🌙'} label={isDark ? 'Light mode' : 'Dark mode'} onClick={toggleTheme} />
         {!goodreadsImported && (
@@ -395,6 +458,10 @@ function AvatarDropdown({ profile, isDark, toggleTheme, goodreadsImported, onPro
         )}
         <div style={{ height: 1, background: '#e8dfc8', margin: '6px 0' }} />
         <MenuItem icon="⚙️" label="Account Settings" onClick={() => onNavigate(`/profile/${profile.username}`)} />
+        <MenuItem icon="🔔" label="Notification Settings" onClick={() => onNavigate('/settings/notifications')} />
+        {isAuthor && (
+          <MenuItem icon="📚" label="Author Dashboard" onClick={() => onNavigate('/author-dashboard')} />
+        )}
         {isAdmin && (
           <>
             <div style={{ height: 1, background: '#e8dfc8', margin: '6px 0' }} />
@@ -424,8 +491,9 @@ function MenuItem({ icon, label, onClick, danger }) {
 }
 
 // ---- NOTIFICATIONS DROPDOWN ----
-function NotificationsDropdown({ friendReqs, borrowNotifs, orderNotifs, onRespondFriend, onViewLoans, onViewMarketplace, onNavigate, onViewAll }) {
-  const total = friendReqs.length + borrowNotifs.length + (orderNotifs || []).length
+function NotificationsDropdown({ friendReqs, borrowNotifs, orderNotifs, unifiedNotifs, onRespondFriend, onViewLoans, onViewMarketplace, onNavigate, onUnifiedClick, onViewAll }) {
+  const unified = unifiedNotifs || []
+  const total = friendReqs.length + borrowNotifs.length + (orderNotifs || []).length + unified.length
   return (
     <div style={s.dropdown}>
       <div style={s.dropHead}>
@@ -483,6 +551,17 @@ function NotificationsDropdown({ friendReqs, borrowNotifs, orderNotifs, onRespon
               <button style={{ ...s.dropAccept, background: '#b8860b' }} onClick={onViewMarketplace}>
                 View
               </button>
+            </div>
+          ))}
+          {unified.map(n => (
+            <div key={`u-${n.id}`} style={{ ...s.dropRow, cursor: 'pointer' }} onClick={() => onUnifiedClick && onUnifiedClick(n)}>
+              <div style={{ ...s.dropAvatar, background: 'linear-gradient(135deg, #6a5b4a, #b8860b)' }}>
+                {NOTIF_ICONS[n.type] || '🔔'}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ ...s.dropName, cursor: 'pointer' }}>{n.title}</div>
+                {n.body && <div style={s.dropSub}>{n.body}</div>}
+              </div>
             </div>
           ))}
         </>

@@ -5,6 +5,8 @@ import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { fetchBlockedUserIds } from '../lib/moderation'
+import { notify } from '../lib/notify'
+import { getMyUsername } from '../lib/currentUser'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -451,8 +453,22 @@ export default function Friends({ session, initialTab }) {
 
   async function respondToRequest(id, accept) {
     setActing(id)
-    if (accept) await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id)
-    else         await supabase.from('friendships').delete().eq('id', id)
+    if (accept) {
+      await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id)
+      // Notify the original requester that we accepted.
+      const { data: row } = await supabase.from('friendships').select('requester_id').eq('id', id).maybeSingle()
+      if (row?.requester_id) {
+        const fromUsername = (await getMyUsername(session.user.id)) || 'Someone'
+        notify(row.requester_id, 'friend_accepted', {
+          title: 'Friend request accepted',
+          body: `${fromUsername} accepted your friend request`,
+          link: `/profile/${fromUsername}`,
+          metadata: { friendship_id: id },
+        })
+      }
+    } else {
+      await supabase.from('friendships').delete().eq('id', id)
+    }
     setActing(null); fetchAll()
   }
 
@@ -492,6 +508,15 @@ export default function Friends({ session, initialTab }) {
   async function addFriend(userId) {
     setActing(userId)
     await supabase.from('friendships').insert({ requester_id: session.user.id, addressee_id: userId })
+    const fromUsername = (await getMyUsername(session.user.id)) || 'Someone'
+    notify(userId, 'friend_request', {
+      title: 'New friend request',
+      body: `${fromUsername} wants to be your friend`,
+      link: '/friends',
+      metadata: { from_user_id: session.user.id },
+      emailTemplate: 'friend_request',
+      emailData: { fromUsername },
+    })
     setActing(null); runSearch(); fetchAll()
   }
 

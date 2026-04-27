@@ -21,10 +21,15 @@ import Onboarding from './pages/Onboarding'
 import Landing from './pages/Landing'
 import BookDetailPage from './pages/BookDetailPage'
 import Notifications from './pages/Notifications'
+import NotificationSettings from './pages/NotificationSettings'
+import AuthorDashboard from './pages/AuthorDashboard'
+import BuddyReads from './pages/BuddyReads'
+import BuddyReadDetail from './pages/BuddyReadDetail'
 import Nearby from './pages/Nearby'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import Contact from './pages/Contact'
+import Help from './pages/Help'
 import BottomTabBar from './components/BottomTabBar'
 import AnalyticsConsent from './components/AnalyticsConsent'
 import { useIsMobile } from './hooks/useIsMobile'
@@ -118,6 +123,22 @@ function AppRoutes({ session }) {
             element={session ? <Notifications session={session} /> : <Navigate to="/" replace />}
           />
           <Route
+            path="/settings/notifications"
+            element={session ? <NotificationSettings session={session} /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/author-dashboard"
+            element={session ? <AuthorDashboard session={session} /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/buddy-reads"
+            element={session ? <BuddyReads session={session} /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/buddy-reads/:id"
+            element={session ? <BuddyReadDetail session={session} /> : <Navigate to="/" replace />}
+          />
+          <Route
             path="/onboarding"
             element={session ? <Onboarding session={session} /> : <Navigate to="/" replace />}
           />
@@ -128,6 +149,7 @@ function AppRoutes({ session }) {
           <Route path="/privacy" element={<PrivacyPolicy session={session} />} />
           <Route path="/terms"   element={<TermsOfService session={session} />} />
           <Route path="/contact" element={<Contact session={session} />} />
+          <Route path="/help"    element={<Help    session={session} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
@@ -149,6 +171,7 @@ function SiteFooter() {
       </div>
       <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
         {[
+          ['Help',    '/help'],
           ['Privacy', '/privacy'],
           ['Terms',   '/terms'],
           ['Contact', '/contact'],

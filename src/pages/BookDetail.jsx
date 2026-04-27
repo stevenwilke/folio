@@ -8,6 +8,9 @@ import { uploadCoverToStorage } from '../lib/enrichBook'
 import BookTagsManager from '../components/BookTagsManager'
 import { fetchUsedPrices } from '../lib/fetchUsedPrices'
 import { isFiction, computeReadingSpeeds, estimateReadingTime, formatTimer, checkSessionIdle } from '../lib/readingSpeed'
+import { notify } from '../lib/notify'
+import { fireMarketAlerts } from '../lib/marketplaceAlerts'
+import { getMyUsername } from '../lib/currentUser'
 import { useIsMobile } from '../hooks/useIsMobile'
 import CoverCropModal from '../components/CoverCropModal'
 import RatingDistribution from '../components/RatingDistribution'
@@ -107,6 +110,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [activeBookId, setActiveBookId] = useState(bookId)
   const [book, setBook]                 = useState(null)
   const [entry, setEntry]               = useState(null)
+  const [marketAlert, setMarketAlert]   = useState(null)
   const [myShelves, setMyShelves]       = useState([])
   const [reviews, setReviews]           = useState([])
   const [communityRating, setCommunityRating] = useState(null)
@@ -148,6 +152,7 @@ export default function BookDetail({ bookId, session, onBack }) {
   const [showListingModal, setShowListingModal] = useState(false)
   const [showLendModal,    setShowLendModal]    = useState(false)
   const [showRecommendModal, setShowRecommendModal] = useState(false)
+  const [showBuddyReadModal, setShowBuddyReadModal] = useState(false)
   const [showFreeModal, setShowFreeModal] = useState(false)
   const [alsoEnjoyed, setAlsoEnjoyed] = useState([])
   const [quotes, setQuotes]           = useState([])
@@ -385,8 +390,8 @@ export default function BookDetail({ bookId, session, onBack }) {
   }
 
   async function fetchEntry() {
-    if (!session) { setEntry(null); setMyShelves([]); return }
-    const [{ data }, { data: shelfRows }] = await Promise.all([
+    if (!session) { setEntry(null); setMyShelves([]); setMarketAlert(null); return }
+    const [{ data }, { data: shelfRows }, { data: alert }] = await Promise.all([
       supabase
         .from('collection_entries')
         .select('*')
@@ -398,6 +403,12 @@ export default function BookDetail({ bookId, session, onBack }) {
         .select('shelves!inner(id, name, user_id)')
         .eq('book_id', activeBookId)
         .eq('shelves.user_id', session.user.id),
+      supabase
+        .from('marketplace_alerts')
+        .select('id, max_price, active')
+        .eq('book_id', activeBookId)
+        .eq('user_id', session.user.id)
+        .maybeSingle(),
     ])
     if (data) {
       setEntry(data)
@@ -406,6 +417,23 @@ export default function BookDetail({ bookId, session, onBack }) {
       setCurrentPage(data.current_page || 0)
     }
     setMyShelves((shelfRows || []).map(r => r.shelves).filter(Boolean))
+    setMarketAlert(alert?.active ? alert : null)
+  }
+
+  async function toggleMarketAlert(maxPrice) {
+    if (!session) return
+    if (marketAlert) {
+      await supabase.from('marketplace_alerts').delete().eq('id', marketAlert.id)
+      setMarketAlert(null)
+    } else {
+      const { data } = await supabase
+        .from('marketplace_alerts')
+        .upsert({ user_id: session.user.id, book_id: activeBookId, max_price: maxPrice ?? null, active: true },
+                { onConflict: 'user_id,book_id' })
+        .select('id, max_price, active')
+        .single()
+      if (data) setMarketAlert(data)
+    }
   }
 
   async function fetchReviews() {
@@ -1348,6 +1376,14 @@ export default function BookDetail({ bookId, session, onBack }) {
               </a>
             </div>
 
+            {session && (
+              <MarketAlertControl
+                alert={marketAlert}
+                onToggle={toggleMarketAlert}
+                theme={theme}
+              />
+            )}
+
 
             {/* Status + Format — side-by-side triggers. Each opens a vertical
                 popover (position:absolute) that overlays the content below so
@@ -1681,6 +1717,17 @@ export default function BookDetail({ bookId, session, onBack }) {
             book={book}
             theme={theme}
             onClose={() => setShowLendModal(false)}
+          />
+        )}
+
+        {/* Start buddy read modal */}
+        {showBuddyReadModal && book && (
+          <StartBuddyReadModal
+            session={session}
+            book={book}
+            theme={theme}
+            onClose={() => setShowBuddyReadModal(false)}
+            onCreated={(id) => { setShowBuddyReadModal(false); navigate(`/buddy-reads/${id}`) }}
           />
         )}
 
@@ -2202,6 +2249,9 @@ export default function BookDetail({ bookId, session, onBack }) {
               <button style={s.lendOutBtn} onClick={() => setShowRecommendModal(true)}>
                 💌 Recommend to a friend
               </button>
+              <button style={s.lendOutBtn} onClick={() => setShowBuddyReadModal(true)}>
+                👯 Start a buddy read
+              </button>
               <button style={{ ...s.lendOutBtn, borderColor: theme.rust, color: theme.rust }} onClick={() => setShowFreeModal(true)}>
                 📍 Free Book Drop
               </button>
@@ -2331,6 +2381,8 @@ function ListingModal({ session, book, valuation: valProp, onClose, onSuccess })
       setError('Could not create listing. Please try again.')
       setSubmitting(false)
     } else {
+      // Fire any matching marketplace alerts in the background — don't block UI.
+      fireMarketAlerts(book, p, session.user.id).catch(e => console.error('[fireMarketAlerts]', e))
       onSuccess(data)
     }
   }
@@ -2645,6 +2697,134 @@ function FakeCover({ title }) {
   )
 }
 
+// ---- START BUDDY READ MODAL ----
+function StartBuddyReadModal({ session, book, theme, onClose, onCreated }) {
+  const [title, setTitle]     = useState('')
+  const [target, setTarget]   = useState('')
+  const [creating, setCreating] = useState(false)
+  const [error, setError]     = useState('')
+
+  async function create() {
+    if (!session) { setError('Sign in first.'); return }
+    setCreating(true); setError('')
+    const { data, error: err } = await supabase
+      .from('buddy_reads')
+      .insert({
+        book_id:        book.id,
+        owner_id:       session.user.id,
+        title:          title.trim() || null,
+        target_finish:  target || null,
+      })
+      .select('id')
+      .single()
+    if (err || !data) {
+      setError('Could not create buddy read.')
+      setCreating(false)
+      return
+    }
+    // Add the owner as a joined participant.
+    await supabase.from('buddy_read_participants').insert({
+      buddy_read_id: data.id, user_id: session.user.id, status: 'joined', joined_at: new Date().toISOString(),
+    })
+    onCreated(data.id)
+  }
+
+  const overlay = { position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.5)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+  const box     = { background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, width: 400, maxWidth: '92vw', overflow: 'hidden' }
+  const head    = { padding: '18px 20px 14px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }
+  const bd      = { padding: '20px 20px 24px' }
+  const lbl     = { display: 'block', fontSize: 11, fontWeight: 600, color: theme.textSubtle, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }
+  const inp     = { width: '100%', padding: 10, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", background: theme.bg, color: theme.text, boxSizing: 'border-box' }
+
+  return (
+    <div style={overlay} onClick={onClose}>
+      <div style={box} onClick={e => e.stopPropagation()}>
+        <div style={head}>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 17, fontWeight: 700, color: theme.text }}>👯 Start a buddy read</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: theme.textSubtle }}>✕</button>
+        </div>
+        <div style={bd}>
+          <div style={{ fontSize: 13, color: theme.textSubtle, marginBottom: 14 }}>Reading <strong style={{ color: theme.text }}>{book.title}</strong> together.</div>
+          <label style={lbl}>Name (optional)</label>
+          <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder={`${book.title} buddy read`} style={inp} />
+          <div style={{ marginTop: 14 }}>
+            <label style={lbl}>Target finish date (optional)</label>
+            <input type="date" value={target} onChange={e => setTarget(e.target.value)} style={inp} />
+          </div>
+          {error && <div style={{ color: theme.rust, fontSize: 13, marginTop: 10 }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
+            <button onClick={onClose} style={{ background: 'transparent', border: `1px solid ${theme.border}`, color: theme.textSubtle, padding: '8px 16px', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
+            <button onClick={create} disabled={creating} style={{ background: theme.rust, color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: creating ? 0.6 : 1 }}>
+              {creating ? 'Creating…' : 'Create & invite friends →'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ---- MARKETPLACE ALERT CONTROL ----
+function MarketAlertControl({ alert, onToggle, theme }) {
+  const [editing, setEditing] = useState(false)
+  const [priceInput, setPriceInput] = useState('')
+  if (alert) {
+    return (
+      <div style={{ marginTop: 14, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(192,82,30,0.08)', border: `1px solid ${theme.rust}`, fontSize: 13 }}>
+        <span style={{ color: theme.rust }}>🔔 Alert active</span>
+        <span style={{ color: theme.textSubtle }}>
+          {alert.max_price != null ? `· under $${Number(alert.max_price).toFixed(2)}` : '· any price'}
+        </span>
+        <button
+          onClick={() => onToggle(null)}
+          style={{ background: 'transparent', border: 'none', color: theme.textSubtle, fontSize: 12, cursor: 'pointer', textDecoration: 'underline', padding: 0, marginLeft: 4 }}
+        >
+          Remove
+        </button>
+      </div>
+    )
+  }
+  if (editing) {
+    return (
+      <div style={{ marginTop: 14, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 12, color: theme.textSubtle }}>Notify me when listed under $</span>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="any"
+          value={priceInput}
+          onChange={e => setPriceInput(e.target.value)}
+          style={{ width: 70, padding: '6px 8px', border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.bg, color: theme.text }}
+          autoFocus
+        />
+        <button
+          onClick={() => { onToggle(priceInput ? Number(priceInput) : null); setEditing(false); setPriceInput('') }}
+          style={{ background: theme.rust, border: 'none', color: '#fff', padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+        >
+          Set alert
+        </button>
+        <button
+          onClick={() => { setEditing(false); setPriceInput('') }}
+          style={{ background: 'transparent', border: 'none', color: theme.textSubtle, fontSize: 12, cursor: 'pointer' }}
+        >
+          Cancel
+        </button>
+      </div>
+    )
+  }
+  return (
+    <button
+      onClick={() => setEditing(true)}
+      style={{ marginTop: 14, background: 'transparent', border: `1px solid ${theme.border}`, color: theme.textSubtle, padding: '6px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+    >
+      🔔 Alert me when listed
+    </button>
+  )
+}
+
+
 function RecommendModal({ session, book, theme, onClose }) {
   const [friends,    setFriends]    = useState([])
   const [friendId,   setFriendId]   = useState('')
@@ -2693,6 +2873,13 @@ function RecommendModal({ session, book, theme, onClose }) {
       setError('Could not send recommendation.')
       setSubmitting(false)
     } else {
+      const fromUsername = (await getMyUsername(session.user.id)) || 'A friend'
+      notify(friendId, 'recommendation', {
+        title: 'Book recommendation',
+        body: `${fromUsername} recommended "${book.title}"`,
+        link: `/book/${book.id}`,
+        metadata: { book_id: book.id, sender_id: session.user.id },
+      })
       setDone(true)
     }
   }

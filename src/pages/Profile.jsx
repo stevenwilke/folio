@@ -8,6 +8,9 @@ import ReportModal from '../components/ReportModal'
 import { blockUser, unblockUser, isBlocked } from '../lib/moderation'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
+import { notify } from '../lib/notify'
+import { fetchStreak } from '../lib/streak'
+import { getMyUsername } from '../lib/currentUser'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const STATUS_COLORS = {
@@ -41,6 +44,7 @@ export default function Profile({ session }) {
   const [isFriend, setIsFriend]           = useState(false)
   const [borrowTarget, setBorrowTarget]   = useState(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [showAvatarLightbox, setShowAvatarLightbox] = useState(false)
   const [uploadingBanner, setUploadingBanner] = useState(false)
   const [showEditProfile, setShowEditProfile] = useState(false)
   const fileInputRef   = useRef(null)
@@ -71,6 +75,7 @@ export default function Profile({ session }) {
 
   // ── BADGES STATE ──
   const [badges, setBadges]               = useState([])
+  const [streak, setStreak]               = useState({ current: 0, longest: 0 })
   const [friendCount, setFriendCount]     = useState(0)
 
   const isOwnProfile = session?.user?.id === profile?.id
@@ -148,6 +153,7 @@ export default function Profile({ session }) {
     setAccentColor(prof.accent_color || '#c0521e')
     setFeaturedBook(prof.books || null)
     setBannerUrl(prof.banner_url || null)
+    fetchStreak(prof.id).then(setStreak)
 
     const isOwn = session?.user?.id === prof.id
     if (!isOwn && session?.user?.id) {
@@ -372,13 +378,14 @@ export default function Profile({ session }) {
               size={88}
               level={profile.level}
               points={profile.level_points}
-              title={`Level ${lvlInfo.level} · ${lvlInfo.title}`}
+              title={profile.avatar_url ? 'Click to enlarge' : `Level ${lvlInfo.level} · ${lvlInfo.title}`}
+              onClick={profile.avatar_url ? () => setShowAvatarLightbox(true) : undefined}
             />
             {isOwnProfile && (
               <>
                 <button
                   style={s.avatarEditBtn}
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click() }}
                   disabled={uploadingAvatar}
                   title="Change photo"
                 >
@@ -410,6 +417,18 @@ export default function Profile({ session }) {
                 {stats.reading > 0 && <><span style={s.heroDot}>·</span><span style={{ ...s.heroStat, color: '#e8956a' }}>📖 {stats.reading} reading</span></>}
                 {stats.avgRating && <><span style={s.heroDot}>·</span><span style={{ ...s.heroStat, color: '#e8c86a' }}>★ {stats.avgRating}</span></>}
                 {reviews.length > 0 && <><span style={s.heroDot}>·</span><span style={s.heroStat}>{reviews.length} reviews</span></>}
+                {streak.current > 0 && (
+                  <>
+                    <span style={s.heroDot}>·</span>
+                    <span
+                      style={{ ...s.heroStat, color: '#ff8c42', cursor: isOwnProfile ? 'pointer' : 'default' }}
+                      title={`Longest: ${streak.longest} day${streak.longest === 1 ? '' : 's'}`}
+                      onClick={() => isOwnProfile && navigate('/stats')}
+                    >
+                      🔥 {streak.current} day{streak.current === 1 ? '' : 's'}
+                    </span>
+                  </>
+                )}
               </div>
             )}
 
@@ -1008,6 +1027,19 @@ export default function Profile({ session }) {
           theme={theme}
         />
       )}
+
+      {showAvatarLightbox && profile?.avatar_url && (
+        <div
+          onClick={() => setShowAvatarLightbox(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out', backdropFilter: 'blur(6px)' }}
+        >
+          <img
+            src={profile.avatar_url}
+            alt={profile.username}
+            style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12, boxShadow: '0 12px 60px rgba(0,0,0,0.5)' }}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -1258,6 +1290,12 @@ function BadgesSection({ badges, theme, isMobile }) {
   // current standing instead of every step of every progression. Total
   // earned-vs-defs count below uses `earned.length` so nothing shrinks.
   const earnedTopByCategory = topEarnedByCategory(badges)
+  // Lower-tier earned badges that get hidden by the dedupe. We surface them
+  // inside the collapsible "other badges" section alongside locked ones so
+  // users can still review everything they've unlocked.
+  const topIds = new Set(earnedTopByCategory.map(b => b.id))
+  const previouslyEarned = earned.filter(b => !topIds.has(b.id))
+  const otherCount = previouslyEarned.length + locked.length
 
   return (
     <div style={{ background: theme.bg, borderTop: `1px solid ${theme.border}`, borderBottom: `1px solid ${theme.border}` }}>
@@ -1484,49 +1522,79 @@ function BadgesSection({ badges, theme, isMobile }) {
           </div>
         ))}
 
-        {/* Locked — collapsed by default */}
-        {locked.length > 0 && (
+        {otherCount > 0 && (
           <>
             <button
               onClick={() => setShowLocked(v => !v)}
               style={{ background: 'none', border: `1px solid ${theme.border}`, borderRadius: 8, padding: '6px 14px', fontSize: 12, color: theme.textSubtle, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", display: 'flex', alignItems: 'center', gap: 6, marginTop: 18, marginBottom: showLocked ? 20 : 0 }}
             >
               <span>{showLocked ? '▾' : '▸'}</span>
-              {showLocked ? 'Hide' : 'Show'} {locked.length} locked badge{locked.length !== 1 ? 's' : ''}
+              {showLocked ? 'Hide' : 'Show'} {otherCount} other badge{otherCount !== 1 ? 's' : ''}
             </button>
 
             {showLocked && BADGE_CATEGORIES.map(cat => {
-              const catBadges = locked.filter(b => b.category === cat)
-              if (!catBadges.length) return null
+              const catOthers = [...previouslyEarned, ...locked]
+                .filter(b => b.category === cat)
+                .sort((a, b) => TIER_ORDER[a.tier] - TIER_ORDER[b.tier])
+              if (!catOthers.length) return null
               return (
                 <div key={cat} style={{ marginBottom: 20 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.8, color: theme.textSubtle, marginBottom: 8 }}>{cat}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(auto-fill,minmax(130px,1fr))', gap: 8 }}>
-                    {catBadges.map(b => {
+                    {catOthers.map(b => {
                       const t = TIER_CARD[b.tier] || TIER_CARD.bronze
                       return (
-                        <div key={b.id} title={b.desc} style={{
-                          borderRadius: 12, border: `1px solid ${theme.border}`,
-                          background: theme.bgSubtle,
-                          padding: '14px 10px 12px',
-                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, textAlign: 'center',
-                        }}>
-                          {/* Emoji greyed out with tiny lock chip */}
+                        <button
+                          key={b.id}
+                          onClick={() => setSelectedBadge(b)}
+                          title={b.desc}
+                          aria-label={`${b.name} (${t.label}). ${b.earned ? 'Earned. ' : 'Locked. '}${b.desc}`}
+                          style={{
+                            borderRadius: 12,
+                            border: b.earned
+                              ? `1.5px solid ${t.border}`
+                              : `1.5px dashed ${theme.border}`,
+                            background: b.earned ? t.cardBg : 'transparent',
+                            boxShadow: b.earned ? `0 1px 10px ${t.glow}` : 'none',
+                            opacity: b.earned ? 1 : 0.78,
+                            padding: '14px 10px 12px',
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, textAlign: 'center',
+                            cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+                          }}
+                        >
                           <div style={{ position: 'relative', marginBottom: 2 }}>
-                            <div style={{ fontSize: 28, lineHeight: 1, filter: 'grayscale(1) opacity(0.28)' }}>{b.emoji}</div>
-                            <div style={{ position: 'absolute', bottom: -4, right: -6, fontSize: 10, background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 10, padding: '0px 3px', lineHeight: '16px' }}>🔒</div>
-                          </div>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: theme.textMuted, lineHeight: 1.2 }}>{b.name}</div>
-                          {/* Progress bar */}
-                          <div style={{ width: '100%', marginTop: 2 }}>
-                            <div style={{ height: 5, background: theme.borderLight, borderRadius: 3, overflow: 'hidden', marginBottom: 4 }}>
-                              <div style={{ height: '100%', width: `${b.pct}%`, background: t.bar, borderRadius: 3, transition: 'width 0.5s' }} />
+                            <div style={{ fontSize: 28, lineHeight: 1, filter: b.earned ? 'none' : 'grayscale(1) opacity(0.32)' }}>{b.emoji}</div>
+                            <div style={{
+                              position: 'absolute', bottom: -4, right: -6,
+                              fontSize: 10, lineHeight: '16px',
+                              background: b.earned ? '#5a7a5a' : theme.bgCard,
+                              color: b.earned ? '#fff' : 'inherit',
+                              border: `1px solid ${b.earned ? '#5a7a5a' : theme.border}`,
+                              borderRadius: 10, padding: '0px 4px',
+                              fontWeight: 700,
+                            }}>
+                              {b.earned ? '✓' : '🔒'}
                             </div>
-                            <div style={{ fontSize: 9, color: theme.textSubtle }}>
-                              {b.prog.value.toLocaleString()} / {b.prog.max.toLocaleString()} {b.prog.label}
-                            </div>
                           </div>
-                        </div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: b.earned ? t.name : theme.textMuted, lineHeight: 1.2 }}>{b.name}</div>
+                          <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6, padding: '2px 7px', borderRadius: 20, background: b.earned ? t.pill : 'transparent', color: b.earned ? t.pillText : theme.textSubtle, border: `1px solid ${b.earned ? t.pillBorder : theme.border}` }}>
+                            {t.label}
+                          </div>
+                          {b.earned ? (
+                            <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6, color: '#5a7a5a', marginTop: 2 }}>
+                              ✓ Earned
+                            </div>
+                          ) : (
+                            <div style={{ width: '100%', marginTop: 2 }}>
+                              <div style={{ height: 5, background: theme.borderLight, borderRadius: 3, overflow: 'hidden', marginBottom: 4 }}>
+                                <div style={{ height: '100%', width: `${b.pct}%`, background: t.bar, borderRadius: 3, transition: 'width 0.5s' }} />
+                              </div>
+                              <div style={{ fontSize: 9, color: theme.textSubtle }}>
+                                {b.prog.value.toLocaleString()} / {b.prog.max.toLocaleString()} {b.prog.label}
+                              </div>
+                            </div>
+                          )}
+                        </button>
                       )
                     })}
                   </div>
@@ -1636,6 +1704,15 @@ function FriendButton({ session, profile, theme }) {
     setActing(true)
     const { data } = await supabase.from('friendships').insert({ requester_id: session.user.id, addressee_id: profile.id }).select().single()
     setFriendship(data)
+    const fromUsername = (await getMyUsername(session.user.id)) || 'Someone'
+    notify(profile.id, 'friend_request', {
+      title: 'New friend request',
+      body: `${fromUsername} wants to be your friend`,
+      link: '/friends',
+      metadata: { from_user_id: session.user.id },
+      emailTemplate: 'friend_request',
+      emailData: { fromUsername },
+    })
     setActing(false)
   }
 
@@ -1651,6 +1728,14 @@ function FriendButton({ session, profile, theme }) {
     if (accept) {
       const { data } = await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendship.id).select().single()
       setFriendship(data)
+      // Notify the original requester.
+      const fromUsername = (await getMyUsername(session.user.id)) || 'Someone'
+      notify(friendship.requester_id, 'friend_accepted', {
+        title: 'Friend request accepted',
+        body: `${fromUsername} accepted your friend request`,
+        link: `/profile/${fromUsername}`,
+        metadata: { friendship_id: friendship.id },
+      })
     } else {
       await supabase.from('friendships').delete().eq('id', friendship.id)
       setFriendship(null)

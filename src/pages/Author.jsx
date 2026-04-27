@@ -5,6 +5,9 @@ import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
 import { enrichBook } from '../lib/enrichBook'
+import { notify, notifyAdmins } from '../lib/notify'
+import { createAuthorPost } from '../lib/authorPosts'
+import { getMyUsername } from '../lib/currentUser'
 
 const STATUS_LABELS = {
   owned:   'In Library',
@@ -59,6 +62,10 @@ export default function Author({ session }) {
   const [postType,    setPostType]    = useState('update')
   const [postTitle,   setPostTitle]   = useState('')
   const [postContent, setPostContent] = useState('')
+  const [questions, setQuestions]     = useState([])
+  const [showAskForm, setShowAskForm] = useState(false)
+  const [questionText, setQuestionText] = useState('')
+  const [askingQ, setAskingQ]         = useState(false)
   const [postLink,    setPostLink]    = useState('')
   const [posting,     setPosting]     = useState(false)
 
@@ -134,6 +141,16 @@ export default function Author({ session }) {
       .eq('author_id', record.id)
       .order('created_at', { ascending: false })
     setPosts(postsData || [])
+
+    // Q&A — RLS lets non-owners see only answered+public, but the verified
+    // author and the asker see their own (used in the dashboard).
+    const { data: qData } = await supabase
+      .from('author_questions')
+      .select('id, question, answer, answered_at, created_at, asker_id')
+      .eq('author_id', record.id)
+      .order('created_at', { ascending: false })
+      .limit(50)
+    setQuestions(qData || [])
 
     // Bio from OL if not stored
     if (!record.bio) fetchOLBio(decoded)
@@ -340,6 +357,13 @@ export default function Author({ session }) {
       .insert({ author_id: authorRecord.id, user_id: session.user.id, message: claimMsg, proof_url: claimProof || null })
       .select('*').single()
     setMyClaim(data)
+    const myUsername = (await getMyUsername(session.user.id)) || 'Someone'
+    notifyAdmins('author_claim', {
+      title: 'New author claim',
+      body: `${myUsername} is claiming the author "${authorRecord.name}"`,
+      link: '/admin?tab=claims',
+      metadata: { author_id: authorRecord.id, claim_id: data?.id, claimant_user_id: session.user.id },
+    })
     setShowClaimModal(false)
     setClaiming(false)
   }
@@ -348,10 +372,14 @@ export default function Author({ session }) {
   async function submitPost() {
     if (!session || !authorRecord || !postContent.trim()) return
     setPosting(true)
-    const { data } = await supabase
-      .from('author_posts')
-      .insert({ author_id: authorRecord.id, type: postType, title: postTitle || null, content: postContent, link_url: postLink || null })
-      .select('*').single()
+    const { data } = await createAuthorPost({
+      authorId:   authorRecord.id,
+      authorName: authorRecord.name,
+      type:       postType,
+      title:      postTitle,
+      content:    postContent,
+      linkUrl:    postLink,
+    })
     if (data) setPosts(prev => [data, ...prev])
     setPostContent(''); setPostTitle(''); setPostLink(''); setShowPostForm(false)
     setPosting(false)
@@ -360,6 +388,30 @@ export default function Author({ session }) {
   async function deletePost(id) {
     await supabase.from('author_posts').delete().eq('id', id)
     setPosts(prev => prev.filter(p => p.id !== id))
+  }
+
+  async function submitQuestion() {
+    if (!session || !authorRecord || !questionText.trim()) return
+    setAskingQ(true)
+    const { data } = await supabase
+      .from('author_questions')
+      .insert({ author_id: authorRecord.id, asker_id: session.user.id, question: questionText.trim() })
+      .select('*')
+      .single()
+    if (data) setQuestions(prev => [data, ...prev])
+    // Notify the verified author (if claimed) — via notify() so their prefs apply.
+    if (authorRecord.claimed_by) {
+      const fromUsername = (await getMyUsername(session.user.id)) || 'Someone'
+      notify(authorRecord.claimed_by, 'author_question', {
+        title: 'New reader question',
+        body: `${fromUsername}: ${questionText.trim().slice(0, 120)}`,
+        link: '/author-dashboard',
+        metadata: { author_id: authorRecord.id, question_id: data?.id },
+      })
+    }
+    setQuestionText('')
+    setShowAskForm(false)
+    setAskingQ(false)
   }
 
   const myReadCount  = folioBooks.filter(b => myEntries[b.id]?.read_status === 'read').length
@@ -623,6 +675,57 @@ export default function Author({ session }) {
                 )
               })}
             </div>
+          </section>
+        )}
+
+        {/* ── Reader Q&A ── */}
+        {(questions.some(q => q.answer) || session) && (
+          <section style={s.section}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h2 style={s.sectionTitle}>Reader Q&A</h2>
+              {session && !isVerifiedOwner && (
+                <button onClick={() => setShowAskForm(v => !v)} style={{ ...s.btn, background: theme.rust, color: '#fff', border: 'none' }}>
+                  {showAskForm ? 'Cancel' : `Ask ${displayName}`}
+                </button>
+              )}
+            </div>
+            {showAskForm && session && !isVerifiedOwner && (
+              <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 10, padding: 16, marginBottom: 14 }}>
+                <textarea
+                  placeholder={`Ask ${displayName} a question — they'll see it in their dashboard and may answer publicly.`}
+                  value={questionText}
+                  onChange={e => setQuestionText(e.target.value)}
+                  rows={3}
+                  style={{ width: '100%', padding: 10, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", resize: 'vertical', background: theme.bg, color: theme.text, boxSizing: 'border-box' }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+                  <button onClick={submitQuestion} disabled={askingQ || !questionText.trim()}
+                    style={{ ...s.btn, background: theme.rust, color: '#fff', border: 'none', opacity: askingQ || !questionText.trim() ? 0.6 : 1 }}>
+                    {askingQ ? 'Sending…' : 'Submit question'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {questions.filter(q => q.answer).length === 0 ? (
+              <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 10, padding: 18, fontSize: 14, color: theme.textSubtle, textAlign: 'center' }}>
+                No answered questions yet.
+                {session && !isVerifiedOwner ? ' Be the first to ask!' : ''}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {questions.filter(q => q.answer).map(q => (
+                  <div key={q.id} style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 10, padding: 16 }}>
+                    <div style={{ fontSize: 14, color: theme.text, fontWeight: 600, marginBottom: 6 }}>Q: {q.question}</div>
+                    <div style={{ fontSize: 14, color: theme.text, lineHeight: 1.55, marginBottom: 6, paddingLeft: 12, borderLeft: `2px solid ${theme.rust}` }}>
+                      <span style={{ fontStyle: 'italic', color: theme.rust, marginRight: 4 }}>A:</span>{q.answer}
+                    </div>
+                    <div style={{ fontSize: 12, color: theme.textSubtle }}>
+                      {new Date(q.answered_at || q.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 

@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
+import { notify } from '../lib/notify'
+import { getMyUsername } from '../lib/currentUser'
 
 export default function Loans({ session }) {
   const { theme } = useTheme()
@@ -100,6 +102,16 @@ export default function Loans({ session }) {
       due_date: requestDue || null,
       status: 'pending',
     })
+    const fromUsername = (await getMyUsername(session.user.id)) || 'Someone'
+    const bookTitle = requestModal.books.title
+    notify(ownerId, 'borrow_request', {
+      title: 'New borrow request',
+      body: `${fromUsername} wants to borrow "${bookTitle}"`,
+      link: '/loans',
+      metadata: { book_id: requestModal.books.id },
+      emailTemplate: 'loan_request',
+      emailData: { fromUsername, bookTitle },
+    })
     setRequesting(false)
     setRequestModal(null)
     setRequestMsg('')
@@ -109,11 +121,25 @@ export default function Loans({ session }) {
   }
 
   async function handleAction(id, action, dueDate) {
+    // Capture the request row before mutating so we can notify the right party.
+    const req = [...lending, ...borrowing].find(r => r.id === id)
     if (action === 'accept') {
       await supabase
         .from('borrow_requests')
         .update({ status: 'active', due_date: dueDate || null, updated_at: new Date().toISOString() })
         .eq('id', id)
+      if (req) {
+        const ownerUsername = (await getMyUsername(session.user.id)) || 'The owner'
+        const bookTitle = req.books?.title || 'a book'
+        notify(req.requester_id, 'borrow_approved', {
+          title: 'Borrow request approved',
+          body: `${ownerUsername} approved your request to borrow "${bookTitle}"`,
+          link: '/loans',
+          metadata: { request_id: id },
+          emailTemplate: 'loan_accepted',
+          emailData: { ownerUsername, bookTitle },
+        })
+      }
     } else if (action === 'decline' || action === 'cancel') {
       await supabase.from('borrow_requests').delete().eq('id', id)
     } else if (action === 'returned') {
@@ -121,6 +147,18 @@ export default function Loans({ session }) {
         .from('borrow_requests')
         .update({ status: 'returned', updated_at: new Date().toISOString() })
         .eq('id', id)
+      if (req) {
+        const fromUsername = (await getMyUsername(session.user.id)) || 'A friend'
+        const bookTitle = req.books?.title || 'a book'
+        // Notify the *other* party — whoever marks returned, the other side gets the ping.
+        const otherUserId = req.owner_id === session.user.id ? req.requester_id : req.owner_id
+        notify(otherUserId, 'borrow_returned', {
+          title: 'Book returned',
+          body: `${fromUsername} marked "${bookTitle}" as returned`,
+          link: '/loans',
+          metadata: { request_id: id },
+        })
+      }
     }
     fetchLoans()
   }

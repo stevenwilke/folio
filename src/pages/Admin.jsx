@@ -675,7 +675,7 @@ export default function Admin({ session }) {
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                       {pending.map(claim => (
-                        <ClaimCard key={claim.id} claim={claim} theme={theme} acting={acting === claim.id} s={s} onReview={reviewClaim} />
+                        <ClaimCard key={claim.id} claim={claim} theme={theme} acting={acting === claim.id} s={s} onReview={reviewClaim} navigate={navigate} />
                       ))}
                     </div>
                   )}
@@ -685,7 +685,7 @@ export default function Admin({ session }) {
                     <h2 style={{ ...s.sectionTitle, color: theme.textSubtle, marginBottom: 16 }}>Resolved</h2>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       {resolved.map(claim => (
-                        <ClaimCard key={claim.id} claim={claim} theme={theme} acting={false} s={s} resolved />
+                        <ClaimCard key={claim.id} claim={claim} theme={theme} acting={false} s={s} resolved navigate={navigate} />
                       ))}
                     </div>
                   </section>
@@ -923,6 +923,13 @@ export default function Admin({ session }) {
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            style={{ ...s.smallBtn, background: 'rgba(74,108,160,0.1)', color: '#4a6ca0' }}
+                            onClick={() => navigate(`/author-dashboard?as=${encodeURIComponent(author.name)}`)}
+                            title="View this author's dashboard"
+                          >
+                            Dashboard
+                          </button>
                           <button
                             style={{ ...s.smallBtn, background: 'rgba(90,122,90,0.08)', color: '#5a7a5a' }}
                             onClick={() => setEditingAuthor({ ...author })}
@@ -1290,7 +1297,7 @@ function StatCard({ theme, emoji, label, value, highlight, onClick, subtitle }) 
 
 /* ── Claim Card ─────────────────────────────── */
 
-function ClaimCard({ claim, theme, acting, s, onReview, resolved }) {
+function ClaimCard({ claim, theme, acting, s, onReview, resolved, navigate }) {
   const [note, setNote] = useState('')
   const [showDecline, setShowDecline] = useState(false)
 
@@ -1333,6 +1340,14 @@ function ClaimCard({ claim, theme, acting, s, onReview, resolved }) {
             <div style={{ fontSize: 13, color: theme.textSubtle, fontStyle: 'italic', marginTop: 8 }}>
               Admin note: {claim.admin_note}
             </div>
+          )}
+          {navigate && claim.authors?.name && (
+            <button
+              onClick={() => navigate(`/author-dashboard?as=${encodeURIComponent(claim.authors.name)}`)}
+              style={{ marginTop: 10, background: 'rgba(74,108,160,0.1)', color: '#4a6ca0', border: 'none', padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+            >
+              Preview author dashboard →
+            </button>
           )}
         </div>
       </div>

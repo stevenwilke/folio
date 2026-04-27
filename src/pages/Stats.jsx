@@ -14,41 +14,9 @@ import ReadingHeatmap from '../components/ReadingHeatmap'
 import SparklineChart from '../components/SparklineChart'
 import ReadingWrapped from '../components/ReadingWrapped'
 import BadgeDetailModal from '../components/BadgeDetailModal'
+import { computeStreak } from '../lib/streak'
 
 const CHART_COLORS = ['#c0521e', '#5a7a5a', '#b8860b', '#4a6b8a', '#7b4f3a', '#8b5e83', '#3d6b6b']
-
-function computeStreaks(input) {
-  // Accept either { dates: string[] } or legacy entry array
-  const dateList = Array.isArray(input) ? input.map(e => e.added_at?.slice(0, 10)).filter(Boolean) : (input.dates || [])
-  if (!dateList.length) return { current: 0, longest: 0 }
-  const days = new Set(dateList)
-  const sorted = [...days].sort()
-  let longest = 1, run = 1
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = new Date(sorted[i-1])
-    const curr = new Date(sorted[i])
-    const diff = (curr - prev) / 86400000
-    if (diff === 1) { run++; longest = Math.max(longest, run) }
-    else run = 1
-  }
-  const today = new Date().toISOString().slice(0, 10)
-  let current = 0, check = today
-  while (days.has(check)) {
-    current++
-    const d = new Date(check); d.setDate(d.getDate() - 1)
-    check = d.toISOString().slice(0, 10)
-  }
-  if (current === 0) {
-    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1)
-    check = yesterday.toISOString().slice(0, 10)
-    while (days.has(check)) {
-      current++
-      const d = new Date(check); d.setDate(d.getDate() - 1)
-      check = d.toISOString().slice(0, 10)
-    }
-  }
-  return { current, longest }
-}
 
 export default function Stats({ session }) {
   const { theme } = useTheme()
@@ -280,7 +248,7 @@ export default function Stats({ session }) {
     ...streakEntries.map(e => e.added_at?.slice(0, 10)),
     ...sessionDates,
   ].filter(Boolean)
-  const streaks = computeStreaks({ dates: allActivityDates })
+  const streaks = computeStreak(allActivityDates)
 
   // Last 30 days activity set
   const activityDays = new Set(allActivityDates)

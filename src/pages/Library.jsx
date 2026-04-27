@@ -6,8 +6,11 @@ import BookDetail from './BookDetail'
 import NavBar from '../components/NavBar'
 import SearchModal from '../components/SearchModal'
 import GoodreadsImportModal from '../components/GoodreadsImportModal'
+import OnboardingChecklist from '../components/OnboardingChecklist'
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
+import { useOnClickOutside } from '../hooks/useOnClickOutside'
+import { fireMarketAlerts } from '../lib/marketplaceAlerts'
 import { uploadCoverToStorage } from '../lib/enrichBook'
 import { fetchUsedPrices } from '../lib/fetchUsedPrices'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -695,6 +698,7 @@ export default function Library({ session }) {
       <TutorialOverlay session={session} />
 
       <div style={s.content}>
+        <OnboardingChecklist session={session} bookCount={books.length} />
         {/* Stats — clicking filters the library to that shelf */}
         {isMobile ? (
           <>
@@ -1387,6 +1391,8 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
   const book   = entry.books
   const status = entry.read_status
   const [menuOpen,     setMenuOpen]     = useState(false)
+  const menuRef = useRef(null)
+  useOnClickOutside(menuRef, () => setMenuOpen(false), menuOpen)
   const touchStartY = useRef(0)
   const wasScrolling = useRef(false)
   const [hover,        setHover]        = useState(false)
@@ -1479,6 +1485,7 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
         ...(hover && !selectMode ? s.cardHover : {}),
         ...(isSelected ? s.cardSelected : {}),
         position: 'relative',
+        zIndex: menuOpen ? 30 : (hover ? 2 : 'auto'),
         touchAction: 'manipulation',
       }}
       onClick={(e) => { if (wasScrolling.current) { wasScrolling.current = false; return } onSelect() }}
@@ -1579,7 +1586,7 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
         )}
         {/* Status badge overlaid at bottom of cover */}
         {!selectMode && (
-          <div style={{ position: 'absolute', bottom: 6, left: 6, zIndex: 2 }} onClick={e => { e.stopPropagation(); setMenuOpen(!menuOpen) }}>
+          <div ref={menuRef} style={{ position: 'absolute', bottom: 6, left: 6, zIndex: 2 }} onClick={e => { e.stopPropagation(); setMenuOpen(!menuOpen) }}>
             <span style={{ ...s.badge, ...STATUS_COLORS[status], cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
               {STATUS_LABELS[status]}{status === 'owned' && entry.has_read ? ' ✓' : ''} ▾
             </span>
@@ -1742,6 +1749,7 @@ function ListingModal({ session, entry, valuation: valProp, onClose, onSuccess }
       setError('Could not create listing. Please try again.')
       setSubmitting(false)
     } else {
+      fireMarketAlerts(book, p, session.user.id).catch(e => console.error('[fireMarketAlerts]', e))
       onSuccess()
     }
   }

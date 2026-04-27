@@ -1206,7 +1206,7 @@ export default function Discover({ session }) {
             <h2 style={{ ...s.secTitle, display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 4px' }}>
               <span>✨</span>
               <span>AI Picks For You</span>
-              <span style={{ fontSize: 11, fontWeight: 500, background: 'rgba(192,82,30,0.12)', color: '#c0521e', borderRadius: 20, padding: '2px 9px', letterSpacing: 0.3 }}>Powered by Claude</span>
+              <span style={{ fontSize: 11, fontWeight: 500, background: 'rgba(192,82,30,0.12)', color: '#c0521e', borderRadius: 20, padding: '2px 9px', letterSpacing: 0.3 }}>Powered by Gemini</span>
             </h2>
             <p style={s.secSub}>Personalized suggestions based on your reading taste</p>
           </div>

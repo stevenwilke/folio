@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import NavBar from '../components/NavBar'
 import { useTheme } from '../contexts/ThemeContext'
+import { notify } from '../lib/notify'
+import { NOTIF_ICONS, LEGACY_INAPP_FILTER } from '../lib/notifTypes'
+import { getMyUsername } from '../lib/currentUser'
 
 function timeAgo(dateStr) {
   if (!dateStr) return ''
@@ -235,13 +238,13 @@ export default function Notifications({ session }) {
     setRecentOrders( (recOrd  || []).map(o => ({ ...o, profiles: { username: orderProfileMap[o.seller_id] } })))
     setPendingRecs(recsEnriched)
 
-    // Fetch unified notifications
     const [{ data: unread }, { data: read }] = await Promise.all([
       supabase
         .from('notifications')
         .select('*')
         .eq('user_id', uid)
         .eq('is_read', false)
+        .not('type', 'in', LEGACY_INAPP_FILTER)
         .order('created_at', { ascending: false })
         .limit(50),
       supabase
@@ -249,6 +252,7 @@ export default function Notifications({ session }) {
         .select('*')
         .eq('user_id', uid)
         .eq('is_read', true)
+        .not('type', 'in', LEGACY_INAPP_FILTER)
         .order('created_at', { ascending: false })
         .limit(30),
     ])
@@ -261,6 +265,16 @@ export default function Notifications({ session }) {
     setActing(id)
     if (accept) {
       await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id)
+      const { data: row } = await supabase.from('friendships').select('requester_id').eq('id', id).maybeSingle()
+      if (row?.requester_id) {
+        const fromUsername = (await getMyUsername(uid)) || 'Someone'
+        notify(row.requester_id, 'friend_accepted', {
+          title: 'Friend request accepted',
+          body: `${fromUsername} accepted your friend request`,
+          link: `/profile/${fromUsername}`,
+          metadata: { friendship_id: id },
+        })
+      }
     } else {
       await supabase.from('friendships').delete().eq('id', id)
     }
@@ -281,13 +295,6 @@ export default function Notifications({ session }) {
     await supabase.from('notifications').update({ is_read: true }).eq('user_id', uid).eq('is_read', false)
     setReadNotifs(prev => [...unifiedNotifs.map(n => ({ ...n, is_read: true })), ...prev])
     setUnifiedNotifs([])
-  }
-
-  const NOTIF_ICONS = {
-    friend_request: '👥', friend_accepted: '👥',
-    borrow_request: '📚', borrow_approved: '📚', borrow_returned: '📚',
-    order_update: '🏪', recommendation: '💌',
-    club_activity: '📖', achievement: '🏅', quote_shared: '💬',
   }
 
   const needsAttention = pendingFriends.length + pendingBorrows.length + pendingOrders.length + pendingRecs.length

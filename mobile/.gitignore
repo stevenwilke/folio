@@ -25,6 +25,12 @@ android/.kotlin/
 google-services.json
 android/app/google-services.json
 
+# Google OAuth client credentials downloaded from GCP — must not ship in git.
+# Web Client Secret lives in Supabase; iOS/Android client IDs are in app.json.
+client_secret_*.json
+client_*.apps.googleusercontent.com.plist
+GoogleService-Info.plist
+
 # Node
 node_modules/
 

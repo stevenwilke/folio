@@ -69,6 +69,12 @@
         {
           "contactsPermission": "Ex Libris uses your contacts to find friends who are already on the app. No contact data is stored or shared."
         }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.756424042794-raeut6ss1s4ub456g8e5q8cjdb14vdpe"
+        }
       ]
     ],
     "scheme": "exlibris",
@@ -77,6 +83,7 @@
     },
     "extra": {
       "router": {},
+      "googleWebClientId": "756424042794-1d2ftavbihcndeigu8jjc234ja23qao8.apps.googleusercontent.com",
       "eas": {
         "build": {
           "experimental": {

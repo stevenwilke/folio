@@ -13,9 +13,19 @@ import {
   Linking,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import Constants from 'expo-constants';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import {
+  GoogleSignin,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
+
+GoogleSignin.configure({
+  webClientId: Constants.expoConfig?.extra?.googleWebClientId as string,
+  scopes: ['profile', 'email'],
+});
 
 const TERMS_URL = 'https://exlibrisomnium.com/terms';
 const PRIVACY_URL = 'https://exlibrisomnium.com/privacy';
@@ -34,6 +44,39 @@ export default function AuthScreen() {
       AppleAuthentication.isAvailableAsync().then(setAppleAvailable);
     }
   }, []);
+
+  async function handleGoogleSignIn() {
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const result = await GoogleSignin.signIn();
+      const idToken = result.data?.idToken;
+      if (!idToken) {
+        throw new Error('No identity token returned from Google.');
+      }
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken,
+      });
+      if (error) throw error;
+
+      const fullName = result.data?.user?.name?.trim();
+      if (fullName && data.user?.id) {
+        await supabase
+          .from('profiles')
+          .update({ full_name: fullName })
+          .eq('id', data.user.id)
+          .is('full_name', null);
+      }
+    } catch (err: any) {
+      if (
+        err?.code === statusCodes.SIGN_IN_CANCELLED ||
+        err?.code === statusCodes.IN_PROGRESS
+      ) {
+        return;
+      }
+      Alert.alert('Error', err.message ?? 'Google sign-in failed.');
+    }
+  }
 
   async function handleAppleSignIn() {
     try {
@@ -195,25 +238,35 @@ export default function AuthScreen() {
           </TouchableOpacity>
         </View>
 
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <TouchableOpacity
+          style={styles.googleButton}
+          onPress={handleGoogleSignIn}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.googleG}>G</Text>
+          <Text style={styles.googleButtonText}>
+            {mode === 'signin' ? 'Sign in with Google' : 'Sign up with Google'}
+          </Text>
+        </TouchableOpacity>
+
         {appleAvailable && (
-          <>
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or</Text>
-              <View style={styles.dividerLine} />
-            </View>
-            <AppleAuthentication.AppleAuthenticationButton
-              buttonType={
-                mode === 'signin'
-                  ? AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
-                  : AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP
-              }
-              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-              cornerRadius={8}
-              style={styles.appleButton}
-              onPress={handleAppleSignIn}
-            />
-          </>
+          <AppleAuthentication.AppleAuthenticationButton
+            buttonType={
+              mode === 'signin'
+                ? AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
+                : AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP
+            }
+            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+            cornerRadius={8}
+            style={styles.appleButton}
+            onPress={handleAppleSignIn}
+          />
         )}
 
         <Text style={styles.footerNote}>
@@ -357,6 +410,31 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 48,
     marginBottom: 20,
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: 48,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  googleG: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#4285F4',
+    marginRight: 10,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  googleButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.ink,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
   footerNote: {
     textAlign: 'center',

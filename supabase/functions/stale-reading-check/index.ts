@@ -84,7 +84,7 @@ serve(async (req) => {
         .eq('user_id', c.user_id)
         .eq('type', 'stale_reading')
         .gt('created_at', cooldownCutoff)
-        .contains('data', { book_id: c.book_id } as any)
+        .contains('metadata', { book_id: c.book_id } as any)
         .limit(1)
 
       if (recent && recent.length > 0) { skipped_cooldown++; continue }
@@ -97,15 +97,21 @@ serve(async (req) => {
         ? `You're ${pct}% in. Pick up where you left off.`
         : `Last picked up a while ago — pick up where you left off.`
 
-      // In-app notification row
-      await supabase.from('notifications').insert({
+      // In-app notification row. If this insert fails, the cooldown check on
+      // the next run won't find a row for this book, so we'd push daily — log
+      // and skip the push to avoid spamming users.
+      const { error: notifErr } = await supabase.from('notifications').insert({
         user_id: c.user_id,
         type: 'stale_reading',
         title,
         body,
         link: `/?book=${c.book_id}`,
-        data: { book_id: c.book_id },
+        metadata: { book_id: c.book_id },
       })
+      if (notifErr) {
+        console.error('stale-reading-check: notifications insert failed', notifErr)
+        continue
+      }
 
       // Push notification (fire-and-forget; don't block on errors)
       try {

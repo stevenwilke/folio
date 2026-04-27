@@ -1,4 +1,4 @@
-package com.exlibris.app
+package com.exlibrisomnium.app
 
 import android.app.Application
 import android.content.res.Configuration

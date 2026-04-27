@@ -21,8 +21,7 @@ android/.gradle/
 android/local.properties
 android/.kotlin/
 
-# Firebase config — pulled in via EAS secret / app.json googleServicesFile
-google-services.json
+# Auto-copied by expo prebuild from the top-level google-services.json.
 android/app/google-services.json
 
 # Google OAuth client credentials downloaded from GCP — must not ship in git.

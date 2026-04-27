@@ -1,4 +1,4 @@
-package com.exlibris.app
+package com.exlibrisomnium.app
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

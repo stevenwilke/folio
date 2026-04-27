@@ -5,10 +5,7 @@ expo-env.d.ts
 # @end expo-cli
 
 # Local Expo state
-.expo/devices.json
-.expo/prebuild/
-.expo/web/
-.expo/packager-info.json
+.expo/
 
 # iOS build artifacts (Xcode-generated)
 ios/build/

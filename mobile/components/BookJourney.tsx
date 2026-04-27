@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 import { haversineKm, formatDistance } from '../lib/geo';
+import { useUnits } from '../lib/units';
 
 const STATUS_COLORS: Record<string, string> = {
   available: Colors.sage, claimed: Colors.gold, collected: Colors.rust, expired: Colors.muted,
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export default function BookJourney({ bookId }: Props) {
+  const [units] = useUnits();
   const [drops, setDrops] = useState<any[]>([]);
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export default function BookJourney({ bookId }: Props) {
           <Text style={styles.headerTitle}>Book Journey</Text>
           <Text style={styles.headerSub}>
             {drops.length} location{drops.length !== 1 ? 's' : ''}
-            {totalKm > 0 ? ` · Traveled ${formatDistance(totalKm)}` : ''}
+            {totalKm > 0 ? ` · Traveled ${formatDistance(totalKm, units)}` : ''}
           </Text>
         </View>
       </View>
@@ -65,7 +67,7 @@ export default function BookJourney({ bookId }: Props) {
             <View key={drop.id} style={styles.node}>
               <View style={[styles.dot, { backgroundColor: STATUS_COLORS[drop.status] || Colors.muted }]} />
               {dist != null && dist > 0 && (
-                <Text style={styles.distLabel}>↳ {formatDistance(dist)}</Text>
+                <Text style={styles.distLabel}>↳ {formatDistance(dist, units)}</Text>
               )}
               <View style={styles.card}>
                 <View style={styles.cardRow}>

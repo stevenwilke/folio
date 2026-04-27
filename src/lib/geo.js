@@ -9,7 +9,15 @@ export function haversineKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-export function formatDistance(km) {
+import { KM_PER_MILE, FEET_PER_MILE } from './units'
+
+export function formatDistance(km, units = 'metric') {
+  if (units === 'imperial') {
+    const miles = km / KM_PER_MILE
+    if (miles < 0.1) return `${Math.round(miles * FEET_PER_MILE)} ft`
+    if (miles < 10) return `${miles.toFixed(1)} mi`
+    return `${Math.round(miles)} mi`
+  }
   if (km < 1) return `${Math.round(km * 1000)} m`
   if (km < 10) return `${km.toFixed(1)} km`
   return `${Math.round(km)} km`

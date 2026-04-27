@@ -9,12 +9,37 @@ import { Colors } from '../constants/colors';
 import { haversineKm, formatDistance } from '../lib/geo';
 import { fetchBlockedUserIds } from '../lib/moderation';
 import { fetchOsmLibraries, OsmLibrary } from '../lib/osmLibraries';
+import { useUnits, milesToKm, KM_PER_MILE, Units } from '../lib/units';
 import BookDropCard from '../components/BookDropCard';
 import AddLibraryModal from '../components/AddLibraryModal';
 import ScanLibraryModal from '../components/ScanLibraryModal';
 
-const RADIUS_OPTIONS = [5, 10, 25, 50, null] as const;
-const RADIUS_LABELS: Record<string, string> = { '5': '5 km', '10': '10 km', '25': '25 km', '50': '50 km', 'null': 'Any' };
+// Radius is stored as kilometers internally (haversine output is km).
+// In imperial mode the labels read as miles and we convert at filter-time.
+const RADIUS_KM_OPTIONS = [5, 10, 25, 50, null] as const;
+const RADIUS_MI_OPTIONS = [milesToKm(5), milesToKm(10), milesToKm(25), milesToKm(50), null] as const;
+const RADIUS_TOLERANCE_KM = 0.01; // float-eq slack when matching a pill to the current radius
+
+function radiusLabel(km: number | null, units: Units): string {
+  if (km == null) return 'Any';
+  if (units === 'imperial') return `${Math.round(km / KM_PER_MILE)} mi`;
+  return `${km} km`;
+}
+
+function isRadiusActive(option: number | null, currentKm: number | null): boolean {
+  if (option == null) return currentKm == null;
+  return currentKm != null && Math.abs(option - currentKm) < RADIUS_TOLERANCE_KM;
+}
+
+// When toggling units, snap the radius to the corresponding pill in the new unit
+// system so the user's selection survives ("25 km" → "25 mi", same active pill).
+function snapRadiusToUnits(currentKm: number | null, fromUnits: Units, toUnits: Units): number | null {
+  if (currentKm == null || fromUnits === toUnits) return currentKm;
+  const fromList = fromUnits === 'imperial' ? RADIUS_MI_OPTIONS : RADIUS_KM_OPTIONS;
+  const toList = toUnits === 'imperial' ? RADIUS_MI_OPTIONS : RADIUS_KM_OPTIONS;
+  const idx = fromList.findIndex(r => r != null && Math.abs(r - currentKm) < RADIUS_TOLERANCE_KM);
+  return idx >= 0 ? (toList[idx] as number) : currentKm;
+}
 
 const CONDITION_LABELS: Record<string, string> = { like_new: 'Like New', very_good: 'Very Good', good: 'Good', acceptable: 'Acceptable' };
 const CONDITION_COLORS: Record<string, string> = { like_new: Colors.sage, very_good: Colors.sage, good: Colors.gold, acceptable: Colors.rust };
@@ -38,6 +63,8 @@ function timeAgo(dateStr: string | null | undefined): string {
 
 export default function NearbyScreen() {
   const router = useRouter();
+  const [units, setUnits] = useUnits();
+  const radiusOptions = units === 'imperial' ? RADIUS_MI_OPTIONS : RADIUS_KM_OPTIONS;
   const [drops, setDrops] = useState<any[]>([]);
   const [myDrops, setMyDrops] = useState<any[]>([]);
   const [libraries, setLibraries] = useState<any[]>([]);
@@ -47,7 +74,7 @@ export default function NearbyScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<'nearby' | 'libraries' | 'my'>('nearby');
   const [view, setView] = useState<'map' | 'list'>('list');
-  const [radius, setRadius] = useState<number | null>(25);
+  const [radius, setRadius] = useState<number | null>(units === 'imperial' ? milesToKm(25) : 25);
   const mapRef = useRef<MapView | null>(null);
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLng, setUserLng] = useState<number | null>(null);
@@ -231,7 +258,7 @@ export default function NearbyScreen() {
           <Text style={[styles.tabText, tab === 'nearby' && styles.tabTextActive]}>Nearby</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => setTab('libraries')} style={[styles.tab, tab === 'libraries' && styles.tabActive]}>
-          <Text style={[styles.tabText, tab === 'libraries' && styles.tabTextActive]}>Libraries ({libraries.length})</Text>
+          <Text style={[styles.tabText, tab === 'libraries' && styles.tabTextActive]}>Libraries</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => setTab('my')} style={[styles.tab, tab === 'my' && styles.tabActive]}>
           <Text style={[styles.tabText, tab === 'my' && styles.tabTextActive]}>My Drops ({myDrops.length})</Text>
@@ -243,15 +270,22 @@ export default function NearbyScreen() {
         <>
           {/* Radius filter + view toggle */}
           <View style={styles.filterRow}>
-            {RADIUS_OPTIONS.map(r => (
-              <TouchableOpacity
-                key={String(r)}
-                onPress={() => setRadius(r)}
-                style={[styles.pill, radius === r && styles.pillActive]}
-              >
-                <Text style={[styles.pillText, radius === r && styles.pillTextActive]}>{RADIUS_LABELS[String(r)]}</Text>
-              </TouchableOpacity>
-            ))}
+            {radiusOptions.map(r => {
+              const active = isRadiusActive(r, radius);
+              return (
+                <TouchableOpacity
+                  key={String(r)}
+                  onPress={() => setRadius(r)}
+                  style={[styles.pill, active && styles.pillActive]}
+                >
+                  <Text style={[styles.pillText, active && styles.pillTextActive]}>{radiusLabel(r, units)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+            <UnitsToggle units={units} onChange={(u) => {
+              setRadius(snapRadiusToUnits(radius, units, u));
+              setUnits(u);
+            }} />
             <ViewToggle view={view} onChange={setView} />
           </View>
 
@@ -298,15 +332,22 @@ export default function NearbyScreen() {
         <>
           {/* Radius filter + Add button + view toggle */}
           <View style={styles.filterRow}>
-            {RADIUS_OPTIONS.map(r => (
-              <TouchableOpacity
-                key={String(r)}
-                onPress={() => setRadius(r)}
-                style={[styles.pill, radius === r && styles.pillActive]}
-              >
-                <Text style={[styles.pillText, radius === r && styles.pillTextActive]}>{RADIUS_LABELS[String(r)]}</Text>
-              </TouchableOpacity>
-            ))}
+            {radiusOptions.map(r => {
+              const active = isRadiusActive(r, radius);
+              return (
+                <TouchableOpacity
+                  key={String(r)}
+                  onPress={() => setRadius(r)}
+                  style={[styles.pill, active && styles.pillActive]}
+                >
+                  <Text style={[styles.pillText, active && styles.pillTextActive]}>{radiusLabel(r, units)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+            <UnitsToggle units={units} onChange={(u) => {
+              setRadius(snapRadiusToUnits(radius, units, u));
+              setUnits(u);
+            }} />
             <TouchableOpacity onPress={() => setShowAddLibrary(true)} style={styles.addLibBtn}>
               <Text style={styles.addLibText}>+ Add</Text>
             </TouchableOpacity>
@@ -361,7 +402,7 @@ export default function NearbyScreen() {
                   <Text style={styles.osmTag}>Tap to adopt · OpenStreetMap</Text>
                 </View>
                 {item.distanceKm != null && (
-                  <Text style={styles.libDist}>{formatDistance(item.distanceKm)}</Text>
+                  <Text style={styles.libDist}>{formatDistance(item.distanceKm, units)}</Text>
                 )}
               </TouchableOpacity>
             ) : (
@@ -386,7 +427,7 @@ export default function NearbyScreen() {
                   )}
                 </View>
                 {item.distanceKm != null && (
-                  <Text style={styles.libDist}>{formatDistance(item.distanceKm)}</Text>
+                  <Text style={styles.libDist}>{formatDistance(item.distanceKm, units)}</Text>
                 )}
               </TouchableOpacity>
             )}
@@ -457,7 +498,7 @@ export default function NearbyScreen() {
             </View>
             <Text style={styles.detailMeta}>📍 {selectedDrop.location_name}</Text>
             {selectedDrop.distanceKm != null && (
-              <Text style={styles.detailMeta}>{formatDistance(selectedDrop.distanceKm)} from you</Text>
+              <Text style={styles.detailMeta}>{formatDistance(selectedDrop.distanceKm, units)} from you</Text>
             )}
             <Text style={styles.detailMeta}>Freed by {selectedDrop.profiles?.username} · {timeAgo(selectedDrop.created_at)}</Text>
             {selectedDrop.note && <Text style={styles.detailNote}>"{selectedDrop.note}"</Text>}
@@ -491,7 +532,7 @@ export default function NearbyScreen() {
               <Text style={styles.libDetailTitle}>📚 {selectedLibrary.name || 'Little Library'}</Text>
               <Text style={styles.detailMeta}>
                 📍 {selectedLibrary.location_name}
-                {selectedLibrary.distanceKm != null && ` · ${formatDistance(selectedLibrary.distanceKm)}`}
+                {selectedLibrary.distanceKm != null && ` · ${formatDistance(selectedLibrary.distanceKm, units)}`}
               </Text>
               <Text style={styles.detailMeta}>Added {timeAgo(selectedLibrary.created_at)}</Text>
 
@@ -546,7 +587,7 @@ export default function NearbyScreen() {
               <Text style={styles.detailMeta}>📍 {selectedOsm.location_name}</Text>
             )}
             {selectedOsm.distanceKm != null && (
-              <Text style={styles.detailMeta}>{formatDistance(selectedOsm.distanceKm)} from you</Text>
+              <Text style={styles.detailMeta}>{formatDistance(selectedOsm.distanceKm, units)} from you</Text>
             )}
             {selectedOsm.operator && (
               <Text style={styles.detailMeta}>Operated by {selectedOsm.operator}</Text>
@@ -608,6 +649,26 @@ function ViewToggle({ view, onChange }: { view: 'map' | 'list'; onChange: (v: 'm
         style={[styles.viewToggleBtn, view === 'list' && styles.viewToggleBtnActive]}
       >
         <Text style={[styles.viewToggleText, view === 'list' && styles.viewToggleTextActive]}>☰</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ── Units toggle (km / mi) ───────────────────────────────────────────────────
+function UnitsToggle({ units, onChange }: { units: Units; onChange: (u: Units) => void }) {
+  return (
+    <View style={styles.unitsToggle}>
+      <TouchableOpacity
+        onPress={() => onChange('metric')}
+        style={[styles.unitsBtn, units === 'metric' && styles.unitsBtnActive]}
+      >
+        <Text style={[styles.unitsText, units === 'metric' && styles.unitsTextActive]}>km</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => onChange('imperial')}
+        style={[styles.unitsBtn, units === 'imperial' && styles.unitsBtnActive]}
+      >
+        <Text style={[styles.unitsText, units === 'imperial' && styles.unitsTextActive]}>mi</Text>
       </TouchableOpacity>
     </View>
   );
@@ -749,4 +810,11 @@ const styles = StyleSheet.create({
   viewToggleBtnActive: { backgroundColor: Colors.rust },
   viewToggleText: { fontSize: 14 },
   viewToggleTextActive: { color: '#fff' },
+
+  // Units toggle (km / mi)
+  unitsToggle: { flexDirection: 'row', borderRadius: 6, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden' },
+  unitsBtn: { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: Colors.card },
+  unitsBtnActive: { backgroundColor: '#fdf0ea' },
+  unitsText: { fontSize: 11, fontWeight: '600', color: Colors.muted },
+  unitsTextActive: { color: Colors.rust },
 });

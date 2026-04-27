@@ -11,12 +11,37 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import { haversineKm, formatDistance } from '../lib/geo'
 import { getCoverUrl } from '../lib/coverUrl'
 import { fetchOsmLibraries } from '../lib/osmLibraries'
+import { useUnits, milesToKm, KM_PER_MILE } from '../lib/units'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
-const RADIUS_OPTIONS = [5, 10, 25, 50, null] // null = Any
-const RADIUS_LABELS = { 5: '5 km', 10: '10 km', 25: '25 km', 50: '50 km', null: 'Any' }
+// Radius is stored as kilometers internally (haversine output is km).
+// In imperial mode the labels read as miles and we convert to km when filtering.
+const RADIUS_KM_OPTIONS = [5, 10, 25, 50, null]
+const RADIUS_MI_OPTIONS = [milesToKm(5), milesToKm(10), milesToKm(25), milesToKm(50), null]
+const RADIUS_TOLERANCE_KM = 0.01 // float-eq slack when matching a pill to the current radius
 const OSM_PIN_COLOR = '#b08968'
 const OSM_DEDUP_METERS = 30
+
+function radiusLabel(km, units) {
+  if (km == null) return 'Any'
+  if (units === 'imperial') return `${Math.round(km / KM_PER_MILE)} mi`
+  return `${km} km`
+}
+
+function isRadiusActive(option, currentKm) {
+  if (option == null) return currentKm == null
+  return currentKm != null && Math.abs(option - currentKm) < RADIUS_TOLERANCE_KM
+}
+
+// When toggling units, snap the radius to the corresponding pill in the new unit
+// system so the user's selection survives ("25 km" → "25 mi", same active pill).
+function snapRadiusToUnits(currentKm, fromUnits, toUnits) {
+  if (currentKm == null || fromUnits === toUnits) return currentKm
+  const fromList = fromUnits === 'imperial' ? RADIUS_MI_OPTIONS : RADIUS_KM_OPTIONS
+  const toList = toUnits === 'imperial' ? RADIUS_MI_OPTIONS : RADIUS_KM_OPTIONS
+  const idx = fromList.findIndex(r => r != null && Math.abs(r - currentKm) < RADIUS_TOLERANCE_KM)
+  return idx >= 0 ? toList[idx] : currentKm
+}
 
 const CONDITION_LABELS = {
   like_new: 'Like New', very_good: 'Very Good', good: 'Good', acceptable: 'Acceptable',
@@ -42,6 +67,8 @@ export default function Nearby({ session }) {
   const navigate = useNavigate()
   const { theme } = useTheme()
   const isMobile = useIsMobile()
+  const [units, setUnits] = useUnits()
+  const radiusOptions = units === 'imperial' ? RADIUS_MI_OPTIONS : RADIUS_KM_OPTIONS
   const mapContainer = useRef(null)
   const mapRef = useRef(null)
   const markersRef = useRef([])
@@ -57,7 +84,7 @@ export default function Nearby({ session }) {
   const [view, setView] = useState('map') // map | list
   const [userLat, setUserLat] = useState(null)
   const [userLng, setUserLng] = useState(null)
-  const [radius, setRadius] = useState(25)
+  const [radius, setRadius] = useState(units === 'imperial' ? milesToKm(25) : 25)
   const [selectedDrop, setSelectedDrop] = useState(null)
   const [selectedLibrary, setSelectedLibrary] = useState(null)
   const [selectedOsm, setSelectedOsm] = useState(null)
@@ -366,9 +393,6 @@ export default function Nearby({ session }) {
               {key === 'my-drops' && myDrops.length > 0 && (
                 <span style={s.tabCount}>{myDrops.length}</span>
               )}
-              {key === 'libraries' && libraries.length > 0 && (
-                <span style={s.tabCount}>{libraries.length}</span>
-              )}
             </button>
           ))}
         </div>
@@ -379,15 +403,19 @@ export default function Nearby({ session }) {
             <div style={s.controls}>
               <div style={s.filterRow}>
                 <span style={s.filterLabel}>Radius:</span>
-                {RADIUS_OPTIONS.map(r => (
+                {radiusOptions.map(r => (
                   <button
                     key={String(r)}
                     onClick={() => setRadius(r)}
-                    style={radius === r ? s.pillActive : s.pill}
+                    style={isRadiusActive(r, radius) ? s.pillActive : s.pill}
                   >
-                    {RADIUS_LABELS[r]}
+                    {radiusLabel(r, units)}
                   </button>
                 ))}
+                <UnitsToggle units={units} onChange={(u) => {
+                  setRadius(snapRadiusToUnits(radius, units, u))
+                  setUnits(u)
+                }} theme={theme} />
               </div>
               <div style={s.viewToggle}>
                 <button onClick={() => setView('map')} style={view === 'map' ? s.viewBtnActive : s.viewBtn}>🗺️ Map</button>
@@ -465,7 +493,7 @@ export default function Nearby({ session }) {
                   <div style={s.detailMeta}>
                     <div>📍 {selectedDrop.location_name}</div>
                     {selectedDrop.distanceKm != null && (
-                      <div>{formatDistance(selectedDrop.distanceKm)} from you</div>
+                      <div>{formatDistance(selectedDrop.distanceKm, units)} from you</div>
                     )}
                     <div>Freed by {selectedDrop.profiles?.username} · {timeAgo(selectedDrop.created_at)}</div>
                   </div>
@@ -503,15 +531,19 @@ export default function Nearby({ session }) {
             <div style={s.controls}>
               <div style={s.filterRow}>
                 <span style={s.filterLabel}>Radius:</span>
-                {RADIUS_OPTIONS.map(r => (
+                {radiusOptions.map(r => (
                   <button
                     key={String(r)}
                     onClick={() => setRadius(r)}
-                    style={radius === r ? s.pillActive : s.pill}
+                    style={isRadiusActive(r, radius) ? s.pillActive : s.pill}
                   >
-                    {RADIUS_LABELS[r]}
+                    {radiusLabel(r, units)}
                   </button>
                 ))}
+                <UnitsToggle units={units} onChange={(u) => {
+                  setRadius(snapRadiusToUnits(radius, units, u))
+                  setUnits(u)
+                }} theme={theme} />
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <div style={s.viewToggle}>
@@ -572,7 +604,7 @@ export default function Nearby({ session }) {
                         </div>
                       </div>
                       {item.distanceKm != null && (
-                        <span style={{ fontSize: 12, color: theme.textSubtle }}>{formatDistance(item.distanceKm)}</span>
+                        <span style={{ fontSize: 12, color: theme.textSubtle }}>{formatDistance(item.distanceKm, units)}</span>
                       )}
                     </div>
                   ) : (
@@ -598,7 +630,7 @@ export default function Nearby({ session }) {
                         )}
                       </div>
                       {item.distanceKm != null && (
-                        <span style={{ fontSize: 12, color: theme.textSubtle }}>{formatDistance(item.distanceKm)}</span>
+                        <span style={{ fontSize: 12, color: theme.textSubtle }}>{formatDistance(item.distanceKm, units)}</span>
                       )}
                     </div>
                   ))}
@@ -620,7 +652,7 @@ export default function Nearby({ session }) {
                     </div>
                     <div style={{ fontSize: 13, color: theme.textSubtle }}>
                       📍 {selectedLibrary.location_name}
-                      {selectedLibrary.distanceKm != null && ` · ${formatDistance(selectedLibrary.distanceKm)}`}
+                      {selectedLibrary.distanceKm != null && ` · ${formatDistance(selectedLibrary.distanceKm, units)}`}
                     </div>
                     <div style={{ fontSize: 12, color: theme.textSubtle, marginTop: 2 }}>
                       Added {timeAgo(selectedLibrary.created_at)}
@@ -724,7 +756,7 @@ export default function Nearby({ session }) {
                 )}
                 {selectedOsm.distanceKm != null && (
                   <div style={{ fontSize: 13, color: theme.textSubtle, marginTop: 2 }}>
-                    {formatDistance(selectedOsm.distanceKm)} from you
+                    {formatDistance(selectedOsm.distanceKm, units)} from you
                   </div>
                 )}
                 {selectedOsm.operator && (
@@ -820,4 +852,16 @@ function makeStyles(theme, isMobile) {
 
     myDropRow: { display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 12 },
   }
+}
+
+function UnitsToggle({ units, onChange, theme }) {
+  const base = { padding: '5px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', border: `1px solid ${theme.border}`, fontFamily: "'DM Sans', sans-serif" }
+  const active = { ...base, background: theme.rustLight, color: theme.rust, borderColor: theme.rust }
+  const inactive = { ...base, background: theme.bgCard, color: theme.textSubtle }
+  return (
+    <div style={{ display: 'inline-flex', marginLeft: 8 }} title="Distance units">
+      <button onClick={() => onChange('metric')} style={{ ...(units === 'metric' ? active : inactive), borderTopLeftRadius: 6, borderBottomLeftRadius: 6, borderRight: 'none' }}>km</button>
+      <button onClick={() => onChange('imperial')} style={{ ...(units === 'imperial' ? active : inactive), borderTopRightRadius: 6, borderBottomRightRadius: 6 }}>mi</button>
+    </div>
+  )
 }

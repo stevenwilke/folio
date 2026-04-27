@@ -1,6 +1,7 @@
 import { useTheme } from '../contexts/ThemeContext'
 import { getCoverUrl } from '../lib/coverUrl'
 import { formatDistance } from '../lib/geo'
+import { useUnits } from '../lib/units'
 
 const CONDITION_LABELS = {
   like_new: 'Like New',
@@ -30,6 +31,7 @@ function timeAgo(dateStr) {
 }
 
 export default function BookDropCard({ drop, distanceKm, onClick }) {
+  const [units] = useUnits()
   const { theme } = useTheme()
   const book = drop.books
   const profile = drop.profiles
@@ -83,7 +85,7 @@ export default function BookDropCard({ drop, distanceKm, onClick }) {
 
         {/* Distance + time */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 10, color: theme.textSubtle }}>
-          {distanceKm != null && <span>{formatDistance(distanceKm)} away</span>}
+          {distanceKm != null && <span>{formatDistance(distanceKm, units)} away</span>}
           <span>{timeAgo(drop.created_at)}</span>
         </div>
 

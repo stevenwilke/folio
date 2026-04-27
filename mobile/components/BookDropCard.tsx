@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity, Image, Platform } from 'react-native';
 import { Colors } from '../constants/colors';
 import { formatDistance } from '../lib/geo';
+import { useUnits } from '../lib/units';
 
 const CONDITION_LABELS: Record<string, string> = {
   like_new: 'Like New', very_good: 'Very Good', good: 'Good', acceptable: 'Acceptable',
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export default function BookDropCard({ drop, distanceKm, onPress }: Props) {
+  const [units] = useUnits();
   const book = drop.books;
   return (
     <TouchableOpacity onPress={onPress} style={styles.card} activeOpacity={0.7}>
@@ -46,7 +48,7 @@ export default function BookDropCard({ drop, distanceKm, onPress }: Props) {
         </View>
         <Text style={styles.location} numberOfLines={1}>📍 {drop.location_name}</Text>
         <View style={styles.footer}>
-          {distanceKm != null && <Text style={styles.meta}>{formatDistance(distanceKm)}</Text>}
+          {distanceKm != null && <Text style={styles.meta}>{formatDistance(distanceKm, units)}</Text>}
           <Text style={styles.meta}>{timeAgo(drop.created_at)}</Text>
         </View>
       </View>

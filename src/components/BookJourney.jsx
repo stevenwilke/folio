@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
 import { haversineKm, formatDistance } from '../lib/geo'
+import { useUnits } from '../lib/units'
 
 const STATUS_LABELS = {
   available: 'Available',
@@ -28,6 +29,7 @@ function timeAgo(dateStr) {
 
 export default function BookJourney({ bookId }) {
   const { theme } = useTheme()
+  const [units] = useUnits()
   const [drops, setDrops] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -65,7 +67,7 @@ export default function BookJourney({ bookId }) {
           </div>
           <div style={{ fontSize: 12, color: theme.textSubtle }}>
             {drops.length} location{drops.length !== 1 ? 's' : ''}
-            {totalKm > 0 && ` · Traveled ${formatDistance(totalKm)}`}
+            {totalKm > 0 && ` · Traveled ${formatDistance(totalKm, units)}`}
           </div>
         </div>
       </div>
@@ -89,7 +91,7 @@ export default function BookJourney({ bookId }) {
               {/* Distance from previous */}
               {distFromPrev != null && distFromPrev > 0 && (
                 <div style={{ fontSize: 10, color: theme.textSubtle, marginBottom: 4, fontStyle: 'italic' }}>
-                  ↳ {formatDistance(distFromPrev)} from previous
+                  ↳ {formatDistance(distFromPrev, units)} from previous
                 </div>
               )}
 

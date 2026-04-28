@@ -282,10 +282,16 @@ export default function Admin({ session }) {
 
   async function toggleAdmin(user) {
     const newVal = !user.is_admin
-    if (user.id === session.user.id && !newVal) {
-      if (!window.confirm('Remove your own admin access? You will be locked out of this page.')) return
+    if (user.id === session.user.id && !newVal) return
+    if (!newVal) {
+      const remaining = users.filter(u => u.is_admin && u.id !== user.id).length
+      if (remaining === 0) {
+        window.alert('Cannot remove the last admin. Promote another user to admin first.')
+        return
+      }
     }
-    await supabase.from('profiles').update({ is_admin: newVal }).eq('id', user.id)
+    const { error } = await supabase.from('profiles').update({ is_admin: newVal }).eq('id', user.id)
+    if (error) window.alert(error.message)
     loadUsers()
   }
 
@@ -925,7 +931,7 @@ export default function Admin({ session }) {
                         <div style={{ display: 'flex', gap: 6 }}>
                           <button
                             style={{ ...s.smallBtn, background: 'rgba(74,108,160,0.1)', color: '#4a6ca0' }}
-                            onClick={() => navigate(`/author-dashboard?as=${encodeURIComponent(author.name)}`)}
+                            onClick={() => navigate(`/author-dashboard?as=${encodeURIComponent(author.name)}&from=${encodeURIComponent('/admin?tab=authors')}`)}
                             title="View this author's dashboard"
                           >
                             Dashboard
@@ -1022,16 +1028,18 @@ export default function Admin({ session }) {
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: 6 }}>
-                          <button
-                            style={{
-                              ...s.smallBtn,
-                              background: user.is_admin ? 'rgba(192,82,30,0.1)' : 'rgba(90,122,90,0.1)',
-                              color: user.is_admin ? theme.rust : '#5a7a5a',
-                            }}
-                            onClick={() => toggleAdmin(user)}
-                          >
-                            {user.is_admin ? 'Remove Admin' : 'Make Admin'}
-                          </button>
+                          {user.id !== session.user.id && (
+                            <button
+                              style={{
+                                ...s.smallBtn,
+                                background: user.is_admin ? 'rgba(192,82,30,0.1)' : 'rgba(90,122,90,0.1)',
+                                color: user.is_admin ? theme.rust : '#5a7a5a',
+                              }}
+                              onClick={() => toggleAdmin(user)}
+                            >
+                              {user.is_admin ? 'Remove Admin' : 'Make Admin'}
+                            </button>
+                          )}
                           <button
                             style={{ ...s.smallBtn, background: user.is_banned ? 'rgba(90,122,90,0.1)' : 'rgba(200,150,0,0.1)', color: user.is_banned ? '#5a7a5a' : '#9a7200' }}
                             onClick={() => toggleBan(user)}
@@ -1343,7 +1351,7 @@ function ClaimCard({ claim, theme, acting, s, onReview, resolved, navigate }) {
           )}
           {navigate && claim.authors?.name && (
             <button
-              onClick={() => navigate(`/author-dashboard?as=${encodeURIComponent(claim.authors.name)}`)}
+              onClick={() => navigate(`/author-dashboard?as=${encodeURIComponent(claim.authors.name)}&from=${encodeURIComponent('/admin?tab=claims')}`)}
               style={{ marginTop: 10, background: 'rgba(74,108,160,0.1)', color: '#4a6ca0', border: 'none', padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
             >
               Preview author dashboard →

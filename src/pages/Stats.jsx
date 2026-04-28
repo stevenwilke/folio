@@ -14,6 +14,7 @@ import ReadingHeatmap from '../components/ReadingHeatmap'
 import SparklineChart from '../components/SparklineChart'
 import ReadingWrapped from '../components/ReadingWrapped'
 import BadgeDetailModal from '../components/BadgeDetailModal'
+import LevelDetailModal from '../components/LevelDetailModal'
 import { computeStreak } from '../lib/streak'
 
 const CHART_COLORS = ['#c0521e', '#5a7a5a', '#b8860b', '#4a6b8a', '#7b4f3a', '#8b5e83', '#3d6b6b']
@@ -33,6 +34,8 @@ export default function Stats({ session }) {
   const [allSessions, setAllSessions]   = useState([])
   const [showNewChallenge, setShowNewChallenge] = useState(false)
   const [selectedBadge, setSelectedBadge] = useState(null)
+  const [showLevels, setShowLevels] = useState(false)
+  const [showHeatmapHelp, setShowHeatmapHelp] = useState(false)
 
   useEffect(() => { fetchData() }, [])
 
@@ -481,25 +484,43 @@ export default function Stats({ session }) {
               <div style={s.sectionHeadRow}>
                 <span style={{ fontSize: 22 }}>📅</span>
                 <span style={{ ...s.chartTitle, marginBottom: 0 }}>Reading Activity</span>
-                <span
-                  title={
-                    "Each square is one day in the past year. The darker the green, the more activity you logged that day — adding books, finishing reads, completing reading-timer sessions, etc.\n\n" +
-                    "• Faint  = no activity\n" +
-                    "• Light  = 1 activity\n" +
-                    "• Medium = 2 activities\n" +
-                    "• Dark   = 3 or more\n\n" +
-                    "Hover any square to see the date + count."
-                  }
+                <button
+                  type="button"
+                  onClick={() => setShowHeatmapHelp(v => !v)}
+                  aria-label="How to read the heatmap"
+                  aria-expanded={showHeatmapHelp}
                   style={{
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 18, height: 18, borderRadius: '50%',
-                    background: theme.bgSubtle, border: `1px solid ${theme.border}`,
-                    color: theme.textSubtle, fontSize: 11, fontWeight: 700,
-                    cursor: 'help', lineHeight: 1,
+                    width: 20, height: 20, borderRadius: '50%',
+                    background: showHeatmapHelp ? theme.rust : theme.bgSubtle,
+                    border: `1px solid ${showHeatmapHelp ? theme.rust : theme.border}`,
+                    color: showHeatmapHelp ? '#fff' : theme.textSubtle,
+                    fontSize: 12, fontWeight: 700, cursor: 'pointer', lineHeight: 1,
+                    padding: 0, fontFamily: "'DM Sans', sans-serif",
                   }}
-                  aria-label="How to read the heatmap"
-                >?</span>
+                >?</button>
               </div>
+              {showHeatmapHelp && (
+                <div style={{
+                  background: theme.bgSubtle,
+                  border: `1px solid ${theme.borderLight}`,
+                  borderRadius: 10,
+                  padding: '12px 14px',
+                  margin: '4px 0 12px',
+                  fontSize: 13,
+                  color: theme.text,
+                  lineHeight: 1.5,
+                }}>
+                  Each square is one day in the past year. The darker the green, the more activity you logged that day — adding books, finishing reads, completing reading-timer sessions, etc.
+                  <ul style={{ margin: '8px 0 0', paddingLeft: 20, color: theme.textSubtle }}>
+                    <li>Faint = no activity</li>
+                    <li>Light = 1 activity</li>
+                    <li>Medium = 2 activities</li>
+                    <li>Dark = 3 or more</li>
+                  </ul>
+                  <div style={{ marginTop: 8, color: theme.textSubtle }}>Hover any square to see the date and count.</div>
+                </div>
+              )}
               <ReadingHeatmap activityDates={allActivityDates} />
             </div>
 
@@ -798,6 +819,13 @@ export default function Stats({ session }) {
                 <div style={s.section}>
                   <div style={s.sectionHeadRow}>
                     <h2 style={s.sectionTitle}>⭐️ Reader Level</h2>
+                    <button
+                      type="button"
+                      onClick={() => setShowLevels(true)}
+                      style={{ background: 'transparent', border: 'none', color: theme.rust, cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", padding: 4 }}
+                    >
+                      View all levels →
+                    </button>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
                     <div style={{
@@ -835,28 +863,44 @@ export default function Stats({ session }) {
               {BADGE_CATEGORIES.map(cat => {
                 const catBadges = badges.filter(b => b.category === cat)
                 if (!catBadges.length) return null
+                // The badge to flag as "Up Next" — closest-to-earn locked badge in this category.
+                const upNextId = catBadges
+                  .filter(b => !b.earned)
+                  .sort((a, b) => b.pct - a.pct)[0]?.id
                 return (
                   <div key={cat} style={{ marginBottom: 24 }}>
                     <div style={s.badgeCatLabel}>{cat}</div>
                     <div style={s.badgeGrid}>
                       {catBadges.map(b => {
                         const ts = TIER_STYLES[b.tier]
+                        const isUpNext = b.id === upNextId
                         return (
                           <button
                             key={b.id}
                             type="button"
                             onClick={() => setSelectedBadge(b)}
-                            aria-label={`${b.name} details`}
+                            aria-label={`${b.name} details${isUpNext ? ' (up next)' : ''}`}
                             style={{
                               ...s.badgeCard,
                               background:  b.earned ? ts.bg      : theme.bgSubtle,
-                              borderColor: b.earned ? ts.border  : theme.borderLight,
-                              opacity:     b.earned ? 1 : 0.7,
+                              borderColor: b.earned ? ts.border  : (isUpNext ? theme.rust : theme.borderLight),
+                              borderWidth: isUpNext ? 2 : 1,
+                              boxShadow: isUpNext ? `0 0 0 2px rgba(192,82,30,0.15)` : undefined,
+                              opacity:     b.earned ? 1 : (isUpNext ? 1 : 0.7),
                               cursor: 'pointer',
                               font: 'inherit',
                               color: 'inherit',
+                              position: 'relative',
                             }}
                           >
+                            {isUpNext && (
+                              <div style={{
+                                position: 'absolute', top: -8, right: 8,
+                                fontSize: 9, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase',
+                                background: theme.rust, color: '#fff',
+                                padding: '2px 7px', borderRadius: 10, lineHeight: 1.4,
+                              }}>Up Next</div>
+                            )}
                             <div style={s.badgeEmoji}>{b.earned ? b.emoji : '🔒'}</div>
                             <div style={s.badgeCardName}>{b.name}</div>
                             <div style={s.badgeCardDesc}>{b.desc}</div>
@@ -867,7 +911,7 @@ export default function Stats({ session }) {
                             ) : (
                               <div style={{ width: '100%', marginTop: 4 }}>
                                 <div style={s.badgeProgressBg}>
-                                  <div style={{ ...s.badgeProgressFill, width: `${b.pct}%`, background: ts.text }} />
+                                  <div style={{ ...s.badgeProgressFill, width: `${b.pct}%`, background: isUpNext ? theme.rust : ts.text }} />
                                 </div>
                                 <div style={s.badgeProgressLabel}>
                                   {b.prog.value.toLocaleString()} / {b.prog.max.toLocaleString()} {b.prog.label}
@@ -894,6 +938,12 @@ export default function Stats({ session }) {
         )}
       </div>
       <BadgeDetailModal badge={selectedBadge} onClose={() => setSelectedBadge(null)} />
+      <LevelDetailModal
+        open={showLevels}
+        currentLevel={computeLevelFromBadges(badges).level}
+        currentPoints={computeLevelFromBadges(badges).points}
+        onClose={() => setShowLevels(false)}
+      />
     </div>
   )
 }

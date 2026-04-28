@@ -12,6 +12,7 @@ export default function AuthorDashboard({ session }) {
   const navigate  = useNavigate()
   const [searchParams] = useSearchParams()
   const impersonateName = searchParams.get('as')
+  const fromPath        = searchParams.get('from')
   const { theme } = useTheme()
   const isMobile  = useIsMobile()
 
@@ -260,7 +261,7 @@ export default function AuthorDashboard({ session }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, padding: '10px 14px', background: 'rgba(192,82,30,0.1)', border: `1px solid ${theme.rust}`, borderRadius: 8, fontSize: 13, color: theme.text }}>
             <span style={{ fontSize: 11, fontWeight: 700, background: theme.rust, color: '#fff', padding: '3px 8px', borderRadius: 10, letterSpacing: 0.4 }}>ADMIN VIEW</span>
             <span>Viewing as <strong>{activeAuthor}</strong></span>
-            <button onClick={() => navigate('/author-dashboard')} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: theme.rust, cursor: 'pointer', fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>Exit admin view</button>
+            <button onClick={() => navigate(fromPath || '/admin?tab=authors')} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: theme.rust, cursor: 'pointer', fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>Exit admin view</button>
           </div>
         ) : (
           <p style={s.sub}>Stats across all your claimed author profiles. Numbers reflect the entire Ex Libris user base.</p>

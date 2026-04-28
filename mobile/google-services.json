@@ -1,0 +1,84 @@
+{
+  "project_info": {
+    "project_number": "756424042794",
+    "project_id": "folio-92c76",
+    "storage_bucket": "folio-92c76.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:756424042794:android:2cad7d9f5bd0583a445653",
+        "android_client_info": {
+          "package_name": "com.exlibris.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "756424042794-1d2ftavbihcndeigu8jjc234ja23qao8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyALUrLx7gr8qL2DsUHtfq6-xkuM4wGrMjI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "756424042794-1d2ftavbihcndeigu8jjc234ja23qao8.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "756424042794-raeut6ss1s4ub456g8e5q8cjdb14vdpe.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.exlibris.app",
+                "app_store_id": "6762489856"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:756424042794:android:2e5473dbb0746fe0445653",
+        "android_client_info": {
+          "package_name": "com.exlibrisomnium.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "756424042794-1d2ftavbihcndeigu8jjc234ja23qao8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyALUrLx7gr8qL2DsUHtfq6-xkuM4wGrMjI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "756424042794-1d2ftavbihcndeigu8jjc234ja23qao8.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "756424042794-raeut6ss1s4ub456g8e5q8cjdb14vdpe.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.exlibris.app",
+                "app_store_id": "6762489856"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -21,10 +21,10 @@ android/.gradle/
 android/local.properties
 android/.kotlin/
 
-# Firebase config — uploaded to EAS as a file secret (GOOGLE_SERVICES_JSON);
-# the eas-build-pre-install script restores it during cloud builds.
-google-services.json
-android/app/google-services.json
+# Firebase config: the embedded API key is restricted in Google Cloud
+# (locked to package + SHA-1), so it's safe to commit per Firebase docs.
+# Both paths are committed: top-level for app.json's googleServicesFile,
+# android/app/ for the Gradle plugin during cloud builds.
 
 # Google OAuth client credentials downloaded from GCP — must not ship in git.
 # Web Client Secret lives in Supabase; iOS/Android client IDs are in app.json.

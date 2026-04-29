@@ -65,6 +65,8 @@ export default function Profile({ session }) {
   const [showClearBooks,   setShowClearBooks]   = useState(false)
   const [showDeleteAcct,   setShowDeleteAcct]   = useState(false)
   const [refreshingValues, setRefreshingValues] = useState(false)
+  const [showPrivateConfirm, setShowPrivateConfirm] = useState(false)
+  const [togglingPrivate,    setTogglingPrivate]    = useState(false)
   const [showReport, setShowReport] = useState(false)
   const [blocked, setBlocked] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
@@ -144,7 +146,7 @@ export default function Profile({ session }) {
 
     const { data: prof } = await supabase
       .from('profiles')
-      .select('id, username, bio, is_public, created_at, avatar_url, banner_url, accent_color, featured_book_id, paypal_handle, venmo_handle, level, level_points, books!profiles_featured_book_id_fkey(id, title, author, cover_image_url)')
+      .select('id, username, bio, is_public, is_private, created_at, avatar_url, banner_url, accent_color, featured_book_id, paypal_handle, venmo_handle, level, level_points, books!profiles_featured_book_id_fkey(id, title, author, cover_image_url)')
       .eq('username', username)
       .maybeSingle()
 
@@ -167,7 +169,7 @@ export default function Profile({ session }) {
       isBlocked(prof.id).then(setBlocked)
     }
 
-    if (!prof.is_public && !isOwn) { setLoading(false); return }
+    if ((prof.is_private || !prof.is_public) && !isOwn) { setLoading(false); return }
 
     const { data: entries } = await supabase
       .from('collection_entries')
@@ -276,7 +278,7 @@ export default function Profile({ session }) {
     </div>
   )
 
-  const isPrivate = !profile.is_public && !isOwnProfile
+  const isPrivate = (profile.is_private || !profile.is_public) && !isOwnProfile
   const lvlInfo = getLevelInfo(profile.level || 1, profile.level_points || 0)
 
   return (
@@ -929,6 +931,92 @@ export default function Profile({ session }) {
                 />
                 <span style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{profile?.price_alerts_enabled !== false ? 'On' : 'Off'}</span>
               </label>
+            </div>
+
+            {/* Private mode toggle — full social opt-out */}
+            <div style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 14, padding: '18px 20px', marginTop: 10, display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 12, alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: theme.text, marginBottom: 3 }}>Private mode</div>
+                <div style={{ fontSize: 13, color: theme.textSubtle, lineHeight: 1.5 }}>
+                  Hide your profile, library, posts, and quotes from everyone. You won't appear in search, leaderboards, or activity feeds — and you won't be able to post, comment, recommend books, or send/accept friend requests. You can turn this off anytime.
+                </div>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: togglingPrivate ? 'default' : 'pointer', alignSelf: 'center', opacity: togglingPrivate ? 0.5 : 1 }}>
+                <input
+                  type="checkbox"
+                  disabled={togglingPrivate}
+                  checked={!!profile?.is_private}
+                  onChange={async (e) => {
+                    const wantPrivate = e.target.checked
+                    if (wantPrivate) { setShowPrivateConfirm(true); return }
+                    // Going public — no confirmation
+                    setTogglingPrivate(true)
+                    const { error } = await supabase.rpc('set_private_mode', { p_private: false })
+                    setTogglingPrivate(false)
+                    if (error) { alert(error.message || 'Failed to update privacy.'); return }
+                    setProfile(prev => ({ ...prev, is_private: false, is_public: true }))
+                  }}
+                  style={{ width: 18, height: 18, accentColor: theme.rust }}
+                />
+                <span style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>{profile?.is_private ? 'On' : 'Off'}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Private mode confirmation modal */}
+      {showPrivateConfirm && (
+        <div
+          onClick={() => !togglingPrivate && setShowPrivateConfirm(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(26,18,8,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ background: theme.bgCard, border: `1px solid ${theme.border}`, borderRadius: 16, maxWidth: 480, width: '100%', padding: 24 }}>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: theme.text, marginBottom: 12 }}>Enable private mode?</div>
+            <div style={{ fontSize: 13, color: theme.textSubtle, lineHeight: 1.6, marginBottom: 16 }}>
+              Going private will:
+            </div>
+            <ul style={{ fontSize: 13, color: theme.text, lineHeight: 1.7, paddingLeft: 18, marginBottom: 16 }}>
+              <li>Hide your profile, library, posts, quotes, and book drops from everyone</li>
+              <li>Remove you from search, leaderboards, and activity feeds</li>
+              <li>Block you from posting, commenting, recommending books, or joining clubs</li>
+              <li>Cancel any pending friend requests and buddy-read invites</li>
+              <li>Step you down as admin from any clubs where you're the sole admin (a co-member is promoted, or solo clubs are disbanded)</li>
+            </ul>
+            <div style={{ fontSize: 12, color: theme.textSubtle, marginBottom: 18, fontStyle: 'italic' }}>
+              Your library, badges, and reading log are preserved — they just become invisible. You can turn this off anytime.
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowPrivateConfirm(false)}
+                disabled={togglingPrivate}
+                style={{ padding: '9px 16px', background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13, color: theme.text, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={togglingPrivate}
+                onClick={async () => {
+                  setTogglingPrivate(true)
+                  const { data, error } = await supabase.rpc('set_private_mode', { p_private: true })
+                  setTogglingPrivate(false)
+                  if (error) { alert(error.message || 'Failed to enable private mode.'); return }
+                  setProfile(prev => ({ ...prev, is_private: true, is_public: false }))
+                  setShowPrivateConfirm(false)
+                  // Surface housekeeping side-effects so the user knows what happened
+                  if (data && (data.clubs_disbanded || data.clubs_demoted || data.friend_requests_cancelled || data.buddy_invites_declined)) {
+                    const parts = []
+                    if (data.clubs_demoted)             parts.push(`${data.clubs_demoted} club admin role${data.clubs_demoted === 1 ? '' : 's'} transferred`)
+                    if (data.clubs_disbanded)           parts.push(`${data.clubs_disbanded} solo club${data.clubs_disbanded === 1 ? '' : 's'} disbanded`)
+                    if (data.friend_requests_cancelled) parts.push(`${data.friend_requests_cancelled} friend request${data.friend_requests_cancelled === 1 ? '' : 's'} cancelled`)
+                    if (data.buddy_invites_declined)    parts.push(`${data.buddy_invites_declined} buddy-read invite${data.buddy_invites_declined === 1 ? '' : 's'} declined`)
+                    alert(`Private mode enabled.\n\n${parts.join('\n')}`)
+                  }
+                }}
+                style={{ padding: '9px 18px', background: theme.rust, border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, color: 'white', cursor: togglingPrivate ? 'default' : 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: togglingPrivate ? 0.6 : 1 }}
+              >
+                {togglingPrivate ? 'Enabling…' : 'Go private'}
+              </button>
             </div>
           </div>
         </div>

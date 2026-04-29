@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { fetchUsedPrices } from './fetchUsedPrices'
 import { syncExternalRating } from './externalRating'
+import { lookupHathitrust } from './hathitrust'
 
 function isLikelyEnglish(text) {
   if (!text || text.length < 10) return false
@@ -137,7 +138,20 @@ export async function enrichBook(bookId, { isbn_13, isbn_10, title, author, cove
   const needsCover = isLowQualityCover(cover_image_url)
   const needsDesc  = !description
 
-  const [cover, desc, valResult, usedResult] = await Promise.all([
+  // Skip the existing-row read entirely when there's no ISBN — without one,
+  // HathiTrust can't be queried regardless of which fields are missing.
+  const existing = isbn
+    ? (await supabase.from('books')
+        .select('publisher, pages, language, published_year')
+        .eq('id', bookId)
+        .maybeSingle()).data
+    : null
+  const needsCatalog = !!existing && (
+    !existing.publisher || !existing.pages ||
+    !existing.language  || !existing.published_year
+  )
+
+  const [cover, desc, valResult, usedResult, , hathi] = await Promise.all([
     needsCover ? fetchBestCover(isbn, title, author) : Promise.resolve(null),
     needsDesc  ? fetchOLDescription(isbn, title, author) : Promise.resolve(null),
     supabase.functions.invoke('get-book-valuation', { body: { isbn, title, author } }),
@@ -145,15 +159,24 @@ export async function enrichBook(bookId, { isbn_13, isbn_10, title, author, cove
     // Pull a default community rating from Google Books / Open Library so the
     // book has something to display until any Ex Libris user rates it.
     syncExternalRating(bookId, { isbn_13, isbn_10, title, author }).catch(() => null),
+    needsCatalog ? lookupHathitrust({ isbn }) : Promise.resolve(null),
   ])
 
   // Upload cover to our Storage bucket so it's cached on our CDN
   const storedCover = cover ? await uploadCoverToStorage(cover, bookId) : null
 
-  // Update books table with whatever we found
+  // Update books table with whatever we found. Only set HathiTrust fields
+  // that are currently null on the row, so we never clobber user edits or
+  // data from a higher-priority source.
   const updates = {}
   if (storedCover) updates.cover_image_url = storedCover
   if (desc)        updates.description      = desc
+  if (hathi) {
+    if (!existing?.publisher      && hathi.publisher)      updates.publisher      = hathi.publisher
+    if (!existing?.pages          && hathi.pages)          updates.pages          = hathi.pages
+    if (!existing?.language       && hathi.language)       updates.language       = hathi.language
+    if (!existing?.published_year && hathi.published_year) updates.published_year = hathi.published_year
+  }
   if (Object.keys(updates).length > 0) {
     await supabase.from('books').update(updates).eq('id', bookId)
   }

@@ -356,6 +356,11 @@ export default function ProfileScreen() {
         <Text style={styles.friendsBtnArrow}>›</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity style={styles.menuBtn} onPress={() => router.push('/privacy' as any)}>
+        <Text style={styles.menuBtnText}>🔒  Privacy</Text>
+        <Text style={styles.friendsBtnArrow}>›</Text>
+      </TouchableOpacity>
+
       {/* ── Get Physical ── */}
       {ebooks.length > 0 && (
         <View style={styles.getPhysicalSection}>

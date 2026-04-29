@@ -31,12 +31,16 @@ interface SearchResult {
   isbn13: string | null;
   isbn10: string | null;
   genre: string | null;
-  source: 'folio' | 'openlibrary' | 'google';
+  source: 'folio' | 'openlibrary' | 'google' | 'hathitrust';
   bookId: string | null;
   addedStatus?: ReadStatus | null;
   adding?: boolean;
   inLibrary?: boolean;
   readStatus?: ReadStatus | null;
+  // HathiTrust supplies cataloging-grade extras worth persisting
+  publisher?: string | null;
+  pages?: number | null;
+  language?: string | null;
 }
 
 interface SectionHeaderItem {
@@ -53,6 +57,23 @@ const STATUS_OPTIONS: { key: ReadStatus; label: string }[] = [
   { key: 'reading', label: 'Reading' },
   { key: 'want', label: 'Want' },
 ];
+
+// Recognize an explicit HathiTrust identifier in the search box so users can
+// paste a catalog URL or `oclc:12345` / `lccn:foo` / `record:000577141` and
+// jump straight to that exact record.
+function parseHathitrustQuery(q: string): { type: string; value: string } | null {
+  if (!q) return null;
+  const trimmed = q.trim();
+  const url = trimmed.match(/catalog\.hathitrust\.org\/Record\/(\w+)/i);
+  if (url) return { type: 'recordnumber', value: url[1] };
+  const pre = trimmed.match(/^(oclc|lccn|issn|recordnumber|record|htrec)\s*[:/\s]\s*([\w-]+)$/i);
+  if (pre) {
+    const prefix = pre[1].toLowerCase();
+    const type = prefix === 'record' || prefix === 'htrec' ? 'recordnumber' : prefix;
+    return { type, value: pre[2] };
+  }
+  return null;
+}
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -118,6 +139,44 @@ export default function SearchScreen() {
     setSearched(true);
     saveRecentSearch(q);
     try {
+      // Direct HathiTrust lookup if the user pasted a catalog URL or typed
+      // `oclc:NNN`/`lccn:NNN`/`record:NNN`. Lets users land on the exact
+      // edition of an old book they already found on HathiTrust.
+      const ht = parseHathitrustQuery(q);
+      if (ht) {
+        const { data } = await supabase.functions
+          .invoke('lookup-hathitrust', { body: { [ht.type]: ht.value } })
+          .catch(() => ({ data: null }));
+        if (data?.found) {
+          const isbnForCover = data.isbn_13 || data.isbn_10;
+          const cover = isbnForCover
+            ? `https://covers.openlibrary.org/b/isbn/${isbnForCover}-L.jpg?default=false`
+            : null;
+          setResults([{
+            key:          `ht-${data.record_id}`,
+            title:        data.title || q,
+            author:       data.author || 'Unknown author',
+            coverUrl:     cover,
+            saveCoverUrl: cover,
+            year:         data.published_year ?? null,
+            isbn13:       data.isbn_13 ?? null,
+            isbn10:       data.isbn_10 ?? null,
+            genre:        null,
+            source:       'hathitrust',
+            bookId:       null,
+            addedStatus:  null,
+            adding:       false,
+            publisher:    data.publisher ?? null,
+            pages:        data.pages ?? null,
+            language:     data.language ?? null,
+          }]);
+        } else {
+          setResults([]);
+        }
+        setLoading(false);
+        return;
+      }
+
       const stripped = q.replace(/[-\s]/g, '');
       const isIsbn   = /^\d{10,13}$/.test(stripped);
 
@@ -144,7 +203,20 @@ export default function SearchScreen() {
         }
       };
 
-      const [olJson, gbJson, { data: folioBooks }] = await Promise.all([
+      // HathiTrust API is identifier-only (no free-text endpoint), so we only
+      // call it when the query looks like an ISBN. It's the best source for
+      // old, rare, or out-of-print titles that OL and Google Books don't carry.
+      const hathiLookup = (ids: Record<string, string>) =>
+        supabase.functions
+          .invoke('lookup-hathitrust', { body: ids })
+          .then(({ data }: any) => (data?.found ? data : null))
+          .catch((err: any) => { console.warn('[Search] HathiTrust failed:', err?.message ?? err); return null; });
+
+      const hathiPromise: Promise<any | null> = isIsbn
+        ? hathiLookup({ isbn: stripped })
+        : Promise.resolve(null);
+
+      const [olJson, gbJson, { data: folioBooks }, hathiData] = await Promise.all([
         fetchJson(
           `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&fields=key,title,author_name,isbn,cover_i,first_publish_year&limit=30`
         ).catch((err: any) => { console.warn('[Search] OpenLibrary failed:', err?.message ?? err); return { docs: [] }; }),
@@ -152,6 +224,7 @@ export default function SearchScreen() {
           `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=30`
         ).catch((err: any) => { console.warn('[Search] Google Books failed:', err?.message ?? err); return { items: [] }; }),
         folioQ,
+        hathiPromise,
       ]);
 
       // Normalize Folio results
@@ -245,6 +318,97 @@ export default function SearchScreen() {
           return true;
         });
 
+      // OL → OCLC → HathiTrust bridge. OL search returns work-level docs that
+      // don't carry OCLC numbers, so for old / rare candidates we fetch their
+      // editions, find an OCLC, and ask HathiTrust by OCLC. Hits replace the
+      // OL result so the user sees richer cataloging metadata for old books.
+      if (!isIsbn && olResults.length > 0) {
+        const candidates: { idx: number; r: SearchResult }[] = [];
+        olResults.forEach((r, idx) => {
+          const old = !r.year || r.year < 1990 || (!r.isbn13 && !r.isbn10);
+          if (old && candidates.length < 3) candidates.push({ idx, r });
+        });
+        if (candidates.length) {
+          const oclcs = await Promise.all(
+            candidates.map(async ({ r }) => {
+              const workKey = r.key.replace(/^ol-/, '');
+              try {
+                const editions = await fetchJson(
+                  `https://openlibrary.org${workKey}/editions.json?limit=20`,
+                  6000,
+                );
+                const withOclc = (editions?.entries ?? []).filter(
+                  (e: any) => Array.isArray(e.oclc_numbers) && e.oclc_numbers.length > 0,
+                );
+                withOclc.sort((a: any, b: any) => {
+                  const ay = parseInt(String(a.publish_date || '9999').match(/\d{4}/)?.[0] || '9999', 10);
+                  const by = parseInt(String(b.publish_date || '9999').match(/\d{4}/)?.[0] || '9999', 10);
+                  return ay - by;
+                });
+                return withOclc[0]?.oclc_numbers?.[0] ?? null;
+              } catch {
+                return null;
+              }
+            }),
+          );
+          const hathis = await Promise.all(
+            oclcs.map((o: any) => (o ? hathiLookup({ oclc: String(o) }) : Promise.resolve(null))),
+          );
+          candidates.forEach(({ idx, r }, j) => {
+            const h = hathis[j];
+            if (!h) return;
+            olResults[idx] = {
+              ...r,
+              source:    'hathitrust',
+              title:     h.title || r.title,
+              author:    h.author || r.author,
+              year:      h.published_year ?? r.year,
+              isbn13:    r.isbn13 || h.isbn_13 || null,
+              isbn10:    r.isbn10 || h.isbn_10 || null,
+              genre:     r.genre, // keep OL's; HathiTrust subjects are MARC-flavored
+              publisher: h.publisher ?? null,
+              pages:     h.pages ?? null,
+              language:  h.language ?? null,
+            };
+          });
+        }
+      }
+
+      // HathiTrust hit (only present for ISBN searches). Skip if the same
+      // ISBN already appeared in Folio / OL / Google.
+      const hathiResults: SearchResult[] = [];
+      if (hathiData) {
+        const i13 = hathiData.isbn_13 || null;
+        const i10 = hathiData.isbn_10 || null;
+        const dup =
+          (i13 && seenIsbn13.has(i13)) ||
+          (i10 && seenIsbn10.has(i10));
+        if (!dup) {
+          const isbnForCover = i13 || i10;
+          const cover = isbnForCover
+            ? `https://covers.openlibrary.org/b/isbn/${isbnForCover}-L.jpg?default=false`
+            : null;
+          hathiResults.push({
+            key:          `ht-${hathiData.record_id}`,
+            title:        hathiData.title || stripped,
+            author:       hathiData.author || 'Unknown author',
+            coverUrl:     cover,
+            saveCoverUrl: cover,
+            year:         hathiData.published_year ?? null,
+            isbn13:       i13,
+            isbn10:       i10,
+            genre:        null,
+            source:       'hathitrust',
+            bookId:       null,
+            addedStatus:  null,
+            adding:       false,
+            publisher:    hathiData.publisher ?? null,
+            pages:        hathiData.pages ?? null,
+            language:     hathiData.language ?? null,
+          });
+        }
+      }
+
       // Check which folio books are in the user's library
       const { data: { user } } = await supabase.auth.getUser();
       let libraryBookIds = new Set<string>();
@@ -269,7 +433,7 @@ export default function SearchScreen() {
         readStatus: r.bookId ? (libraryStatusMap[r.bookId] || null) : null,
       }));
 
-      const allResults: SearchResult[] = [...taggedFolio, ...olResults, ...gbResults];
+      const allResults: SearchResult[] = [...taggedFolio, ...olResults, ...gbResults, ...hathiResults];
 
       // Build sectioned list with header items
       const libraryBooks = allResults.filter(r => r.inLibrary);
@@ -355,17 +519,23 @@ export default function SearchScreen() {
 
         // Still not found — insert new book
         if (!bookId) {
+          const insertRow: Record<string, any> = {
+            title:           bookItem.title,
+            author:          bookItem.author,
+            isbn_13:         bookItem.isbn13,
+            isbn_10:         bookItem.isbn10,
+            cover_image_url: bookItem.saveCoverUrl,
+            published_year:  bookItem.year,
+            genre:           bookItem.genre,
+          };
+          // HathiTrust returns richer cataloging data — keep it when present
+          if (bookItem.publisher) insertRow.publisher = bookItem.publisher;
+          if (bookItem.pages)     insertRow.pages     = bookItem.pages;
+          if (bookItem.language)  insertRow.language  = bookItem.language;
+
           const { data: newBook, error: bookError } = await supabase
             .from('books')
-            .insert({
-              title:           bookItem.title,
-              author:          bookItem.author,
-              isbn_13:         bookItem.isbn13,
-              isbn_10:         bookItem.isbn10,
-              cover_image_url: bookItem.saveCoverUrl,
-              published_year:  bookItem.year,
-              genre:           bookItem.genre,
-            })
+            .insert(insertRow)
             .select('id')
             .single();
           if (bookError) throw bookError;
@@ -445,6 +615,9 @@ export default function SearchScreen() {
           </Text>
           {result.year ? (
             <Text style={styles.resultYear}>{result.year}</Text>
+          ) : null}
+          {result.source === 'hathitrust' ? (
+            <Text style={styles.hathiTag}>🏛 HathiTrust</Text>
           ) : null}
 
           {libraryStatus ? (
@@ -543,6 +716,11 @@ export default function SearchScreen() {
                 <Text style={styles.emptyIcon}>📭</Text>
                 <Text style={styles.emptyTitle}>No results found</Text>
                 <Text style={styles.emptySubtitle}>Try a different search term.</Text>
+                <Text style={styles.hathiHint}>
+                  Have an old or rare book? Paste its HathiTrust catalog URL,
+                  or type <Text style={styles.hathiHintCode}>oclc:12345</Text>{' '}
+                  to find the exact edition.
+                </Text>
                 <TouchableOpacity
                   style={styles.manualBtn}
                   onPress={() => router.push('/manual-add' as any)}
@@ -624,6 +802,11 @@ export default function SearchScreen() {
                 <Text style={styles.emptyTitle}>Search for books</Text>
                 <Text style={styles.emptySubtitle}>
                   Find books to add to your library, track reading progress, or save for later.
+                </Text>
+                <Text style={styles.hathiHint}>
+                  Have an old or rare book? Paste its HathiTrust catalog URL,
+                  or type <Text style={styles.hathiHintCode}>oclc:12345</Text>{' '}
+                  to find the exact edition.
                 </Text>
 
                 {/* Quick add buttons */}
@@ -796,6 +979,13 @@ const styles = StyleSheet.create({
     color: Colors.muted,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
   },
+  hathiTag: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.rust,
+    marginTop: 2,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
   addButtons: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -889,6 +1079,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  hathiHint: {
+    fontSize: 12,
+    color: Colors.muted,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: 16,
+    paddingHorizontal: 8,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif', default: 'sans-serif' }),
+  },
+  hathiHintCode: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+    fontSize: 11,
+    color: Colors.ink,
   },
   recentSection: {
     width: '100%',

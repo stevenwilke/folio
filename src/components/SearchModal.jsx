@@ -4,6 +4,7 @@ import ManualAddModal from './ManualAddModal'
 import { useTheme } from '../contexts/ThemeContext'
 import { extractGenre, extractGenreFromGoogleCategories } from '../lib/genres'
 import { enrichBook } from '../lib/enrichBook'
+import { parseHathitrustQuery, lookupHathitrust, fromHathiResult } from '../lib/hathitrust'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const STATUS_LABELS = {
@@ -107,48 +108,6 @@ function titleAuthorKey(title, author) {
   return `${t}|${lastName}`
 }
 
-// Normalize a HathiTrust record into the same shape. HathiTrust covers old /
-// rare / academic books that OL and Google Books often miss — the API only
-// takes identifiers, so we only call it on ISBN searches.
-function fromHathi(rec) {
-  const isbn = rec.isbn_13 || rec.isbn_10
-  // HathiTrust doesn't serve cover thumbnails for catalog records; fall back
-  // to OL covers by ISBN. Returns 404 silently if OL has no cover.
-  const cover = isbn
-    ? `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false`
-    : null
-  return {
-    key:          `ht-${rec.record_id}`,
-    title:        rec.title,
-    author:       rec.author || 'Unknown author',
-    coverUrl:     cover,
-    saveCoverUrl: cover,
-    year:         rec.published_year || null,
-    isbn13:       rec.isbn_13 || null,
-    isbn10:       rec.isbn_10 || null,
-    genre:        extractGenre(rec.subjects),
-    source:       'hathitrust',
-    bookId:       null,
-    publisher:    rec.publisher || null,
-    pages:        rec.pages || null,
-    language:     rec.language || null,
-    recordUrl:    rec.record_url || null,
-  }
-}
-
-// Look up a HathiTrust record via the edge function. Accepts any one of
-// isbn/oclc/lccn/recordnumber. Returns the normalized result or null on
-// miss / error — never throws.
-async function lookupHathitrust(ids) {
-  const body = typeof ids === 'string' ? { isbn: ids } : ids
-  try {
-    const { data } = await supabase.functions.invoke('lookup-hathitrust', { body })
-    return data?.found ? fromHathi(data) : null
-  } catch {
-    return null
-  }
-}
-
 // Pull the oldest edition's first OCLC for a given OL work key. Returns null
 // if the work has no editions with OCLCs cataloged. Used to bridge OL's
 // work-level search results into HathiTrust by-OCLC lookups, since OL doesn't
@@ -186,26 +145,6 @@ function looksOldOrRare(r) {
   return false
 }
 
-// Recognize an explicit HathiTrust identifier in the search box so users can
-// paste a catalog URL or `oclc:12345` / `lccn:foo` / `record:000577141` and
-// jump straight to that exact record. Returns null for normal title/ISBN
-// queries (those go through the standard search path).
-function parseHathitrustQuery(q) {
-  if (!q) return null
-  const trimmed = q.trim()
-  // Full HathiTrust catalog URL
-  const url = trimmed.match(/catalog\.hathitrust\.org\/Record\/(\w+)/i)
-  if (url) return { type: 'recordnumber', value: url[1] }
-  // Prefixed identifier: "oclc:NNNN", "lccn: foo", "record/000…", etc.
-  const pre = trimmed.match(/^(oclc|lccn|issn|recordnumber|record|htrec)\s*[:/\s]\s*([\w-]+)$/i)
-  if (pre) {
-    const prefix = pre[1].toLowerCase()
-    const type = prefix === 'record' || prefix === 'htrec' ? 'recordnumber' : prefix
-    return { type, value: pre[2] }
-  }
-  return null
-}
-
 export default function SearchModal({ session, onClose, onAdded = () => {} }) {
   const { theme } = useTheme()
   const isMobile = useIsMobile()
@@ -239,7 +178,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
     const ht = parseHathitrustQuery(query)
     if (ht) {
       const hit = await lookupHathitrust({ [ht.type]: ht.value })
-      setResults(hit ? [hit] : [])
+      setResults(hit ? [fromHathiResult(hit)] : [])
       setSearching(false)
       return
     }
@@ -272,7 +211,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
         ).then(r => r.json()).catch(() => ({ docs: [] })),
         folioQ,
         // HathiTrust API is identifier-only — only call it on ISBN searches
-        isIsbn ? lookupHathitrust(stripped) : Promise.resolve(null),
+        isIsbn ? lookupHathitrust({ isbn: stripped }).then(r => r && fromHathiResult(r)) : Promise.resolve(null),
         // Google Books — better typo tolerance than OL, catches misspellings
         fetch(googleBooksUrl(query)).then(r => r.json()).catch(() => ({ items: [] })),
       ])
@@ -349,7 +288,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
             candidates.map(({ r }) => fetchOclcForOLWork(r.key.replace(/^ol-/, ''))),
           )
           const hathis = await Promise.all(
-            oclcs.map((o) => (o ? lookupHathitrust({ oclc: o }) : Promise.resolve(null))),
+            oclcs.map((o) => (o ? lookupHathitrust({ oclc: o }).then(r => r && fromHathiResult(r)) : Promise.resolve(null))),
           )
           candidates.forEach(({ r, i }, j) => {
             const h = hathis[j]
@@ -420,7 +359,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
                 `https://openlibrary.org/search.json?q=${encodeURIComponent(isbn)}&fields=key,title,author_name,isbn,cover_i,first_publish_year,subject&limit=20`
               ).then(r => r.json()).catch(() => ({ docs: [] })),
               folioQ,
-              lookupHathitrust(stripped),
+              lookupHathitrust({ isbn: stripped }).then(r => r && fromHathiResult(r)),
             ])
             const folioResults = (folioBooks || []).map(fromFolio)
             const folioIsbn13s = new Set(folioResults.map(r => r.isbn13).filter(Boolean))

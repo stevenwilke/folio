@@ -28,6 +28,8 @@ interface Profile {
   bio: string | null;
   avatar_url: string | null;
   banner_url: string | null;
+  is_private: boolean | null;
+  is_public:  boolean | null;
 }
 
 interface CollectionEntry {
@@ -84,7 +86,7 @@ export default function UserProfileScreen() {
 
     const { data: prof } = await supabase
       .from('profiles')
-      .select('id, username, bio, avatar_url, banner_url')
+      .select('id, username, bio, avatar_url, banner_url, is_private, is_public')
       .eq('username', username)
       .maybeSingle();
 
@@ -96,6 +98,17 @@ export default function UserProfileScreen() {
     }
 
     setProfile(prof as Profile);
+
+    // Skip the rest of the data fetch when this is someone else's private
+    // account — the body renders a "this account is private" state instead.
+    const viewingPrivate = !!user && user.id !== prof.id && (prof.is_private || prof.is_public === false);
+    if (viewingPrivate) {
+      setEntries([]);
+      setBlocked(false);
+      setFriendship('none');
+      setLoading(false);
+      return;
+    }
 
     // Books (exclude "want" from the main grid to match Library behavior)
     const { data: coll } = await supabase
@@ -261,6 +274,19 @@ export default function UserProfileScreen() {
         <Stack.Screen options={{ title: 'Profile' }} />
         <Text style={styles.notFoundTitle}>Profile not found</Text>
         <Text style={styles.notFoundBody}>No user with that username.</Text>
+      </View>
+    );
+  }
+
+  // Private-account placeholder for non-owners.
+  if (!isOwnProfile && (profile.is_private || profile.is_public === false)) {
+    return (
+      <View style={styles.loader}>
+        <Stack.Screen options={{ title: `@${profile.username ?? ''}` }} />
+        <Text style={styles.notFoundTitle}>This account is private</Text>
+        <Text style={styles.notFoundBody}>
+          @{profile.username} has chosen to keep their library, posts, and activity private.
+        </Text>
       </View>
     );
   }

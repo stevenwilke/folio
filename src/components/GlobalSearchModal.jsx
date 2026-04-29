@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useTheme } from '../contexts/ThemeContext'
+import { parseHathitrustQuery, lookupHathitrust } from '../lib/hathitrust'
 
 const STATUS_OPTIONS = [
   { value: 'owned',   label: 'Owned' },
@@ -91,6 +92,44 @@ export default function GlobalSearchModal({ session, onClose }) {
     setInterp('')
     setChatAnswer(null)
     setHasSearched(true)
+
+    // If the user pasted a HathiTrust catalog URL or typed `oclc:NNN` /
+    // `lccn:NNN` / `record:NNN`, look it up directly. This lets users land
+    // on the exact edition of an old book they found on HathiTrust without
+    // bouncing to a different search surface.
+    const ht = parseHathitrustQuery(q)
+    if (ht) {
+      try {
+        const data = await lookupHathitrust({ [ht.type]: ht.value })
+        if (data) {
+          const isbn = data.isbn_13 || data.isbn_10
+          const cover = isbn
+            ? `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false`
+            : null
+          setResults([{
+            id:          `ht:${data.record_id}`,
+            title:       data.title || q,
+            author:      data.author || null,
+            year:        data.published_year ? String(data.published_year) : null,
+            cover,
+            description: null,
+            isbn13:      data.isbn_13 || null,
+            isbn10:      data.isbn_10 || null,
+            categories:  ['HathiTrust'],
+            pageCount:   data.pages || null,
+            publisher:   data.publisher || null,
+            avgRating:   null,
+          }])
+        } else {
+          setResults([])
+        }
+      } catch (e) {
+        console.error('HathiTrust lookup error:', e)
+        setResults([])
+      }
+      setLoading(false)
+      return
+    }
 
     // Run local DB search in parallel for title + author, then check library status
     const localPromise = (async () => {
@@ -455,6 +494,12 @@ export default function GlobalSearchModal({ session, onClose }) {
               <div style={{ fontSize: 13, color: muted, marginTop: 4, fontFamily: "'DM Sans', sans-serif" }}>
                 Try different keywords{aiMode ? ' or rephrase your question' : ' or switch on AI Search'}
               </div>
+              <div style={{ fontSize: 12, color: muted, marginTop: 14, padding: '0 12px', maxWidth: 460, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif" }}>
+                Have an old or rare book? Paste its{' '}
+                <a href="https://catalog.hathitrust.org" target="_blank" rel="noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 500 }}>HathiTrust catalog</a>{' '}
+                URL, or type <code style={{ fontFamily: 'ui-monospace, "SF Mono", monospace', fontSize: 11, background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', padding: '1px 5px', borderRadius: 3, color: text }}>oclc:12345</code>{' '}
+                to find the exact edition.
+              </div>
             </div>
           )}
 
@@ -464,6 +509,11 @@ export default function GlobalSearchModal({ session, onClose }) {
                 Search millions of books · Add them to your library instantly
                 <br />
                 <span style={{ opacity: 0.7 }}>Try "Cormac McCarthy" · "978-0-7432-7356-5" · "books about survival"</span>
+              </div>
+              <div style={{ fontSize: 12, color: muted, marginTop: 18, padding: '0 12px', maxWidth: 460, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.6, fontFamily: "'DM Sans', sans-serif" }}>
+                Looking for an old or rare book? Paste a{' '}
+                <a href="https://catalog.hathitrust.org" target="_blank" rel="noreferrer" style={{ color: accent, textDecoration: 'none', fontWeight: 500 }}>HathiTrust catalog</a>{' '}
+                URL or type <code style={{ fontFamily: 'ui-monospace, "SF Mono", monospace', fontSize: 11, background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', padding: '1px 5px', borderRadius: 3, color: text }}>oclc:12345</code>.
               </div>
             </div>
           )}

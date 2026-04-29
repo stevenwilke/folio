@@ -22,8 +22,16 @@ import {
 import { supabase } from '../lib/supabase';
 import { Colors } from '../constants/colors';
 
+const googleWebClientId = Constants.expoConfig?.extra?.googleWebClientId as
+  | string
+  | undefined;
+if (!googleWebClientId) {
+  throw new Error(
+    'Missing expo.extra.googleWebClientId in app.json — Google Sign-In cannot initialize.'
+  );
+}
 GoogleSignin.configure({
-  webClientId: Constants.expoConfig?.extra?.googleWebClientId as string,
+  webClientId: googleWebClientId,
   scopes: ['profile', 'email'],
 });
 
@@ -31,6 +39,19 @@ const TERMS_URL = 'https://exlibrisomnium.com/terms';
 const PRIVACY_URL = 'https://exlibrisomnium.com/privacy';
 
 type Mode = 'signin' | 'signup';
+
+async function setFullNameIfMissing(
+  userId: string,
+  fullName: string | undefined | null
+) {
+  const trimmed = fullName?.trim();
+  if (!trimmed) return;
+  await supabase
+    .from('profiles')
+    .update({ full_name: trimmed })
+    .eq('id', userId)
+    .is('full_name', null);
+}
 
 export default function AuthScreen() {
   const [mode, setMode] = useState<Mode>('signin');
@@ -58,14 +79,8 @@ export default function AuthScreen() {
         token: idToken,
       });
       if (error) throw error;
-
-      const fullName = result.data?.user?.name?.trim();
-      if (fullName && data.user?.id) {
-        await supabase
-          .from('profiles')
-          .update({ full_name: fullName })
-          .eq('id', data.user.id)
-          .is('full_name', null);
+      if (data.user) {
+        await setFullNameIfMissing(data.user.id, result.data?.user?.name);
       }
     } catch (err: any) {
       if (
@@ -101,14 +116,9 @@ export default function AuthScreen() {
         credential.fullName?.familyName,
       ]
         .filter(Boolean)
-        .join(' ')
-        .trim();
-      if (fullName && data.user?.id) {
-        await supabase
-          .from('profiles')
-          .update({ full_name: fullName })
-          .eq('id', data.user.id)
-          .is('full_name', null);
+        .join(' ');
+      if (data.user) {
+        await setFullNameIfMissing(data.user.id, fullName);
       }
     } catch (err: any) {
       if (err?.code === 'ERR_REQUEST_CANCELED') return;

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Link, useSearchParams } from 'r
 import { supabase } from './lib/supabase'
 import { ThemeProvider } from './contexts/ThemeContext'
 import Auth from './pages/Auth'
+import Home from './pages/Home'
 import Library from './pages/Library'
 import Profile from './pages/Profile'
 import Feed from './pages/Feed'
@@ -57,6 +58,12 @@ function AppRoutes({ session }) {
             path="/"
             element={session ? <Library session={session} /> : <LandingOrBookRedirect />}
           />
+          <Route
+            path="/catalog"
+            element={session ? <Home session={session} /> : <Navigate to="/" replace />}
+          />
+          {/* Legacy alias for the brief period this page was called /home */}
+          <Route path="/home" element={<Navigate to="/catalog" replace />} />
           <Route
             path="/profile/:username"
             element={<Profile session={session} />}

@@ -14,6 +14,7 @@ import { clearCachedUsername } from '../lib/currentUser'
 
 const NAV_ITEMS = [
   { label: 'Library',     path: '/' },
+  { label: 'Catalog',     path: '/catalog' },
   { label: 'Discover',    path: '/discover' },
   { label: 'Feed',        path: '/feed' },
   { label: 'Friends',     path: '/friends' },

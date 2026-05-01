@@ -6,12 +6,13 @@ import { useIsMobile } from '../hooks/useIsMobile'
 
 const TABS = [
   { path: '/',         icon: '📚', label: 'Library'  },
+  { path: '/catalog',  icon: '📇', label: 'Catalog'  },
   { path: '/discover', icon: '🔍', label: 'Discover' },
   { path: '/feed',     icon: '📖', label: 'Feed'     },
-  { path: '/loans',    icon: '🤝', label: 'Loans'    },
 ]
 
 const MORE_ITEMS = [
+  { path: '/loans',       icon: '🤝', label: 'Loans'       },
   { path: '/nearby',      icon: '📍', label: 'Nearby'      },
   { path: '/friends',     icon: '👥', label: 'Friends'     },
   { path: '/marketplace', icon: '🏪', label: 'Marketplace' },

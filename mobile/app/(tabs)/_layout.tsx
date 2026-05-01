@@ -24,7 +24,11 @@ const TABS: TabConfig[] = [
   { name: 'marketplace', title: 'Market',    icon: 'storefront-outline', activeIcon: 'storefront' },
 ];
 
-const HIDDEN_TABS = ['profile', 'loans'];
+const HIDDEN_TABS: { name: string; title?: string }[] = [
+  { name: 'profile' },
+  { name: 'loans' },
+  { name: 'catalog', title: 'Card Catalog' },
+];
 
 function NotificationBell() {
   const router = useRouter();
@@ -115,6 +119,20 @@ function HeaderRight() {
   );
 }
 
+function CatalogButton() {
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      onPress={() => router.push('/catalog')}
+      style={{ marginLeft: 12, padding: 6 }}
+      activeOpacity={0.7}
+      accessibilityLabel="Open card catalog"
+    >
+      <Ionicons name="library-outline" size={22} color={Colors.ink} />
+    </TouchableOpacity>
+  );
+}
+
 function AvatarButton() {
   const router = useRouter();
   const pathname = usePathname();
@@ -187,6 +205,7 @@ export default function TabsLayout() {
         },
         headerShadowVisible: false,
         headerTintColor: Colors.rust,
+        headerLeft: () => <CatalogButton />,
         headerRight: () => <HeaderRight />,
       }}
     >
@@ -202,12 +221,14 @@ export default function TabsLayout() {
           }}
         />
       ))}
-      {HIDDEN_TABS.map((name) => (
+      {HIDDEN_TABS.map(({ name, title }) => (
         <Tabs.Screen
           key={name}
           name={name}
           options={{
             href: null,
+            ...(title && { title }),
+            headerLeft: () => <CatalogButton />,
             headerRight: () => <HeaderRight />,
           }}
         />

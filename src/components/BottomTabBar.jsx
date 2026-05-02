@@ -329,7 +329,10 @@ export default function BottomTabBar({ session }) {
             width: 4, height: 4, borderRadius: '50%',
             background: moreActive ? theme.rust : 'transparent', marginBottom: 2,
           }} />
-          <span style={{ fontSize: 22, lineHeight: 1 }}>☰</span>
+          <span style={{
+            fontSize: 22, lineHeight: 1, fontWeight: 700,
+            color: moreActive ? theme.rust : theme.navText,
+          }}>☰</span>
           <span style={{
             fontSize: 10, fontFamily: "'DM Sans', sans-serif",
             color: moreActive ? theme.rust : theme.textSubtle,

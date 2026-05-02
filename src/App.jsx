@@ -209,8 +209,13 @@ export default function App() {
       setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session)
+      // After sign-out, drop the user on the landing/login page so they
+      // can't keep poking at public-route content (own profile, /book/..., etc).
+      if (event === 'SIGNED_OUT') {
+        window.location.replace('/')
+      }
     })
 
     return () => subscription.unsubscribe()

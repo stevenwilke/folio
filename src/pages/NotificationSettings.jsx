@@ -95,6 +95,13 @@ export default function NotificationSettings({ session }) {
     persistAll(next)
   }
 
+  function setAllChannels(value) {
+    const next = { ...prefs }
+    for (const t of allTypes) next[t.key] = { in_app: value, email: value, push: value }
+    setPrefs(next)
+    persistAll(next)
+  }
+
   async function persistAll(next) {
     setSaving(true)
     const rows = allTypes.map(t => ({
@@ -130,7 +137,13 @@ export default function NotificationSettings({ session }) {
     cell:      { display: 'flex', alignItems: 'center', justifyContent: 'center' },
     saveStrip: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, fontSize: 12, color: theme.textSubtle, minHeight: 18 },
     bulkBtn:   { background: 'transparent', border: 'none', color: theme.rust, fontSize: 11, cursor: 'pointer', padding: 0, marginTop: 4, fontFamily: "'DM Sans', sans-serif" },
+    quickRow:  { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+    quickBtn:  { background: theme.bgCard, border: `1px solid ${theme.border}`, color: theme.text, padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
+    quickBtnOff: { background: 'rgba(192,82,30,0.08)', border: `1px solid ${theme.rust}`, color: theme.rust, padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" },
   }
+
+  const channelAnyOn = (channel) => allTypes.some(t => prefs[t.key]?.[channel])
+  const anyOn = CHANNELS.some(c => channelAnyOn(c.key))
 
   if (loading) {
     return (
@@ -150,6 +163,27 @@ export default function NotificationSettings({ session }) {
       <div style={s.inner}>
         <h1 style={s.heading}>Notifications</h1>
         <p style={s.sub}>Choose how you want to hear about activity on your account. Changes save automatically.</p>
+
+        <div style={s.quickRow}>
+          <button
+            style={anyOn ? s.quickBtnOff : s.quickBtn}
+            onClick={() => setAllChannels(!anyOn)}
+          >
+            {anyOn ? '🔕 Turn off all notifications' : '🔔 Turn on all notifications'}
+          </button>
+          {CHANNELS.map(c => {
+            const on = channelAnyOn(c.key)
+            return (
+              <button
+                key={c.key}
+                style={on ? s.quickBtnOff : s.quickBtn}
+                onClick={() => setAllForChannel(c.key, !on)}
+              >
+                {on ? `Turn off all ${c.label.toLowerCase()}` : `Turn on all ${c.label.toLowerCase()}`}
+              </button>
+            )
+          })}
+        </div>
 
         <div style={s.card}>
           <div style={s.headRow}>

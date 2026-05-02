@@ -1,25 +1,26 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { preflight, requireUser, serviceClient, rateLimit, jsonResponse, handleError } from '../_shared/auth.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+const MAX_QUERY_LEN  = 500
+const MAX_COLLECTION = 200
+const RATE_LIMIT_PER_HOUR = 30
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  const pre = preflight(req); if (pre) return pre
 
   try {
-    const { query, collection } = await req.json()
+    const { user } = await requireUser(req)
+    await rateLimit(serviceClient(), user.id, 'ai-book-search', RATE_LIMIT_PER_HOUR)
+
+    const body = await req.json()
+    const queryRaw   = String(body?.query ?? '').slice(0, MAX_QUERY_LEN)
+    const collection = Array.isArray(body?.collection) ? body.collection.slice(0, MAX_COLLECTION) : null
     const apiKey = Deno.env.get('GEMINI_API_KEY')
 
-    if (!query?.trim()) {
-      return new Response(
-        JSON.stringify({ books: [], interpretation: '' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    if (!queryRaw.trim()) {
+      return jsonResponse({ books: [], interpretation: '' })
     }
+    const query = queryRaw
 
     // ── Build the Gemini prompt ──────────────────────────────────────────────
     // If the user's collection is provided, give Gemini context to answer
@@ -119,10 +120,7 @@ Respond with ONLY valid JSON — no markdown, no explanation:
 
     // ── Chat response — no Google Books call needed ──────────────────────────
     if (responseType === 'chat') {
-      return new Response(
-        JSON.stringify({ type: 'chat', answer: chatAnswer, interpretation }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return jsonResponse({ type: 'chat', answer: chatAnswer, interpretation })
     }
 
     // ── Discovery response — search Google Books ─────────────────────────────
@@ -131,10 +129,7 @@ Respond with ONLY valid JSON — no markdown, no explanation:
     )
 
     if (!googleRes.ok) {
-      return new Response(
-        JSON.stringify({ books: [], interpretation, error: 'google_books_error' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return jsonResponse({ books: [], interpretation, error: 'google_books_error' })
     }
 
     const googleData = await googleRes.json()
@@ -154,15 +149,8 @@ Respond with ONLY valid JSON — no markdown, no explanation:
       ratingsCount: item.volumeInfo.ratingsCount || null,
     }))
 
-    return new Response(
-      JSON.stringify({ type: 'search', books, interpretation }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return jsonResponse({ type: 'search', books, interpretation })
   } catch (err) {
-    console.error('ai-book-search error:', err)
-    return new Response(
-      JSON.stringify({ books: [], interpretation: '', error: String(err) }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-    )
+    return handleError(err)
   }
 })

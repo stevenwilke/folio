@@ -1,31 +1,28 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { preflight, requireUser, serviceClient, rateLimit, jsonResponse, jsonError, handleError } from '../_shared/auth.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+// 8 MB raw cap on the base64 image (≈6 MB binary).
+const MAX_IMAGE_LEN = 8 * 1024 * 1024
+const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'])
+const RATE_LIMIT_PER_HOUR = 8
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  const pre = preflight(req); if (pre) return pre
 
   try {
+    const { user } = await requireUser(req)
+    await rateLimit(serviceClient(), user.id, 'analyze-shelf', RATE_LIMIT_PER_HOUR)
+
     const { imageBase64, mimeType = 'image/jpeg' } = await req.json()
 
     const apiKey = Deno.env.get('GEMINI_API_KEY')
-    if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: 'GEMINI_API_KEY not configured' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-      )
+    if (!apiKey) return jsonError('GEMINI_API_KEY not configured', 500)
+    if (!imageBase64) return jsonError('No image provided', 400)
+    if (typeof imageBase64 !== 'string' || imageBase64.length > MAX_IMAGE_LEN) {
+      return jsonError('Image too large', 413)
     }
-
-    if (!imageBase64) {
-      return new Response(
-        JSON.stringify({ error: 'No image provided' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      )
+    if (!ALLOWED_MIME.has(mimeType)) {
+      return jsonError('Unsupported image type', 415)
     }
 
     const prompt = `Analyze this bookshelf photo. The photo may be at an angle. Only count actual enclosed cubbies/sections where books can stand upright — do NOT count the top surface, open areas above the bookcase, or decorative ledges as shelves.
@@ -74,10 +71,7 @@ recognized_books: high confidence only, up to 10.`
     if (!response.ok) {
       const err = await response.text()
       console.error('Gemini API error:', err)
-      return new Response(
-        JSON.stringify({ error: 'Gemini API error', detail: err.slice(0, 200) }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-      )
+      return jsonError('Gemini API error', 502)
     }
 
     const data = await response.json()
@@ -92,31 +86,18 @@ recognized_books: high confidence only, up to 10.`
 
     if (!jsonMatch) {
       console.error('Could not find JSON in response:', text.slice(0, 500))
-      return new Response(
-        JSON.stringify({ error: 'Could not parse shelf analysis', raw: text.slice(0, 300) }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-      )
+      return jsonError('Could not parse shelf analysis', 502)
     }
 
     let result
     try {
       result = JSON.parse(jsonMatch[0])
     } catch (parseErr) {
-      console.error('JSON parse error:', parseErr, 'Raw:', jsonMatch[0].slice(0, 300))
-      return new Response(
-        JSON.stringify({ error: 'Could not parse shelf analysis', raw: text.slice(0, 300) }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-      )
+      console.error('JSON parse error:', parseErr)
+      return jsonError('Could not parse shelf analysis', 502)
     }
-    return new Response(
-      JSON.stringify({ success: true, ...result }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return jsonResponse({ success: true, ...result })
   } catch (err) {
-    console.error('Error:', err)
-    return new Response(
-      JSON.stringify({ error: String(err) }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-    )
+    return handleError(err)
   }
 })

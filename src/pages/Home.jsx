@@ -259,7 +259,7 @@ export default function Home({ session }) {
     updateLayout({ order: DEFAULT_ORDER, hidden: DEFAULT_HIDDEN, sizes: {}, heights: {} })
   }
 
-  useEffect(() => { fetchAll() }, [])
+  useEffect(() => { if (session?.user?.id) fetchAll() }, [session?.user?.id])
   useEffect(() => {
     function onChange() { fetchAll() }
     window.addEventListener('exlibris:bookAdded',   onChange)
@@ -1003,8 +1003,11 @@ function AddPanelChip({ w, theme, isMobile, onAdd, onDragStartFire, onDragEndFir
 // — Hero / Continue Reading ─────────────────────────────────────────────
 function HeroWidget({ data, theme, size = 'large', onOpen }) {
   const lead = data.reading[0]
+  // Stack renders highest index on top (zIndex: 2), so reverse so reading[0]
+  // — the lead the title/progress copy refers to — ends up centered in front.
   const stack = (data.reading.slice(0, 3).length ? data.reading.slice(0, 3) : data.want.slice(0, 3))
     .map(e => e.books).filter(Boolean)
+    .reverse()
   const total = lead?.books?.pages || 0
   const cur = lead?.current_page || 0
   const pct = total ? Math.min(100, Math.round((cur / total) * 100)) : 0

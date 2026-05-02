@@ -364,6 +364,24 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# ── Per-function auth (round 9 lockdowns) ─────────────────────────────────────
+# By default Supabase verifies a valid JWT before invoking an edge function.
+# These three functions are intentionally callable without a JWT:
+#   - export-library: public CSV download for `is_public` profiles
+#   - submit-contact: contact form (anon)
+#   - review-cover:   email-link review flow (token-gated, no JWT)
+# All other functions accept a user JWT or service-role key and validate
+# in code via the helpers in functions/_shared/auth.ts.
+
+[functions.export-library]
+verify_jwt = false
+
+[functions.submit-contact]
+verify_jwt = false
+
+[functions.review-cover]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

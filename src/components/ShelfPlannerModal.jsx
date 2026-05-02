@@ -248,6 +248,9 @@ function PrintGuide({ shelves, sortMethod, onClose, onGenreChange }) {
   const methodLabel = SORT_METHODS.find(m => m.id === sortMethod)?.label || sortMethod
 
   function handlePrint() {
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ))
     const win = window.open('', '_blank')
     const html = `<!DOCTYPE html>
 <html>
@@ -269,16 +272,16 @@ function PrintGuide({ shelves, sortMethod, onClose, onGenreChange }) {
 </head>
 <body>
 <h1>📚 Shelf Arrangement Guide</h1>
-<div class="subtitle">Arranged: ${methodLabel} · Generated ${new Date().toLocaleDateString()}</div>
+<div class="subtitle">Arranged: ${esc(methodLabel)} · Generated ${esc(new Date().toLocaleDateString())}</div>
 ${shelves.map((shelf, si) => `
 <div class="shelf">
   <div class="shelf-header">Shelf ${si + 1} — ${shelf.books.length} books</div>
   ${shelf.books.map((book, bi) => `
   <div class="book">
     <span class="num">${bi + 1}.</span>
-    <span class="title">${book.title}${book.series_name ? ` (${book.series_name} #${book.series_position || ''})` : ''}</span>
-    <span class="author">${book.author ? ' — ' + book.author : ''}</span>
-    ${book.genre ? `<span class="genre">${book.genre}</span>` : ''}
+    <span class="title">${esc(book.title)}${book.series_name ? ` (${esc(book.series_name)} #${esc(book.series_position || '')})` : ''}</span>
+    <span class="author">${book.author ? ' — ' + esc(book.author) : ''}</span>
+    ${book.genre ? `<span class="genre">${esc(book.genre)}</span>` : ''}
   </div>`).join('')}
 </div>`).join('')}
 </body>

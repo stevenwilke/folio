@@ -1,17 +1,22 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { preflight, requireUser, serviceClient, rateLimit, handleError } from '../_shared/auth.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+// Each call does up to 4 outbound requests (Google Books + 3 scrapes).
+// Cap aggressively to avoid weaponizing this as a request amplifier.
+const MAX_INPUT_LEN = 200
+const RATE_LIMIT_PER_HOUR = 30
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  const pre = preflight(req); if (pre) return pre
 
   try {
-    const { isbn, title, author } = await req.json()
+    const { user } = await requireUser(req)
+    await rateLimit(serviceClient(), user.id, 'get-book-valuation', RATE_LIMIT_PER_HOUR)
+
+    const body = await req.json()
+    const isbn   = body.isbn   ? String(body.isbn).slice(0, 20)        : null
+    const title  = body.title  ? String(body.title).slice(0, MAX_INPUT_LEN)  : null
+    const author = body.author ? String(body.author).slice(0, MAX_INPUT_LEN) : null
     const apiKey = Deno.env.get('GOOGLE_BOOKS_API_KEY') || ''
 
     if (!apiKey) {
@@ -301,7 +306,7 @@ serve(async (req) => {
     if (!found) {
       return new Response(
         JSON.stringify({ found: false, saleability }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' } }
       )
     }
 
@@ -324,13 +329,9 @@ serve(async (req) => {
         abe_used_results,
         currency:     list_price_currency || 'USD',
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' } }
     )
   } catch (err) {
-    console.error('Unhandled error:', err)
-    return new Response(
-      JSON.stringify({ found: false, error: String(err) }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-    )
+    return handleError(err)
   }
 })

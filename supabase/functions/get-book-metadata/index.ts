@@ -1,20 +1,36 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { preflight, requireUser, serviceClient, rateLimit, jsonResponse, handleError } from '../_shared/auth.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+const MAX_QUERY_LEN = 200
+const RATE_LIMIT_PER_HOUR = 60
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  const pre = preflight(req); if (pre) return pre
 
   try {
-    // book_id: if provided, save findings back to DB using service role key
-    const { isbn, title, author, book_id } = await req.json()
+    const { user } = await requireUser(req)
+    const admin = serviceClient()
+    await rateLimit(admin, user.id, 'get-book-metadata', RATE_LIMIT_PER_HOUR)
+
+    // book_id: if provided, save findings back to DB. Caller must have a
+    // collection_entry for that book — prevents arbitrary book_id overwrite.
+    const body = await req.json()
+    const isbn   = body.isbn   ? String(body.isbn).slice(0, 20)        : null
+    const title  = body.title  ? String(body.title).slice(0, MAX_QUERY_LEN)  : null
+    const author = body.author ? String(body.author).slice(0, MAX_QUERY_LEN) : null
+    const book_id = body.book_id ? String(body.book_id) : null
     const apiKey = Deno.env.get('GOOGLE_BOOKS_API_KEY') || ''
+
+    if (book_id) {
+      const { count } = await admin
+        .from('collection_entries')
+        .select('id', { head: true, count: 'exact' })
+        .eq('user_id', user.id)
+        .eq('book_id', book_id)
+      if (!count || count === 0) {
+        return jsonResponse({ found: false, error: 'You do not have this book in your library' }, 403)
+      }
+    }
 
     // Build query: prefer ISBN, fall back to title+author
     let q = ''
@@ -25,10 +41,7 @@ serve(async (req) => {
     }
 
     if (!q) {
-      return new Response(
-        JSON.stringify({ found: false, error: 'No search terms provided' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return jsonResponse({ found: false, error: 'No search terms provided' })
     }
 
     const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=3${apiKey ? `&key=${apiKey}` : ''}`
@@ -36,19 +49,13 @@ serve(async (req) => {
     const data = await res.json()
 
     if (!res.ok) {
-      console.error('Google Books API error:', res.status, JSON.stringify(data).slice(0, 200))
-      return new Response(
-        JSON.stringify({ found: false, error: `Google Books API error ${res.status}` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      console.error('Google Books API error:', res.status)
+      return jsonResponse({ found: false, error: `Google Books API error ${res.status}` })
     }
 
     const items = data.items || []
     if (!items.length) {
-      return new Response(
-        JSON.stringify({ found: false }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return jsonResponse({ found: false })
     }
 
     // Pick the best match — prefer exact title match if searching by title
@@ -82,13 +89,9 @@ serve(async (req) => {
     const publisher      = info.publisher || null
     const subtitle       = info.subtitle || null
 
-    // Optionally save back to books table (requires book_id in request)
+    // Optionally save back to books table (requires book_id + ownership, checked above)
     if (book_id) {
       try {
-        const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-        const serviceKey  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-        const supabase    = createClient(supabaseUrl, serviceKey)
-
         // Build genre from categories
         const genreKeywords: Record<string, string[]> = {
           'Young Adult':        ['young adult', 'teen fiction', 'juvenile fiction'],
@@ -135,33 +138,26 @@ serve(async (req) => {
         if (published_year) updates.published_year = published_year
 
         if (Object.keys(updates).length > 0) {
-          await supabase.from('books').update(updates).eq('id', book_id)
+          await admin.from('books').update(updates).eq('id', book_id)
         }
       } catch (saveErr) {
         console.error('Error saving to DB:', saveErr)
       }
     }
 
-    return new Response(
-      JSON.stringify({
-        found:        true,
-        description,
-        cover,
-        isbn_13,
-        isbn_10,
-        published_year,
-        categories,
-        page_count,
-        publisher,
-        subtitle,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return jsonResponse({
+      found:        true,
+      description,
+      cover,
+      isbn_13,
+      isbn_10,
+      published_year,
+      categories,
+      page_count,
+      publisher,
+      subtitle,
+    })
   } catch (err) {
-    console.error('Unhandled error:', err)
-    return new Response(
-      JSON.stringify({ found: false, error: String(err) }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-    )
+    return handleError(err)
   }
 })

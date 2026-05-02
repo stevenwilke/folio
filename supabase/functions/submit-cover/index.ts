@@ -43,6 +43,16 @@ serve(async (req) => {
       )
     }
 
+    // Storage paths in this flow are namespaced by user id
+    // ("<uid>/pending/<filename>"). Reject anything outside the caller's
+    // namespace so a user can't submit someone else's uploaded file.
+    if (typeof storagePath !== 'string' || !storagePath.startsWith(`${user.id}/`)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid storagePath' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Use service role for admin operations
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL')!,

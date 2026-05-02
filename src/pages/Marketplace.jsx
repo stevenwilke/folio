@@ -132,45 +132,27 @@ export default function Marketplace({ session }) {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  async function removeListing(id) {
-    await supabase.from('listings').update({ status: 'removed' }).eq('id', id)
-    fetchAll()
+  async function callRpc(fn, args, successFetch = true) {
+    const { error } = await supabase.rpc(fn, args)
+    if (error) {
+      alert(error.message || `${fn} failed`)
+      return false
+    }
+    if (successFetch) fetchAll()
+    return true
   }
 
-  async function markSold(id) {
-    await supabase.from('listings').update({ status: 'sold' }).eq('id', id)
-    fetchAll()
-  }
+  async function removeListing(id)               { return callRpc('remove_listing',     { p_listing_id: id }) }
+  async function markSold(id)                    { return callRpc('mark_listing_sold',  { p_listing_id: id }) }
 
   // Seller actions on orders
-  async function confirmOrder(orderId, listingId) {
-    await Promise.all([
-      supabase.from('orders').update({ status: 'confirmed', updated_at: new Date().toISOString() }).eq('id', orderId),
-      supabase.from('listings').update({ status: 'sold' }).eq('id', listingId),
-    ])
-    fetchAll()
-  }
-
-  async function declineOrder(orderId) {
-    await supabase.from('orders').update({ status: 'declined', updated_at: new Date().toISOString() }).eq('id', orderId)
-    fetchAll()
-  }
-
-  async function markShipped(orderId) {
-    await supabase.from('orders').update({ status: 'shipped', updated_at: new Date().toISOString() }).eq('id', orderId)
-    fetchAll()
-  }
+  async function confirmOrder(orderId)           { return callRpc('confirm_order',      { p_order_id: orderId }) }
+  async function declineOrder(orderId)           { return callRpc('decline_order',      { p_order_id: orderId }) }
+  async function markShipped(orderId)            { return callRpc('mark_shipped',       { p_order_id: orderId }) }
 
   // Buyer actions
-  async function cancelOrder(orderId) {
-    await supabase.from('orders').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', orderId)
-    fetchAll()
-  }
-
-  async function markReceived(orderId) {
-    await supabase.from('orders').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', orderId)
-    fetchAll()
-  }
+  async function cancelOrder(orderId)            { return callRpc('cancel_order',       { p_order_id: orderId }) }
+  async function markReceived(orderId)           { return callRpc('mark_received',      { p_order_id: orderId }) }
 
   // Filtered browse listings
   const filtered = listings.filter(l => {
@@ -835,7 +817,7 @@ function SellerOrderRow({ order, myProfile, onConfirm, onDecline, onMarkShipped,
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8, alignItems: 'flex-end' }}>
           {order.status === 'pending' && (
             <>
-              <button style={s.btnConfirm} disabled={acting} onClick={() => act(() => onConfirm(order.id, order.listing_id))}>
+              <button style={s.btnConfirm} disabled={acting} onClick={() => act(() => onConfirm(order.id))}>
                 {acting ? '…' : 'Confirm'}
               </button>
               <button style={s.btnDecline} disabled={acting} onClick={() => act(() => onDecline(order.id))}>
@@ -1105,16 +1087,13 @@ function BuyModal({ listing, session, onClose, onSuccess, s, theme, isMobile }) 
 
   async function placeOrder() {
     if (!address.trim()) { setError('Please enter a shipping address.'); return }
+    if (placing) return
     setPlacing(true)
     setError('')
-    const { error: err } = await supabase.from('orders').insert({
-      listing_id:       listing.id,
-      buyer_id:         session.user.id,
-      seller_id:        listing.profiles?.id,
-      price:            listing.price,
-      status:           'pending',
-      buyer_message:    message.trim() || null,
-      shipping_address: address.trim(),
+    const { error: err } = await supabase.rpc('place_order', {
+      p_listing_id:       listing.id,
+      p_buyer_message:    message.trim() || null,
+      p_shipping_address: address.trim(),
     })
     setPlacing(false)
     if (err) { setError(err.message); return }

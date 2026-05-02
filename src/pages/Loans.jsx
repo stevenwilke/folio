@@ -26,7 +26,10 @@ export default function Loans({ session }) {
   // Accept with due date
   const [acceptModal, setAcceptModal]     = useState(null)
   const [acceptDue, setAcceptDue]         = useState('')
-  useEffect(() => { fetchLoans(); fetchFriends() }, [])
+  useEffect(() => {
+    if (!session?.user?.id) return
+    fetchLoans(); fetchFriends()
+  }, [session?.user?.id])
 
   async function fetchLoans() {
     setLoading(true)
@@ -38,7 +41,7 @@ export default function Loans({ session }) {
         .order('created_at', { ascending: false }),
       supabase
         .from('borrow_requests')
-        .select('id, owner_id, status, message, due_date, created_at, updated_at, books ( id, title, author, cover_image_url, isbn_13, isbn_10 )')
+        .select('id, owner_id, owner_initiated, status, message, due_date, created_at, updated_at, books ( id, title, author, cover_image_url, isbn_13, isbn_10 )')
         .eq('requester_id', session.user.id)
         .order('created_at', { ascending: false }),
     ])
@@ -129,15 +132,19 @@ export default function Loans({ session }) {
         .update({ status: 'active', due_date: dueDate || null, updated_at: new Date().toISOString() })
         .eq('id', id)
       if (req) {
-        const ownerUsername = (await getMyUsername(session.user.id)) || 'The owner'
+        const fromUsername = (await getMyUsername(session.user.id)) || 'A friend'
         const bookTitle = req.books?.title || 'a book'
-        notify(req.requester_id, 'borrow_approved', {
-          title: 'Borrow request approved',
-          body: `${ownerUsername} approved your request to borrow "${bookTitle}"`,
+        const isOwner = req.owner_id === session.user.id
+        const otherUserId = isOwner ? req.requester_id : req.owner_id
+        notify(otherUserId, 'borrow_approved', {
+          title: isOwner ? 'Borrow request approved' : 'Loan offer accepted',
+          body: isOwner
+            ? `${fromUsername} approved your request to borrow "${bookTitle}"`
+            : `${fromUsername} accepted your offer to lend "${bookTitle}"`,
           link: '/loans',
           metadata: { request_id: id },
           emailTemplate: 'loan_accepted',
-          emailData: { ownerUsername, bookTitle },
+          emailData: { ownerUsername: fromUsername, bookTitle },
         })
       }
     } else if (action === 'decline' || action === 'cancel') {
@@ -655,10 +662,27 @@ function LoanCard({ req, mode, onAction, navigate, s, theme }) {
             {acting ? '…' : 'Mark Returned'}
           </button>
         )}
-        {mode === 'borrow-pending' && (
+        {mode === 'borrow-pending' && !req.owner_initiated && (
           <button style={{ ...s.btnGhost, marginTop: 8, fontSize: 12, color: theme.textSubtle }} onClick={() => act('cancel')} disabled={acting}>
             {acting ? '…' : 'Cancel'}
           </button>
+        )}
+        {mode === 'borrow-pending' && req.owner_initiated && !showDue && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button style={s.btnAccept} onClick={() => setShowDue(true)}>Accept</button>
+            <button style={s.btnDecline} onClick={() => act('decline')} disabled={acting}>Decline</button>
+          </div>
+        )}
+        {mode === 'borrow-pending' && req.owner_initiated && showDue && (
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+            <div style={{ fontSize: 11, color: theme.textSubtle }}>Return by (optional)</div>
+            <input type="date" value={pickedDue || req.due_date || ''} onChange={e => setPickedDue(e.target.value)}
+              style={{ padding: '5px 8px', border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, fontFamily: "'DM Sans', sans-serif", background: theme.bgCard, color: theme.text, outline: 'none' }} />
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button style={s.btnDecline} onClick={() => setShowDue(false)}>Back</button>
+              <button style={s.btnAccept} onClick={() => act('accept', pickedDue || req.due_date)} disabled={acting}>{acting ? '…' : 'Confirm'}</button>
+            </div>
+          </div>
         )}
         {mode === 'borrow-active' && (
           <button style={{ ...s.btnGhost, marginTop: 8, fontSize: 12 }} onClick={() => act('returned')} disabled={acting}>

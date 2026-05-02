@@ -1,21 +1,13 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { preflight, requireService, serviceClient, jsonResponse, handleError } from '../_shared/auth.ts'
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  const pre = preflight(req); if (pre) return pre
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
+    // Cron-only: require the caller to present the service-role key.
+    requireService(req)
+    const supabase = serviceClient()
 
     const { user_id } = await req.json().catch(() => ({}))
 
@@ -125,14 +117,8 @@ serve(async (req) => {
       }
     }
 
-    return new Response(
-      JSON.stringify({ sent: results.filter(r => r.sent).length, total: results.length, results }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return jsonResponse({ sent: results.filter(r => r.sent).length, total: results.length, results })
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: String(err) }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    )
+    return handleError(err)
   }
 })

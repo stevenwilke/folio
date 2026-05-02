@@ -9,7 +9,7 @@ import { getCoverUrl } from '../lib/coverUrl'
 import { enrichBook } from '../lib/enrichBook'
 import { fetchBlockedUserIds } from '../lib/moderation'
 
-const NYT_API_KEY = import.meta.env.VITE_NYT_API_KEY || '2vGCkSNIV0d51GG4sERlG9pwoYG7b8ktvPLFBNmbsCWtK2oO'
+const NYT_API_KEY = import.meta.env.VITE_NYT_API_KEY
 
 const NYT_LISTS = [
   { key: 'hardcover-fiction',                    label: 'Fiction',         emoji: '📖' },
@@ -19,6 +19,7 @@ const NYT_LISTS = [
 ]
 
 async function fetchNYTList(listKey) {
+  if (!NYT_API_KEY) return []
   try {
     const r = await fetch(
       `https://api.nytimes.com/svc/books/v3/lists/current/${listKey}.json?api-key=${NYT_API_KEY}`

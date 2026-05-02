@@ -1,9 +1,33 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { preflight, requireUser, serviceClient, rateLimit, escapeHtml, jsonResponse, jsonError, handleError } from '../_shared/auth.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+// Hardening from round 9 audit:
+//   - JWT required (was open relay).
+//   - HTML-escape every interpolated data field (was raw — phishing vector).
+//   - Cap each data field to MAX_FIELD_LEN and total to MAX_DATA_LEN.
+//   - Per-sender rate limit so an authenticated user can't loop.
+//   - Service-role callers (cron jobs like weekly-reading-report) bypass auth.
+//
+// Cross-user authorization (e.g. "is this user actually friends with the
+// recipient") is intentionally NOT verified per-type — that's the action's
+// job, not the email's. The rate limit + HTML escape make abuse low-impact.
+
+const MAX_FIELD_LEN = 500
+const MAX_DATA_LEN  = 4000
+const RATE_LIMIT_PER_HOUR = 30
+
+// Build a sanitized data map: every value escaped + truncated.
+function safe(data: Record<string, unknown> | null | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!data) return out
+  let total = 0
+  for (const [k, v] of Object.entries(data)) {
+    const s = String(v ?? '').slice(0, MAX_FIELD_LEN)
+    total += s.length
+    if (total > MAX_DATA_LEN) break
+    out[k] = escapeHtml(s)
+  }
+  return out
 }
 
 const EMAIL_TEMPLATES: Record<string, (data: Record<string, string>) => { subject: string; html: string }> = {
@@ -125,14 +149,14 @@ const EMAIL_TEMPLATES: Record<string, (data: Record<string, string>) => { subjec
               <div style="font-size: 12px; color: #8a7f72;">Reading Time</div>
             </div>
           </div>
-          ${data.booksFinished > 0 ? `
+          ${Number(data.booksFinished) > 0 ? `
             <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e8e0d0;">
               <div style="font-size: 14px; color: #5a4a3a;">📚 Books finished this week: <strong>${data.booksFinished}</strong></div>
             </div>
           ` : ''}
-          ${data.streak > 0 ? `
+          ${Number(data.streak) > 0 ? `
             <div style="margin-top: 8px;">
-              <div style="font-size: 14px; color: #5a4a3a;">🔥 Current streak: <strong>${data.streak} day${data.streak !== 1 ? 's' : ''}</strong></div>
+              <div style="font-size: 14px; color: #5a4a3a;">🔥 Current streak: <strong>${data.streak} day${Number(data.streak) !== 1 ? 's' : ''}</strong></div>
             </div>
           ` : ''}
         </div>
@@ -173,53 +197,38 @@ const EMAIL_TEMPLATES: Record<string, (data: Record<string, string>) => { subjec
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  const pre = preflight(req); if (pre) return pre
 
   try {
-    const { to_user_id, type, data } = await req.json()
+    // Auth: prefer user JWT (notify.js calls). Fall back to service role
+    // (cron jobs like weekly-reading-report which iterate all users).
+    const authHeader = req.headers.get('Authorization') || ''
+    const isService  = authHeader === `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+    const admin = serviceClient()
 
-    if (!to_user_id || !type) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required fields: to_user_id, type' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      )
+    if (!isService) {
+      const { user } = await requireUser(req)
+      await rateLimit(admin, user.id, 'send-email', RATE_LIMIT_PER_HOUR)
     }
+
+    const { to_user_id, type, data } = await req.json()
+    if (!to_user_id || !type) return jsonError('Missing required fields: to_user_id, type', 400)
 
     const template = EMAIL_TEMPLATES[type]
-    if (!template) {
-      return new Response(
-        JSON.stringify({ error: `Unknown email type: ${type}` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      )
-    }
+    if (!template) return jsonError(`Unknown email type: ${type}`, 400)
 
-    // Use service role to read user email (bypasses RLS)
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
-
-    const { data: { user }, error: userError } = await supabase.auth.admin.getUserById(to_user_id)
-    if (userError || !user?.email) {
-      return new Response(
-        JSON.stringify({ error: 'User not found or has no email' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
-      )
-    }
+    const { data: { user: recipient }, error: userError } =
+      await admin.auth.admin.getUserById(to_user_id)
+    if (userError || !recipient?.email) return jsonError('User not found or has no email', 404)
 
     const appUrl = Deno.env.get('APP_URL') || 'https://exlibris.app'
-    const templateData = { ...data, appUrl }
+    // appUrl is from server config (trusted) so it goes in raw — but data is
+    // user-supplied and gets escaped via safe().
+    const templateData = { ...safe(data), appUrl: escapeHtml(appUrl) }
     const { subject, html } = template(templateData)
 
     const resendApiKey = Deno.env.get('RESEND_API_KEY')
-    if (!resendApiKey) {
-      return new Response(
-        JSON.stringify({ error: 'RESEND_API_KEY not configured' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      )
-    }
+    if (!resendApiKey) return jsonError('RESEND_API_KEY not configured', 500)
 
     const emailRes = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -229,7 +238,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         from: 'Ex Libris <noreply@exlibrisomnium.com>',
-        to: user.email,
+        to: recipient.email,
         subject,
         html,
       }),
@@ -238,20 +247,12 @@ serve(async (req) => {
     const result = await emailRes.json()
 
     if (!emailRes.ok) {
-      return new Response(
-        JSON.stringify({ error: 'Resend API error', details: result }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      )
+      console.error('Resend API error:', result)
+      return jsonError('Email send failed', 502)
     }
 
-    return new Response(
-      JSON.stringify({ sent: true, id: result.id }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return jsonResponse({ sent: true, id: result.id })
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: String(err) }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    )
+    return handleError(err)
   }
 })

@@ -1,10 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { preflight, requireService, serviceClient, jsonResponse, handleError } from '../_shared/auth.ts'
 
 // Gentle nudge for books stuck in 'reading' with no recent progress.
 // Default: 14d inactivity, max one reminder per book per 7d.
@@ -12,13 +7,11 @@ const STALE_DAYS    = 14
 const COOLDOWN_DAYS = 7
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  const pre = preflight(req); if (pre) return pre
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    )
+    requireService(req)
+    const supabase = serviceClient()
 
     const now = new Date()
     const staleCutoff    = new Date(now.getTime() - STALE_DAYS    * 86400_000).toISOString()
@@ -135,15 +128,8 @@ serve(async (req) => {
       sent++
     }
 
-    return new Response(
-      JSON.stringify({ checked: entries?.length ?? 0, candidates: candidates.length, sent, skipped_cooldown }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    )
+    return jsonResponse({ checked: entries?.length ?? 0, candidates: candidates.length, sent, skipped_cooldown })
   } catch (err) {
-    console.error('stale-reading-check error:', err)
-    return new Response(
-      JSON.stringify({ error: String(err) }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 },
-    )
+    return handleError(err)
   }
 })

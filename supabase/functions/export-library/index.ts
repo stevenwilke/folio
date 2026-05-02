@@ -1,10 +1,10 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { preflight, serviceClient, clientIp, rateLimitByIp, handleError } from '../_shared/auth.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+// Per-IP rate limit — caps at 20 exports/hour from the same IP. The intent
+// is to prevent scraping of every public library; legitimate users only
+// export their own (or the occasional friend's) library.
+const RATE_LIMIT_PER_HOUR = 20
 
 const SHELF_MAP: Record<string, string> = {
   owned: 'owned',
@@ -18,22 +18,22 @@ function escapeCSV(v: string | number | null | undefined): string {
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  const pre = preflight(req); if (pre) return pre
 
   try {
+    const supabase = serviceClient()
+    await rateLimitByIp(supabase, clientIp(req), 'export-library', RATE_LIMIT_PER_HOUR)
+
     const url = new URL(req.url)
-    const username = url.searchParams.get('username')
+    const usernameRaw = url.searchParams.get('username')
 
-    if (!username) {
-      return new Response('Missing username parameter', { status: 400, headers: corsHeaders })
+    // Validate username format up-front to avoid expensive lookups on
+    // garbage input. Matches profile-username constraints (alphanumeric +
+    // underscore + hyphen, ≤32 chars).
+    if (!usernameRaw || !/^[A-Za-z0-9_-]{1,32}$/.test(usernameRaw)) {
+      return new Response('Invalid username', { status: 400 })
     }
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    )
+    const username = usernameRaw
 
     // Look up the profile and check it's public
     const { data: profile } = await supabase
@@ -43,10 +43,10 @@ serve(async (req) => {
       .maybeSingle()
 
     if (!profile) {
-      return new Response('User not found', { status: 404, headers: corsHeaders })
+      return new Response('User not found', { status: 404 })
     }
     if (!profile.is_public) {
-      return new Response('This user\'s library is private', { status: 403, headers: corsHeaders })
+      return new Response('This user\'s library is private', { status: 403 })
     }
 
     // Fetch their collection
@@ -79,15 +79,11 @@ serve(async (req) => {
 
     return new Response(csv, {
       headers: {
-        ...corsHeaders,
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="${username}-library.csv"`,
       },
     })
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return handleError(err, req)
   }
 })

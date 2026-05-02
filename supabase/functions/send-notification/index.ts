@@ -1,56 +1,57 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { preflight, requireUser, serviceClient, rateLimit, jsonResponse, jsonError, handleError } from '../_shared/auth.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+// Push notification fan-out via Expo. Same auth model as send-email:
+//   - Service-role caller bypass (cron / DB webhooks).
+//   - User caller required otherwise; per-sender rate limit.
+//   - Title and body capped to keep payloads under Expo's per-message limit.
+
+const MAX_TITLE_LEN = 100
+const MAX_BODY_LEN  = 280
+const RATE_LIMIT_PER_HOUR = 60
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  const pre = preflight(req); if (pre) return pre
 
   try {
-    const { user_id, title, body, data } = await req.json()
+    const authHeader = req.headers.get('Authorization') || ''
+    const isService  = authHeader === `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+    const admin = serviceClient()
 
-    if (!user_id || !title || !body) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required fields: user_id, title, body' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      )
+    if (!isService) {
+      const { user } = await requireUser(req)
+      await rateLimit(admin, user.id, 'send-notification', RATE_LIMIT_PER_HOUR)
     }
 
-    // Use service role to read push tokens (bypasses RLS)
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
+    const body = await req.json()
+    const user_id = body.user_id
+    const title   = String(body.title ?? '').slice(0, MAX_TITLE_LEN)
+    const text    = String(body.body  ?? '').slice(0, MAX_BODY_LEN)
+    const data    = body.data && typeof body.data === 'object' ? body.data : {}
 
-    const { data: tokens, error } = await supabase
+    if (!user_id || !title || !text) {
+      return jsonError('Missing required fields: user_id, title, body', 400)
+    }
+
+    const { data: tokens, error } = await admin
       .from('push_tokens')
       .select('token')
       .eq('user_id', user_id)
 
     if (error) throw error
     if (!tokens?.length) {
-      return new Response(
-        JSON.stringify({ sent: 0, message: 'No push tokens for user' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return jsonResponse({ sent: 0, message: 'No push tokens for user' })
     }
 
-    // Build Expo push messages
     const messages = tokens.map(({ token }: { token: string }) => ({
       to: token,
       title,
-      body,
-      data: data || {},
+      body: text,
+      data,
       sound: 'default',
       badge: 1,
     }))
 
-    // Send via Expo Push API
     const expoRes = await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
       headers: {
@@ -61,15 +62,8 @@ serve(async (req) => {
     })
 
     const result = await expoRes.json()
-
-    return new Response(
-      JSON.stringify({ sent: messages.length, result }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return jsonResponse({ sent: messages.length, result })
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: String(err) }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    )
+    return handleError(err)
   }
 })

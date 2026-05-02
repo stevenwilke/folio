@@ -1,9 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { preflight, requireUser, serviceClient, rateLimit, jsonResponse, handleError } from '../_shared/auth.ts'
 
 interface BookInput {
   title: string
@@ -14,36 +10,44 @@ interface BookInput {
   has_read?: boolean
 }
 
+// Cost guards: AI is expensive. Cap input size and per-user call rate.
+const MAX_BOOKS_INPUT = 200
+const MAX_TITLE_LEN   = 200
+const MAX_AUTHOR_LEN  = 120
+const RATE_LIMIT_PER_HOUR = 10
+
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  const pre = preflight(req); if (pre) return pre
 
   try {
+    const { user } = await requireUser(req)
+    await rateLimit(serviceClient(), user.id, 'ai-book-recommendations', RATE_LIMIT_PER_HOUR)
+
     const { books }: { books: BookInput[] } = await req.json()
 
-    if (!books || books.length < 3) {
-      return new Response(
-        JSON.stringify({ recommendations: [], reason: 'not_enough_data' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    if (!Array.isArray(books) || books.length < 3) {
+      return jsonResponse({ recommendations: [], reason: 'not_enough_data' })
     }
+
+    // Truncate input to bounded size before it touches the prompt.
+    const trimmed = books.slice(0, MAX_BOOKS_INPUT).map(b => ({
+      ...b,
+      title:  String(b.title  ?? '').slice(0, MAX_TITLE_LEN),
+      author: b.author ? String(b.author).slice(0, MAX_AUTHOR_LEN) : null,
+    }))
 
     const apiKey = Deno.env.get('GEMINI_API_KEY')
     if (!apiKey) {
-      return new Response(
-        JSON.stringify({ recommendations: [], reason: 'no_api_key' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return jsonResponse({ recommendations: [], reason: 'no_api_key' })
     }
 
     // Build reading profile — prioritise read + rated books, cap at 40
-    const readBooks = books
+    const readBooks = trimmed
       .filter(b => b.has_read === true || b.read_status === 'read' || (b.user_rating ?? 0) > 0)
       .sort((a, b) => (b.user_rating ?? 0) - (a.user_rating ?? 0))
       .slice(0, 40)
 
-    const profileBooks = readBooks.length >= 3 ? readBooks : books.slice(0, 40)
+    const profileBooks = readBooks.length >= 3 ? readBooks : trimmed.slice(0, 40)
 
     const lines = profileBooks.map(b => {
       let line = `"${b.title}"${b.author ? ` by ${b.author}` : ''}`
@@ -52,7 +56,7 @@ serve(async (req) => {
       return line
     })
 
-    const ownedTitles = books.map(b => b.title.toLowerCase())
+    const ownedTitles = trimmed.map(b => b.title.toLowerCase())
 
     const prompt = `You are a passionate book recommendation expert with deep knowledge of literature across all genres.
 
@@ -89,10 +93,7 @@ Respond with ONLY a valid JSON array — no markdown, no explanation, just the a
     if (!response.ok) {
       const err = await response.text()
       console.error('Gemini API error:', err)
-      return new Response(
-        JSON.stringify({ recommendations: [], reason: 'api_error', detail: err }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return jsonResponse({ recommendations: [], reason: 'api_error' })
     }
 
     const data = await response.json()
@@ -111,10 +112,7 @@ Respond with ONLY a valid JSON array — no markdown, no explanation, just the a
     const jsonMatch = stripped.match(/\[[\s\S]*\]/)
     if (!jsonMatch) {
       console.error('No JSON array found in Gemini response')
-      return new Response(
-        JSON.stringify({ recommendations: [], reason: 'parse_error' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return jsonResponse({ recommendations: [], reason: 'parse_error' })
     }
 
     let recommendations: { title: string; author: string; reason: string }[]
@@ -122,25 +120,15 @@ Respond with ONLY a valid JSON array — no markdown, no explanation, just the a
       recommendations = JSON.parse(jsonMatch[0])
     } catch (e) {
       console.error('JSON parse failed:', String(e))
-      return new Response(
-        JSON.stringify({ recommendations: [], reason: 'parse_error' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return jsonResponse({ recommendations: [], reason: 'parse_error' })
     }
 
     const filtered = recommendations.filter(
       r => !ownedTitles.includes(r.title.toLowerCase())
     ).slice(0, 8)
 
-    return new Response(
-      JSON.stringify({ recommendations: filtered }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return jsonResponse({ recommendations: filtered })
   } catch (err) {
-    console.error('Edge function error:', err)
-    return new Response(
-      JSON.stringify({ recommendations: [], reason: 'server_error', error: String(err) }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return handleError(err)
   }
 })

@@ -37,17 +37,16 @@ export default function Stats({ session }) {
   const [showLevels, setShowLevels] = useState(false)
   const [showHeatmapHelp, setShowHeatmapHelp] = useState(false)
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { if (session?.user?.id) fetchData() }, [session?.user?.id])
 
   async function fetchData() {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
 
-    const [{ data }, { count: fc }, { data: prof }] = await Promise.all([
+    const [{ data }, { count: fc }] = await Promise.all([
       supabase.from('collection_entries').select('*, books(*)').eq('user_id', session.user.id),
       supabase.from('friendships').select('id', { count: 'exact', head: true })
         .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`).eq('status', 'accepted'),
-      supabase.from('profiles').select('level, level_points').eq('id', session.user.id).maybeSingle(),
     ])
     const rows = data || []
     setEntries(rows)
@@ -55,13 +54,17 @@ export default function Stats({ session }) {
     const newBadges = computeBadges(rows, fc || 0)
     setBadges(newBadges)
 
-    // Sync level + points to profile so other surfaces (NavBar, friend lists) can render the ring.
-    const info = computeLevelFromBadges(newBadges)
-    if (prof?.level !== info.level || prof?.level_points !== info.points) {
-      await supabase
-        .from('profiles')
-        .update({ level: info.level, level_points: info.points })
-        .eq('id', session.user.id)
+    // Persist earned badges to badge_unlocks. The (user_id, badge_id) UNIQUE
+    // constraint makes the upsert idempotent; the AFTER INSERT trigger
+    // recomputes profiles.level + level_points server-side, so other surfaces
+    // (NavBar, friend lists, profile rings) stay in sync without a separate
+    // client write.
+    const earnedRows = newBadges
+      .filter(b => b.earned)
+      .map(b => ({ user_id: session.user.id, badge_id: b.id }))
+    if (earnedRows.length) {
+      await supabase.from('badge_unlocks')
+        .upsert(earnedRows, { onConflict: 'user_id,badge_id', ignoreDuplicates: true })
     }
 
     // Fetch valuations for all books in collection

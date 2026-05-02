@@ -40,6 +40,7 @@ export default function Auth() {
   return (
     <div style={styles.page}>
       <div style={styles.card}>
+        <img src="/logo.png" alt="" style={styles.brandBadge} />
         <div style={styles.logo}>Ex Libris</div>
         <div style={styles.tagline}>Your book life</div>
 
@@ -75,6 +76,7 @@ export default function Auth() {
 const styles = {
   page: { minHeight: '100vh', background: '#f5f0e8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans', sans-serif" },
   card: { background: '#fdfaf4', border: '1px solid #d4c9b0', borderRadius: 16, padding: '40px 36px', width: 380, maxWidth: '90vw' },
+  brandBadge: { width: 96, height: 96, display: 'block', margin: '0 auto 12px' },
   logo: { fontFamily: 'Georgia, serif', fontSize: 36, fontWeight: 700, color: '#1a1208', textAlign: 'center' },
   tagline: { fontSize: 13, color: '#8a7f72', textAlign: 'center', letterSpacing: 2, textTransform: 'uppercase', marginTop: 4, marginBottom: 28 },
   modeToggle: { display: 'flex', background: '#e8dfc8', borderRadius: 8, padding: 3, marginBottom: 24 },

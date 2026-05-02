@@ -194,6 +194,7 @@ export default function Feed({ session }) {
     if (!post) return
 
     const alreadyLiked = post.post_likes?.some(l => l.user_id === userId)
+    const prevLikes = post.post_likes || []
 
     // Optimistic update
     setPosts(prev => prev.map(p => {
@@ -205,10 +206,14 @@ export default function Feed({ session }) {
       }
     }))
 
-    if (alreadyLiked) {
-      await supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', userId)
-    } else {
-      await supabase.from('post_likes').insert({ post_id: postId, user_id: userId })
+    const { error } = alreadyLiked
+      ? await supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', userId)
+      : await supabase.from('post_likes').insert({ post_id: postId, user_id: userId })
+
+    if (error) {
+      // Roll back on failure so the UI matches the DB.
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, post_likes: prevLikes } : p))
+      console.error('[toggleLike]', error)
     }
   }
 

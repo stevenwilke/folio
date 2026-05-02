@@ -1,6 +1,12 @@
 import { supabase } from './supabase'
 import { LEGACY_INAPP_TYPES } from './notifTypes'
 
+// Notification types whose in-app row is created atomically by a DB trigger
+// in the same transaction as the underlying action. The client must NOT
+// also insert the in-app row or recipients see duplicates.
+// (Push + email channels are still fanned out from here for these types.)
+const TRIGGER_HANDLED_INAPP = new Set(['friend_request', 'friend_accepted'])
+
 /**
  * Send a notification to a user across enabled channels.
  *
@@ -33,7 +39,7 @@ export async function notify(toUserId, type, payload = {}) {
 
   const tasks = []
 
-  if (prefs.in_app && title && body && !LEGACY_INAPP_TYPES.has(type)) {
+  if (prefs.in_app && title && body && !LEGACY_INAPP_TYPES.has(type) && !TRIGGER_HANDLED_INAPP.has(type)) {
     tasks.push(
       supabase.from('notifications').insert({
         user_id: toUserId,

@@ -24,6 +24,7 @@ export default function GlobalSearchModal({ session, onClose }) {
   const [chatAnswer, setChatAnswer]     = useState(null)
   const inputRef       = useRef(null)
   const debounce       = useRef(null)
+  const reqIdRef       = useRef(0)
   const panelRef       = useRef(null)
   const collectionCache = useRef(null)   // cached once per modal open
 
@@ -88,6 +89,8 @@ export default function GlobalSearchModal({ session, onClose }) {
   }
 
   async function runSearch(q) {
+    const myId = ++reqIdRef.current
+    const isLatest = () => myId === reqIdRef.current
     setLoading(true)
     setInterp('')
     setChatAnswer(null)
@@ -101,6 +104,7 @@ export default function GlobalSearchModal({ session, onClose }) {
     if (ht) {
       try {
         const data = await lookupHathitrust({ [ht.type]: ht.value })
+        if (!isLatest()) return
         if (data) {
           const isbn = data.isbn_13 || data.isbn_10
           const cover = isbn
@@ -125,9 +129,9 @@ export default function GlobalSearchModal({ session, onClose }) {
         }
       } catch (e) {
         console.error('HathiTrust lookup error:', e)
-        setResults([])
+        if (isLatest()) setResults([])
       }
-      setLoading(false)
+      if (isLatest()) setLoading(false)
       return
     }
 
@@ -167,6 +171,7 @@ export default function GlobalSearchModal({ session, onClose }) {
           body: { query: q, collection },
         })
         if (error) throw error
+        if (!isLatest()) return
         setInterp(aiData?.interpretation || '')
         if (aiData?.type === 'chat') {
           // Conversational answer about the user's own collection
@@ -182,6 +187,7 @@ export default function GlobalSearchModal({ session, onClose }) {
             .then(r => r.json()).catch(() => ({ docs: [] })),
           localPromise,
         ])
+        if (!isLatest()) return
         const externalBooks = (olResult.docs || []).map(doc => {
           const isbn13 = doc.isbn?.find(i => i.length === 13) || null
           const isbn10 = doc.isbn?.find(i => i.length === 10) || null
@@ -204,11 +210,12 @@ export default function GlobalSearchModal({ session, onClose }) {
       }
     } catch (e) {
       console.error('Search error:', e)
+      if (!isLatest()) return
       // Still try to show local results on external failure
       const localBooks = await localPromise
-      setResults(mergeResults(localBooks, []))
+      if (isLatest()) setResults(mergeResults(localBooks, []))
     }
-    setLoading(false)
+    if (isLatest()) setLoading(false)
   }
 
   // Merge local DB books (shown first) with external, deduplicating by ISBN or title+author

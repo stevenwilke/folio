@@ -106,6 +106,7 @@ export default function Library({ session }) {
   }, [loading, books])
 
   useEffect(() => {
+    if (!session?.user?.id) return
     fetchCollection()
     window.addEventListener('exlibris:bookAdded', fetchCollection)
     window.addEventListener('exlibris:bookRemoved', fetchCollection)
@@ -126,7 +127,7 @@ export default function Library({ session }) {
       window.removeEventListener('exlibris:bookRemoved', fetchCollection)
       window.removeEventListener('exlibris:coverUpdated', handleCoverUpdated)
     }
-  }, [])
+  }, [session?.user?.id])
 
   // Restore scroll position when returning from book detail
   useEffect(() => {
@@ -1415,7 +1416,7 @@ function BookCard({ entry, listing, valuation, showValuation, valuationMode, onU
         .eq('id', entry.id)
         .then(() => onUpdate())
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, currentPage, book.pages, entry.id])
 
   async function savePage(val) {
     const p = Math.max(0, parseInt(val) || 0)
@@ -1733,6 +1734,8 @@ function ListingModal({ session, entry, valuation: valProp, onClose, onSuccess }
   async function submit() {
     const p = parseFloat(price)
     if (!price || isNaN(p) || p < 0) { setError('Please enter a valid price.'); return }
+    if (p > 9999) { setError('Price too high.'); return }
+    const priceCents = Math.round(p * 100) / 100
     setSubmitting(true)
     setError(null)
     const { error: err } = await supabase
@@ -1740,7 +1743,7 @@ function ListingModal({ session, entry, valuation: valProp, onClose, onSuccess }
       .insert({
         seller_id:   session.user.id,
         book_id:     book.id,
-        price:       p,
+        price:       priceCents,
         condition,
         description: description.trim() || null,
         status:      'active',

@@ -123,6 +123,7 @@ export default function Landing() {
         )}
 
         <div style={s.heroInner}>
+          <img src="/logo.png" alt="" style={s.heroBadge} />
           <div style={s.wordmark}>Ex Libris</div>
           <div style={s.subtitle}>Ex Libris Omnium</div>
           <p style={s.tagline}>Your library. Your community. Every book you've ever loved.</p>
@@ -236,6 +237,7 @@ function makeStyles(theme, isMobile) {
     // Hero
     hero:             { position: 'relative', minHeight: '90vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: theme.bg, overflow: 'hidden', padding: isMobile ? '80px 24px 60px' : '80px 40px' },
     heroInner:        { position: 'relative', zIndex: 1, textAlign: 'center', maxWidth: 640 },
+    heroBadge:        { width: isMobile ? 110 : 160, height: isMobile ? 110 : 160, display: 'block', margin: '0 auto 18px' },
     wordmark:         { fontFamily: 'Georgia, serif', fontSize: isMobile ? 48 : 80, fontWeight: 700, color: theme.rust, letterSpacing: '-1px', lineHeight: 1 },
     subtitle:         { fontSize: isMobile ? 13 : 15, fontVariant: 'small-caps', letterSpacing: '0.2em', color: theme.textSubtle, marginTop: 8, marginBottom: 24 },
     tagline:          { fontSize: isMobile ? 18 : 22, color: theme.text, lineHeight: 1.5, margin: '0 auto 36px', maxWidth: 480 },

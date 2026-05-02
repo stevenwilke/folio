@@ -1,9 +1,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { corsHeaders, preflight, requireUser, serviceClient, rateLimit, jsonResponse, handleError } from '../_shared/auth.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+const MAX_ID_LEN = 32
+const RATE_LIMIT_PER_HOUR = 60
 
 // HathiTrust Bibliographic API takes identifiers (ISBN/OCLC/LCCN/recordnumber)
 // — there is no free-text search endpoint. Strength is old / rare / academic
@@ -114,11 +113,12 @@ function deriveYear(publishDates: string[] | undefined): number | null {
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  const pre = preflight(req); if (pre) return pre
 
   try {
+    const { user } = await requireUser(req)
+    await rateLimit(serviceClient(), user.id, 'lookup-hathitrust', RATE_LIMIT_PER_HOUR)
+
     const body = await req.json().catch(() => ({}))
     const { isbn, oclc, lccn, issn, recordnumber } = body as Record<string, string | undefined>
 
@@ -132,13 +132,13 @@ serve(async (req) => {
     ]
     const found = candidates.find(([, v]) => v && String(v).trim())
     if (!found) {
-      return new Response(
-        JSON.stringify({ found: false, error: 'No identifier provided' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
+      return jsonResponse({ found: false, error: 'No identifier provided' })
     }
     const [idType, idValueRaw] = found
-    const idValue = String(idValueRaw).replace(/[-\s]/g, '')
+    const idValue = String(idValueRaw).replace(/[-\s]/g, '').slice(0, MAX_ID_LEN)
+    if (!/^[A-Za-z0-9]+$/.test(idValue)) {
+      return jsonResponse({ found: false, error: 'Invalid identifier format' })
+    }
 
     const url = `https://catalog.hathitrust.org/api/volumes/full/${idType}/${encodeURIComponent(idValue)}.json`
     const res = await fetch(url, {
@@ -146,20 +146,14 @@ serve(async (req) => {
     })
 
     if (!res.ok) {
-      return new Response(
-        JSON.stringify({ found: false, error: `HathiTrust ${res.status}` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
+      return jsonResponse({ found: false, error: `HathiTrust ${res.status}` })
     }
 
     const data = await res.json()
     const records = data?.records || {}
     const recordIds = Object.keys(records)
     if (recordIds.length === 0) {
-      return new Response(
-        JSON.stringify({ found: false }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
+      return jsonResponse({ found: false })
     }
 
     // First record is the canonical one.
@@ -175,31 +169,24 @@ serve(async (req) => {
     const title = stripMarc(rec.titles?.[0]) || marc.title || null
     const published_year = deriveYear(rec.publishDates)
 
-    return new Response(
-      JSON.stringify({
-        found: true,
-        source: 'hathitrust',
-        record_id: recordIds[0],
-        record_url: rec.recordURL || `https://catalog.hathitrust.org/Record/${recordIds[0]}`,
-        title,
-        author: marc.author,
-        publisher: marc.publisher,
-        published_year,
-        pages: marc.pages,
-        language: marc.language,
-        isbn_13,
-        isbn_10,
-        oclcs: rec.oclcs || [],
-        lccns: rec.lccns || [],
-        subjects: marc.subjects,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    )
+    return jsonResponse({
+      found: true,
+      source: 'hathitrust',
+      record_id: recordIds[0],
+      record_url: rec.recordURL || `https://catalog.hathitrust.org/Record/${recordIds[0]}`,
+      title,
+      author: marc.author,
+      publisher: marc.publisher,
+      published_year,
+      pages: marc.pages,
+      language: marc.language,
+      isbn_13,
+      isbn_10,
+      oclcs: rec.oclcs || [],
+      lccns: rec.lccns || [],
+      subjects: marc.subjects,
+    })
   } catch (err) {
-    console.error('lookup-hathitrust error:', err)
-    return new Response(
-      JSON.stringify({ found: false, error: String(err) }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
-    )
+    return handleError(err)
   }
 })

@@ -14,7 +14,7 @@ import { clearCachedUsername } from '../lib/currentUser'
 
 const NAV_ITEMS = [
   { label: 'Library',     path: '/' },
-  { label: 'Catalog',     path: '/catalog' },
+  { label: 'Card Catalog', path: '/catalog' },
   { label: 'Discover',    path: '/discover' },
   { label: 'Feed',        path: '/feed' },
   { label: 'Friends',     path: '/friends' },
@@ -49,7 +49,18 @@ export default function NavBar({ session, extra }) {
   const [orderNotifs,  setOrderNotifs]  = useState([])
   const [unifiedNotifs, setUnifiedNotifs] = useState([])
   const avatarRef = useRef(null)
-  const goodreadsImported = !!localStorage.getItem('exlibris-goodreads-imported')
+  const [goodreadsImported, setGoodreadsImported] = useState(
+    () => !!localStorage.getItem('exlibris-goodreads-imported')
+  )
+  useEffect(() => {
+    function refresh() { setGoodreadsImported(!!localStorage.getItem('exlibris-goodreads-imported')) }
+    window.addEventListener('storage', refresh)
+    window.addEventListener('exlibris:goodreads-imported', refresh)
+    return () => {
+      window.removeEventListener('storage', refresh)
+      window.removeEventListener('exlibris:goodreads-imported', refresh)
+    }
+  }, [])
 
   // Close mobile menu when route changes
   useEffect(() => { setShowMenu(false) }, [location.pathname])
@@ -212,6 +223,7 @@ export default function NavBar({ session, extra }) {
         {/* Logo */}
         <div style={{ ...s.logo, color: theme.navText, fontSize: isMobile ? 18 : 22 }} onClick={() => navigate('/')} role="button" tabIndex={0}
           onKeyDown={e => e.key === 'Enter' && navigate('/')}>
+          <img src="/logo.png" alt="" style={{ width: isMobile ? 26 : 32, height: isMobile ? 26 : 32, display: 'block' }} />
           Ex Libris
         </div>
 
@@ -419,6 +431,7 @@ export default function NavBar({ session, extra }) {
             localStorage.setItem('exlibris-onboarded', '1')
             setShowImport(false)
             window.dispatchEvent(new Event('exlibris:bookAdded'))
+            window.dispatchEvent(new Event('exlibris:goodreads-imported'))
             navigate('/')
           }}
         />
@@ -587,6 +600,7 @@ const s = {
   logo: {
     fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700,
     color: '#1a1208', cursor: 'pointer', userSelect: 'none', letterSpacing: '-0.3px',
+    display: 'flex', alignItems: 'center', gap: 10,
   },
   right: { display: 'flex', gap: 2, alignItems: 'center' },
   ghost: {

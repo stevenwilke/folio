@@ -149,6 +149,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
   const { theme } = useTheme()
   const isMobile = useIsMobile()
   const cameraInputRef = useRef(null)
+  const reqIdRef = useRef(0)
   const [showManual,    setShowManual]    = useState(false)
   const [showFilters,   setShowFilters]   = useState(false)
   const [query,         setQuery]         = useState('')
@@ -169,6 +170,8 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
 
   async function search() {
     if (!query.trim()) return
+    const myId = ++reqIdRef.current
+    const isLatest = () => myId === reqIdRef.current
     setSearching(true)
     setResults([])
 
@@ -178,6 +181,7 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
     const ht = parseHathitrustQuery(query)
     if (ht) {
       const hit = await lookupHathitrust({ [ht.type]: ht.value })
+      if (!isLatest()) return
       setResults(hit ? [fromHathiResult(hit)] : [])
       setSearching(false)
       return
@@ -316,12 +320,13 @@ export default function SearchModal({ session, onClose, onAdded = () => {} }) {
       // Folio community results first, then Open Library (some now
       // HathiTrust-enriched), then Google Books (catches typos OL misses),
       // then a direct HathiTrust ISBN hit if any.
+      if (!isLatest()) return
       setResults([...folioResults, ...enrichedOl, ...gbResults, ...hathiResults])
     } catch {
-      setResults([])
+      if (isLatest()) setResults([])
     }
 
-    setSearching(false)
+    if (isLatest()) setSearching(false)
   }
 
   function clearFilters() {

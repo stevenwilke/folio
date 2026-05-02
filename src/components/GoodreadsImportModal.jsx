@@ -161,7 +161,7 @@ export default function GoodreadsImportModal({ session, onClose, onImported }) {
 
           // Insert new book without cover — backfillCovers handles that on library load
           if (!bookId) {
-            const { data: newBook } = await supabase.from('books').insert({
+            const { data: newBook, error: insertErr } = await supabase.from('books').insert({
               title:          b.title,
               author:         b.author,
               isbn_13:        b.isbn13 || null,
@@ -171,7 +171,19 @@ export default function GoodreadsImportModal({ session, onClose, onImported }) {
               format:         b.format || null,
               cover_image_url: null,
             }).select('id').single()
-            if (newBook) bookId = newBook.id
+            if (newBook) {
+              bookId = newBook.id
+            } else if (insertErr?.code === '23505') {
+              // Lost a race against another concurrent import — re-query.
+              if (b.isbn13) {
+                const { data } = await supabase.from('books').select('id').eq('isbn_13', b.isbn13).maybeSingle()
+                if (data) bookId = data.id
+              }
+              if (!bookId && b.isbn10) {
+                const { data } = await supabase.from('books').select('id').eq('isbn_10', b.isbn10).maybeSingle()
+                if (data) bookId = data.id
+              }
+            }
           }
 
           if (bookId) {

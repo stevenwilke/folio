@@ -38,7 +38,7 @@ async function fetchGoogleBooksRating(isbn, title, author) {
         }
       }
     }
-  } catch {}
+  } catch (e) { console.warn('[externalRating]', e?.message || e) }
   return null
 }
 
@@ -73,7 +73,7 @@ async function fetchOpenLibraryRating(isbn, title, author) {
     if (avg && count > 0) {
       return { rating: Number(avg), count: Number(count), source: 'open_library' }
     }
-  } catch {}
+  } catch (e) { console.warn('[externalRating]', e?.message || e) }
   return null
 }
 

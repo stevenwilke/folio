@@ -28,7 +28,7 @@ async function fetchOLCover(isbn, title, author) {
         if (doc.cover_i) return `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`
       }
     }
-  } catch {}
+  } catch (e) { console.warn('[enrichBook:coverByTitle]', e?.message || e) }
   return null
 }
 
@@ -111,7 +111,7 @@ async function fetchOLDescription(isbn, title, author) {
         if (isLikelyEnglish(text)) return text
       }
     }
-  } catch {}
+  } catch (e) { console.warn('[enrichBook:description]', e?.message || e) }
   return null
 }
 

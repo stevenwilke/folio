@@ -758,7 +758,8 @@ export default function BookDetail({ bookId, session, onBack }) {
 
   async function removeListing() {
     if (!listing) return
-    await supabase.from('listings').update({ status: 'removed' }).eq('id', listing.id)
+    const { error } = await supabase.rpc('remove_listing', { p_listing_id: listing.id })
+    if (error) { alert(error.message || 'Could not remove listing.'); return }
     setListing(null)
   }
 
@@ -2363,6 +2364,8 @@ function ListingModal({ session, book, valuation: valProp, onClose, onSuccess })
   async function submit() {
     const p = parseFloat(price)
     if (!price || isNaN(p) || p < 0) { setError('Please enter a valid price.'); return }
+    if (p > 9999) { setError('Price too high.'); return }
+    const priceCents = Math.round(p * 100) / 100
     setSubmitting(true)
     setError(null)
     const { data, error: err } = await supabase
@@ -2370,7 +2373,7 @@ function ListingModal({ session, book, valuation: valProp, onClose, onSuccess })
       .insert({
         seller_id:   session.user.id,
         book_id:     book.id,
-        price:       p,
+        price:       priceCents,
         condition,
         description: description.trim() || null,
         status:      'active',
@@ -2703,6 +2706,37 @@ function StartBuddyReadModal({ session, book, theme, onClose, onCreated }) {
   const [target, setTarget]   = useState('')
   const [creating, setCreating] = useState(false)
   const [error, setError]     = useState('')
+  const [friends, setFriends] = useState([])
+  const [selected, setSelected] = useState(new Set())
+
+  useEffect(() => {
+    if (!session) return
+    ;(async () => {
+      const { data: fs } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .eq('status', 'accepted')
+        .or(`requester_id.eq.${session.user.id},addressee_id.eq.${session.user.id}`)
+      const friendIds = (fs || []).map(f =>
+        f.requester_id === session.user.id ? f.addressee_id : f.requester_id
+      )
+      if (!friendIds.length) return
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url')
+        .in('id', friendIds)
+        .order('username')
+      setFriends(profiles || [])
+    })()
+  }, [session?.user?.id])
+
+  function toggleFriend(id) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
 
   async function create() {
     if (!session) { setError('Sign in first.'); return }
@@ -2718,7 +2752,7 @@ function StartBuddyReadModal({ session, book, theme, onClose, onCreated }) {
       .select('id')
       .single()
     if (err || !data) {
-      setError('Could not create buddy read.')
+      setError(err?.message || 'Could not create buddy read.')
       setCreating(false)
       return
     }
@@ -2726,6 +2760,23 @@ function StartBuddyReadModal({ session, book, theme, onClose, onCreated }) {
     await supabase.from('buddy_read_participants').insert({
       buddy_read_id: data.id, user_id: session.user.id, status: 'joined', joined_at: new Date().toISOString(),
     })
+    // Invite selected friends + notify.
+    if (selected.size > 0) {
+      const invites = [...selected].map(uid => ({
+        buddy_read_id: data.id, user_id: uid, status: 'invited',
+      }))
+      await supabase.from('buddy_read_participants').insert(invites)
+      const fromUsername = (await getMyUsername(session.user.id)) || 'A friend'
+      const bookTitle = book.title
+      for (const uid of selected) {
+        notify(uid, 'buddy_read_invite', {
+          title: 'Buddy read invite',
+          body: `${fromUsername} invited you to read "${bookTitle}" together`,
+          link: `/buddy-reads/${data.id}`,
+          metadata: { buddy_read_id: data.id },
+        })
+      }
+    }
     onCreated(data.id)
   }
 
@@ -2751,11 +2802,36 @@ function StartBuddyReadModal({ session, book, theme, onClose, onCreated }) {
             <label style={lbl}>Target finish date (optional)</label>
             <input type="date" value={target} onChange={e => setTarget(e.target.value)} style={inp} />
           </div>
+          <div style={{ marginTop: 14 }}>
+            <label style={lbl}>Invite friends (optional)</label>
+            {friends.length === 0 ? (
+              <div style={{ fontSize: 12, color: theme.textSubtle, padding: '8px 0' }}>
+                No friends yet — you can invite people from the buddy read page after creating it.
+              </div>
+            ) : (
+              <div style={{ maxHeight: 160, overflowY: 'auto', border: `1px solid ${theme.border}`, borderRadius: 8, padding: 4 }}>
+                {friends.map(f => {
+                  const checked = selected.has(f.id)
+                  return (
+                    <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', background: checked ? 'rgba(192,82,30,0.08)' : 'transparent' }}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleFriend(f.id)} style={{ accentColor: theme.rust, cursor: 'pointer' }} />
+                      <span style={{ fontSize: 13, color: theme.text }}>{f.username}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+            {selected.size > 0 && (
+              <div style={{ fontSize: 11, color: theme.textSubtle, marginTop: 6 }}>
+                {selected.size} friend{selected.size === 1 ? '' : 's'} will be invited
+              </div>
+            )}
+          </div>
           {error && <div style={{ color: theme.rust, fontSize: 13, marginTop: 10 }}>{error}</div>}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
             <button onClick={onClose} style={{ background: 'transparent', border: `1px solid ${theme.border}`, color: theme.textSubtle, padding: '8px 16px', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>Cancel</button>
             <button onClick={create} disabled={creating} style={{ background: theme.rust, color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", opacity: creating ? 0.6 : 1 }}>
-              {creating ? 'Creating…' : 'Create & invite friends →'}
+              {creating ? 'Creating…' : selected.size > 0 ? `Create & invite ${selected.size} →` : 'Create →'}
             </button>
           </div>
         </div>
